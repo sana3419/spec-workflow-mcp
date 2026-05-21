@@ -9,10 +9,11 @@ import { fileURLToPath } from 'url';
 import open from 'open';
 import { WebSocket } from 'ws';
 import { validateAndCheckPort, DASHBOARD_TEST_MESSAGE } from './utils.js';
-import { parseTasksFromMarkdown } from '../core/task-parser.js';
+import { parseTasksFromMarkdown, updateTaskStatus } from '../core/task-parser.js';
 import { ProjectManager } from './project-manager.js';
 import { JobScheduler } from './job-scheduler.js';
 import { ImplementationLogManager } from './implementation-log-manager.js';
+import { PathUtils } from '../core/path-utils.js';
 import { DashboardSessionManager } from '../core/dashboard-session.js';
 import {
   getSecurityConfig,
@@ -24,6 +25,10 @@ import {
   DEFAULT_SECURITY_CONFIG
 } from '../core/security-utils.js';
 import { SecurityConfig } from '../types.js';
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -111,10 +116,16 @@ export class MultiProjectDashboardServer {
 
     // Fetch package version once at startup
     try {
-      const response = await fetch('https://registry.npmjs.org/@pimzino/spec-workflow-mcp/latest');
-      if (response.ok) {
-        const packageInfo = await response.json() as { version?: string };
-        this.packageVersion = packageInfo.version || 'unknown';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch('https://registry.npmjs.org/@pimzino/spec-workflow-mcp/latest', { signal: controller.signal });
+        if (response.ok) {
+          const packageInfo = await response.json() as { version?: string };
+          this.packageVersion = packageInfo.version || 'unknown';
+        }
+      } finally {
+        clearTimeout(timeout);
       }
     } catch {
       // Fallback to local package.json version if npm request fails
@@ -465,6 +476,7 @@ export class MultiProjectDashboardServer {
     // Get spec details
     this.app.get('/api/projects/:projectId/specs/:name', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
       if (!project) {
         return reply.code(404).send({ error: 'Project not found' });
@@ -479,6 +491,7 @@ export class MultiProjectDashboardServer {
     // Get all spec documents
     this.app.get('/api/projects/:projectId/specs/:name/all', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
       if (!project) {
         return reply.code(404).send({ error: 'Project not found' });
@@ -508,6 +521,7 @@ export class MultiProjectDashboardServer {
     // Get all archived spec documents
     this.app.get('/api/projects/:projectId/specs/:name/all/archived', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
       if (!project) {
         return reply.code(404).send({ error: 'Project not found' });
@@ -538,6 +552,7 @@ export class MultiProjectDashboardServer {
     // Save spec document
     this.app.put('/api/projects/:projectId/specs/:name/:document', async (request, reply) => {
       const { projectId, name, document } = request.params as { projectId: string; name: string; document: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const { content } = request.body as { content: string };
       const project = this.projectManager.getProject(projectId);
 
@@ -569,6 +584,7 @@ export class MultiProjectDashboardServer {
     // Archive spec
     this.app.post('/api/projects/:projectId/specs/:name/archive', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
 
       if (!project) {
@@ -586,6 +602,7 @@ export class MultiProjectDashboardServer {
     // Unarchive spec
     this.app.post('/api/projects/:projectId/specs/:name/unarchive', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
 
       if (!project) {
@@ -1017,6 +1034,7 @@ export class MultiProjectDashboardServer {
     // Get task progress
     this.app.get('/api/projects/:projectId/specs/:name/tasks/progress', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
 
       if (!project) {
@@ -1053,6 +1071,7 @@ export class MultiProjectDashboardServer {
     // Update task status
     this.app.put('/api/projects/:projectId/specs/:name/tasks/:taskId/status', async (request, reply) => {
       const { projectId, name, taskId } = request.params as { projectId: string; name: string; taskId: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const { status, reason } = request.body as { status: 'pending' | 'in-progress' | 'completed' | 'blocked'; reason?: string };
       const project = this.projectManager.getProject(projectId);
 
@@ -1092,7 +1111,6 @@ export class MultiProjectDashboardServer {
           };
         }
 
-        const { updateTaskStatus } = await import('../core/task-parser.js');
         const updatedContent = updateTaskStatus(tasksContent, taskId, status, reason);
 
         if (updatedContent === tasksContent) {
@@ -1116,6 +1134,7 @@ export class MultiProjectDashboardServer {
     // Add implementation log entry
     this.app.post('/api/projects/:projectId/specs/:name/implementation-log', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const project = this.projectManager.getProject(projectId);
       if (!project) {
         return reply.code(404).send({ error: 'Project not found' });
@@ -1143,6 +1162,7 @@ export class MultiProjectDashboardServer {
     // Get implementation logs
     this.app.get('/api/projects/:projectId/specs/:name/implementation-log', async (request, reply) => {
       const { projectId, name } = request.params as { projectId: string; name: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
       const query = request.query as { taskId?: string; search?: string };
 
       const project = this.projectManager.getProject(projectId);
@@ -1159,7 +1179,14 @@ export class MultiProjectDashboardServer {
           logs = logs.filter(log => log.taskId === query.taskId);
         }
         if (query.search) {
-          logs = await logManager.searchLogs(query.search);
+          const searchResults = await logManager.searchLogs(query.search);
+          if (query.taskId) {
+            // Intersect: keep only search results that also match the taskId filter
+            const filteredIds = new Set(logs.map(l => l.taskId + '_' + l.timestamp));
+            logs = searchResults.filter(l => filteredIds.has(l.taskId + '_' + l.timestamp));
+          } else {
+            logs = searchResults;
+          }
         }
 
         return { entries: logs };
@@ -1171,6 +1198,7 @@ export class MultiProjectDashboardServer {
     // Get implementation log task stats
     this.app.get('/api/projects/:projectId/specs/:name/implementation-log/task/:taskId/stats', async (request, reply) => {
       const { projectId, name, taskId } = request.params as { projectId: string; name: string; taskId: string };
+      try { PathUtils.validateSimplePathSegment(name, 'spec name'); } catch { return reply.code(400).send({ error: 'Invalid spec name' }); }
 
       const project = this.projectManager.getProject(projectId);
       if (!project) {
@@ -1197,7 +1225,7 @@ export class MultiProjectDashboardServer {
         const content = await readFile(changelogPath, 'utf-8');
 
         // Extract the section for the requested version
-        const versionRegex = new RegExp(`## \\[${version}\\][^]*?(?=## \\[|$)`, 'i');
+        const versionRegex = new RegExp(`## \\[${escapeRegExp(version)}\\][^]*?(?=## \\[|$)`, 'i');
         const match = content.match(versionRegex);
 
         if (!match) {
@@ -1222,7 +1250,7 @@ export class MultiProjectDashboardServer {
         const content = await readFile(changelogPath, 'utf-8');
 
         // Extract the section for the requested version
-        const versionRegex = new RegExp(`## \\[${version}\\][^]*?(?=## \\[|$)`, 'i');
+        const versionRegex = new RegExp(`## \\[${escapeRegExp(version)}\\][^]*?(?=## \\[|$)`, 'i');
         const match = content.match(versionRegex);
 
         if (!match) {

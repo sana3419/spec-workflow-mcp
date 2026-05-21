@@ -105,8 +105,11 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
   // Validate engine configuration
   if (config.engine !== undefined) {
     const eng = config.engine;
-    if (eng.default !== undefined && typeof eng.default !== 'string') {
-      return { valid: false, error: `Invalid engine.default: must be a string.` };
+    if (eng.default !== undefined) {
+      const validEngines = ['deepseek', 'gemini', 'claude', 'codex'];
+      if (typeof eng.default !== 'string' || !validEngines.includes(eng.default)) {
+        return { valid: false, error: `Invalid engine.default: must be one of ${validEngines.join(', ')}.` };
+      }
     }
     if (eng.deepseekModel !== undefined && typeof eng.deepseekModel !== 'string') {
       return { valid: false, error: `Invalid engine.deepseekModel: must be a string.` };

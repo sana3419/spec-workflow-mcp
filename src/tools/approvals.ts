@@ -528,6 +528,7 @@ async function handleDeleteApproval(
     // Check if approval exists and its status
     const approval = await approvalStorage.getApproval(args.approvalId);
     if (!approval) {
+      await approvalStorage.stop();
       return {
         success: false,
         message: `Approval request "${args.approvalId}" not found`,

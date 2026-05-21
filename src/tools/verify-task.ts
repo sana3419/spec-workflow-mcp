@@ -52,6 +52,20 @@ This tool does NOT execute tests. You must run tests yourself and report the res
       fixNote: {
         type: 'string',
         description: 'Note about the fix attempt or failure reason'
+      },
+      engine: {
+        type: 'string',
+        description: 'Engine used for this task (deepseek, gemini, codex, claude)'
+      },
+      usage: {
+        type: 'object',
+        properties: {
+          inputTokens: { type: 'number', description: 'Input tokens consumed' },
+          outputTokens: { type: 'number', description: 'Output tokens consumed' },
+          costUsd: { type: 'number', description: 'Estimated cost in USD' },
+          durationMs: { type: 'number', description: 'Execution duration in milliseconds' }
+        },
+        description: 'Engine usage stats for this task (optional, for receipt tracking)'
       }
     },
     required: ['specName', 'taskId', 'signal']
@@ -66,11 +80,16 @@ export async function verifyTaskHandler(
   args: any,
   context: ToolContext
 ): Promise<ToolResponse> {
-  const { specName, taskId, signal, testResults = [], fixNote } = args;
+  const { specName, taskId, signal, testResults = [], fixNote, engine, usage } = args;
   const projectPath = args.projectPath || context.projectPath;
 
   if (!projectPath) {
     return { success: false, message: 'Project path is required but not provided' };
+  }
+
+  // Validate taskId format to prevent path traversal
+  if (!/^\d+(\.\d+)*$/.test(taskId)) {
+    return { success: false, message: `Invalid taskId format: '${taskId}'. Must be digits and dots (e.g., '1', '1.1', '2.3.1')` };
   }
 
   if (signal === 'red' && (!testResults || testResults.length === 0)) {
@@ -82,7 +101,8 @@ export async function verifyTaskHandler(
   }
 
   try {
-    const specPath = PathUtils.getSpecPath(projectPath, specName);
+    const translatedPath = PathUtils.translatePath(projectPath);
+    const specPath = PathUtils.getSpecPath(translatedPath, specName);
     const tasksFile = join(specPath, 'tasks.md');
 
     let tasksContent: string;
@@ -108,16 +128,21 @@ export async function verifyTaskHandler(
     try {
       const existing = await fs.readFile(verifyFile, 'utf-8');
       verifyData = JSON.parse(existing);
-    } catch {
-      verifyData = {
-        taskId,
-        specName,
-        fixAttempts: 0,
-        lastSignal: null,
-        lastTestResults: [],
-        lastFixNote: '',
-        lastTimestamp: ''
-      };
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        // File doesn't exist yet — normal for first verification
+        verifyData = {
+          taskId, specName, fixAttempts: 0,
+          lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: ''
+        };
+      } else {
+        // File exists but is corrupted — warn but continue with fresh data
+        verifyData = {
+          taskId, specName, fixAttempts: 0,
+          lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: ''
+        };
+        // Note: fixAttempts reset on corruption - this is a known limitation
+      }
     }
 
     // Reset fixAttempts if task was dragged back to pending (recovery scenario)
@@ -137,6 +162,17 @@ export async function verifyTaskHandler(
       verifyData.lastFixNote = fixNote || '';
       verifyData.lastTimestamp = new Date().toISOString();
       await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+
+      // Append to usage-log for receipt tracking
+      await appendUsageLog(projectPath, {
+        specName,
+        taskId,
+        taskName: task.description,
+        engine: engine || task.engine || context.engineConfig?.default || 'claude',
+        signal: 'green',
+        timestamp: verifyData.lastTimestamp,
+        usage: usage || null
+      });
 
       return {
         success: true,
@@ -161,6 +197,13 @@ export async function verifyTaskHandler(
         const updated = updateTaskStatus(tasksContent, taskId, 'blocked', reason);
         await fs.writeFile(tasksFile, updated, 'utf-8');
         await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+
+        await appendUsageLog(projectPath, {
+          specName, taskId, taskName: task.description,
+          engine: engine || task.engine || context.engineConfig?.default || 'claude',
+          signal: 'blocked', timestamp: verifyData.lastTimestamp,
+          usage: usage || null
+        });
 
         return {
           success: true,
@@ -195,4 +238,27 @@ export async function verifyTaskHandler(
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, message: `Verification failed: ${errorMessage}` };
   }
+}
+
+interface UsageEntry {
+  specName: string;
+  taskId: string;
+  taskName: string;
+  engine: string;
+  signal: string;
+  timestamp: string;
+  usage: { inputTokens?: number; outputTokens?: number; costUsd?: number; durationMs?: number } | null;
+}
+
+async function appendUsageLog(projectPath: string, entry: UsageEntry): Promise<void> {
+  try {
+    const logFile = join(PathUtils.getWorkflowRoot(projectPath), 'usage-log.json');
+    let log: { entries: UsageEntry[] } = { entries: [] };
+    try {
+      const existing = await fs.readFile(logFile, 'utf-8');
+      log = JSON.parse(existing);
+    } catch { /* file doesn't exist yet */ }
+    log.entries.push(entry);
+    await fs.writeFile(logFile, JSON.stringify(log, null, 2), 'utf-8');
+  } catch { /* non-critical, don't fail verify-task */ }
 }

@@ -168,7 +168,7 @@ export async function specStatusHandler(args: any, context: ToolContext): Promis
       nextSteps,
       projectContext: {
         projectPath,
-        workflowRoot: PathUtils.getWorkflowRoot(projectPath),
+        workflowRoot: PathUtils.getWorkflowRoot(translatedPath),
         currentPhase,
         dashboardUrl: context.dashboardUrl
       }
@@ -223,6 +223,8 @@ function generateDispatchHint(engine: string, deepseekModel: string, specName: s
       return `deepseek ${deepseekModel !== 'auto' ? '--model ' + deepseekModel + ' ' : ''}-p "Implement task ${taskId} for spec ${specName}"`;
     case 'gemini':
       return `gemini -p "Review/implement task ${taskId} for spec ${specName}"`;
+    case 'codex':
+      return `codex -p "Implement task ${taskId} for spec ${specName}"`;
     case 'claude':
       return `Implement task ${taskId} directly (Claude is the current engine)`;
     default:

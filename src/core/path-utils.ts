@@ -218,8 +218,8 @@ export class PathUtils {
     const resolvedBase = resolve(basePath);
     const resolvedJoined = resolve(joined);
     
-    // Ensure the joined path is within the base path
-    if (!resolvedJoined.startsWith(resolvedBase)) {
+    // Ensure the joined path is within the base path (with separator boundary check)
+    if (resolvedJoined !== resolvedBase && !resolvedJoined.startsWith(resolvedBase + sep)) {
       throw new Error('Path traversal detected in join operation');
     }
     

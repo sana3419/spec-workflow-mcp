@@ -177,7 +177,9 @@ def parse_markdown(md_text, images_dir=None):
         # 检测特殊段落类型
         if text.startswith('作者') or text.startswith('Author'):
             elements.append(('author', text))
-        elif text.startswith('摘') and '要' in text[:4]:
+        elif text.startswith('摘') and '要' in text[:5]:
+            elements.append(('abstract', text))
+        elif text.startswith('摘要'):
             elements.append(('abstract', text))
         elif text.startswith('关键词') or text.startswith('Keywords'):
             elements.append(('keywords', text))
@@ -258,8 +260,21 @@ def generate_docx(elements, output_path, images_dir=None):
                                  align=WD_ALIGN_PARAGRAPH.CENTER, line_spacing=1.5)
 
         elif etype in ('abstract', 'abstract_en'):
-            add_styled_paragraph(doc, elem[1], size=NORMAL_SIZE, bold=True,
-                                 line_spacing=1.5, first_indent=Cm(1.0))
+            # 只加粗"摘 要"/"ABSTRACT"标签，正文不加粗
+            text = elem[1]
+            p = doc.add_paragraph()
+            set_paragraph_format(p, line_spacing=1.5, first_indent=Cm(1.0))
+            # 分离标签和正文
+            import re as _re
+            m = _re.match(r'^(摘\s*要[：:]?|ABSTRACT[：:]?)\s*', text)
+            if m:
+                label_run = p.add_run(m.group(0))
+                set_run_font(label_run, size=NORMAL_SIZE, bold=True)
+                body_run = p.add_run(text[m.end():])
+                set_run_font(body_run, size=NORMAL_SIZE, bold=False)
+            else:
+                run = p.add_run(text)
+                set_run_font(run, size=NORMAL_SIZE, bold=False)
 
         elif etype in ('keywords', 'keywords_en'):
             add_styled_paragraph(doc, elem[1], size=NORMAL_SIZE, bold=True,

@@ -1,4 +1,5 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { promises as fs } from 'fs';
 import { ToolContext, ToolResponse, ImplementationLogEntry } from '../types.js';
 import { PathUtils } from '../core/path-utils.js';
 import { ImplementationLogManager } from '../dashboard/implementation-log-manager.js';
@@ -329,12 +330,14 @@ export async function logImplementationHandler(
       };
     }
 
+    // Translate path at tool entry point (components expect pre-translated paths)
+    const translatedPath = PathUtils.translatePath(projectPath);
+
     // Validate task exists
-    const specTasksPath = PathUtils.getSpecPath(projectPath, specName);
+    const specTasksPath = PathUtils.getSpecPath(translatedPath, specName);
     const tasksFile = `${specTasksPath}/tasks.md`;
 
     try {
-      const { promises: fs } = await import('fs');
       const tasksContent = await fs.readFile(tasksFile, 'utf-8');
       const parseResult = parseTasksFromMarkdown(tasksContent);
       const taskExists = parseResult.tasks.some(t => t.id === taskId);

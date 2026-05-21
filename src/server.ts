@@ -14,6 +14,7 @@ import { validateProjectPath } from './core/path-utils.js';
 import { WorkspaceInitializer } from './core/workspace-initializer.js';
 import { ProjectRegistry } from './core/project-registry.js';
 import { DashboardSessionManager } from './core/dashboard-session.js';
+import { ToolContext } from './types.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -147,7 +148,7 @@ export class SpecWorkflowMCPServer {
     }
   }
 
-  private setupHandlers(context: any) {
+  private setupHandlers(context: ToolContext) {
     // Tool handlers
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: registerTools()

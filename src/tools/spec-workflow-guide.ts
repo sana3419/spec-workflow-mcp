@@ -99,7 +99,10 @@ flowchart TD
     P4_Ready -->|Yes| P4_Status[spec-status]
     P4_Status --> P4_Task[Edit tasks.md:<br/>Change [ ] to [-]<br/>for in-progress]
     P4_Task --> P4_Code[Implement code]
-    P4_Code --> P4_Log[log-implementation<br/>Record implementation<br/>details]
+    P4_Code --> P4_Verify{verify-task<br/>green/red?}
+    P4_Verify -->|green| P4_Log[log-implementation<br/>Record details]
+    P4_Verify -->|red| P4_Fix[Fix failures]
+    P4_Fix --> P4_Code
     P4_Log --> P4_Complete[Edit tasks.md:<br/>Change [-] to [x]<br/>for completed]
     P4_Complete --> P4_More{More tasks?}
     P4_More -->|Yes| P4_Task

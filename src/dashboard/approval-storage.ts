@@ -548,24 +548,32 @@ export class ApprovalStorage extends EventEmitter {
     cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
 
     try {
-      const files = await fs.readdir(this.approvalsDir);
+      const entries = await fs.readdir(this.approvalsDir, { withFileTypes: true });
 
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          try {
-            const content = await fs.readFile(join(this.approvalsDir, file), 'utf-8');
-            const approval = JSON.parse(content) as ApprovalRequest;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const categoryDir = join(this.approvalsDir, entry.name);
+        try {
+          const files = await fs.readdir(categoryDir);
+          for (const file of files) {
+            if (!file.endsWith('.json')) continue;
+            try {
+              const content = await fs.readFile(join(categoryDir, file), 'utf-8');
+              const approval = JSON.parse(content) as ApprovalRequest;
 
-            const createdAt = new Date(approval.createdAt);
-            if (createdAt < cutoffDate && approval.status !== 'pending') {
-              await fs.unlink(join(this.approvalsDir, file));
+              const createdAt = new Date(approval.createdAt);
+              if (createdAt < cutoffDate && approval.status !== 'pending') {
+                await fs.unlink(join(categoryDir, file));
+              }
+            } catch {
+              // Error processing approval file
             }
-          } catch (error) {
-            // Error processing approval file
           }
+        } catch {
+          // Error reading category directory
         }
       }
-    } catch (error) {
+    } catch {
       // Error cleaning up old approvals
     }
   }
@@ -809,10 +817,10 @@ export class ApprovalStorage extends EventEmitter {
   }
 
   private generateSnapshotId(): string {
-    return `snapshot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `snapshot_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateId(): string {
-    return `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `approval_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

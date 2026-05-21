@@ -1,99 +1,177 @@
 # Project CLAUDE.md
 
-## MCP 工具
+## MCP Tools
 
-本项目通过 spec-workflow-mcp 进行规格驱动开发，有以下 MCP 工具可用：
+### spec-workflow-mcp (Workflow Management)
+- `spec-workflow-guide` — Load workflow guide (call first each session)
+- `steering-guide` — Create project steering docs
+- `spec-status` — Progress + next task engine suggestion
+- `approvals` — Approval workflow (request/status/delete)
+- `log-implementation` — Record implementation logs and artifacts
+- `verify-task` — Traffic-light verification (green/red signal)
 
-- `spec-workflow-guide` — 获取完整工作流指南（每次新会话先调用）
-- `steering-guide` — 项目指导文档创建
-- `spec-status` — 查看进度和下一个任务（含引擎建议）
-- `approvals` — 审批流程（request/status/delete）
-- `log-implementation` — 记录实现日志和 artifacts
-- `verify-task` — 红绿灯验证（green/red 信号）
+### deepseek MCP (DeepSeek TUI Native)
+- `mcp__deepseek__*` — DeepSeek TUI tools via `deepseek serve --mcp`, for coding tasks
 
-## 多引擎调度
+### ai-cli-mcp (Gemini/Codex Dispatch)
+- `ai_cli_run` — Launch Gemini/Codex engine in background, returns PID
+- `ai_cli_wait` — Wait for engine completion, return result
+- `ai_cli_peek` — Check engine progress
+- `ai_cli_get_result` — Get engine result
+- `ai_cli_doctor` — Check engine CLI availability
 
-任务通过 `_Engine:` 字段指定执行引擎：
+## Multi-Engine Dispatch
 
-| 引擎 | 用途 | 调用方式 |
-|------|------|---------|
-| `deepseek`（默认） | 编码、重构、修 bug | `deepseek -p "..."` (DeepSeek TUI, 支持 --model auto) |
-| `gemini` | 审查、大仓浏览 | `gemini -p "..."` |
-| `claude` | 规划、复杂推理 | 直接执行 |
+### IMPORTANT: Must dispatch via MCP tools, never execute yourself
 
-调用 `spec-status` 会返回下一个任务的引擎建议和调度命令。
+When a task has `_Engine:` field or user requests a specific engine, **you MUST use MCP tools** to dispatch. Never execute the task yourself. Never call CLI via Bash.
 
-## 工作流程
+| Engine | Dispatch Method | Purpose |
+|--------|----------------|---------|
+| DeepSeek (default) | `mcp__deepseek__*` tools | Coding, refactoring, bug fixes |
+| Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Code review, codebase browsing, file analysis |
+| Codex | `ai_cli_run(model="gpt-5.4")` | Image generation, SVG to polished images |
+| Claude | Execute directly (no dispatch needed) | Planning, task decomposition, verification |
 
-### 规划阶段（Claude 执行）
-1. 调用 `spec-workflow-guide` 获取指南
-2. 与用户讨论需求 → 写 `requirements.md` → 提交审批
-3. 写 `design.md` → 提交审批
-4. 写 `tasks.md`（每个任务标注 `_Engine:`）→ 提交审批
-5. 用户在 dashboard 审批每个阶段（可打回修改）
+### IMPORTANT: Never pre-read content before dispatching
 
-### 实现阶段（按任务循环）
-1. 调用 `spec-status` → 获取下一个 pending 任务 + 引擎建议
-2. 编辑 `tasks.md`：`[ ]` → `[-]` 标记开始
-3. 根据 `_Engine` 调度对应引擎执行编码
-4. 通过 Bash 运行测试
-5. 调用 `verify-task`：
-   - `signal: "green"` → 自动标 `[x]`，然后调 `log-implementation`
-   - `signal: "red"` → 记录失败，修复后重试（超限自动 blocked）
-6. 调用 `log-implementation` 记录 artifacts
-7. 继续下一个任务
+Do NOT use Read tool, cat, grep, git diff, or any method to load file content into your context before passing to an engine. Instead, instruct the engine to read files itself and **write a structured report to a designated path**.
 
-### 完成后：研究报告（可选）
-所有任务完成后，可生成学术风格的项目研究报告：
-1. Claude 撰写 Markdown 报告（`docs/report/report.md`），包含架构分析、技术决策、实验验证、成果总结
-2. Claude 生成 SVG 技术图表（架构图、流程图、数据流图）→ 保存到 `docs/report/svg/`
-3. Codex 将 SVG 转换为精美插图 → 保存到 `docs/report/images/`（Codex 自主发挥视觉风格）
-4. 执行 `python3 <spec-workflow-mcp>/tools/gen-report.py docs/report/report.md -o docs/report/report.docx --images docs/report/images/`
-5. 输出标准学术论文格式的 docx（二号宋体标题、四号正文、Times New Roman 西文、1.5倍行距）
-
-Markdown 报告格式约定：
+Dispatch pattern:
 ```
-# 大标题                    → 论文标题（居中二号加粗）
-作者：xxx 指导老师：xxx      → 作者行
-摘 要：xxx                  → 摘要
-关键词：xxx                 → 关键词
-## 一、引言                  → 一级标题（黑体加粗）
-### （一）xxx               → 二级标题（宋体加粗）
-#### 1．xxx                → 三级标题
-正文段落                     → 四号宋体，首行缩进
-![图注](path)               → 插入图片 + 图注
-| 表头 | ...                → 表格
-[1] 参考文献...             → 参考文献
+1. Tell the engine WHAT to do, WHICH files to read, and WHERE to write its report
+2. Engine reads files, executes task, writes report to .spec-workflow/reports/<engine>-<task>-<timestamp>.md
+3. You read the report file to get results
 ```
 
-### 故障处理
-- blocked 任务：用户在 dashboard 拖回 pending 后重试
-- 超过 `maxFixAttempts` 次修复失败会自动终止该任务
+Example — dispatching Gemini for code review:
+```
+ai_cli_run(
+  model="gemini-2.5-pro",
+  prompt="Review all changed files in this project for security vulnerabilities, logic errors, and performance issues. Read the files yourself. Write your complete review report to .spec-workflow/reports/gemini-review-20260521.md with sections: ## BLOCK, ## WARN, ## NOTE. Project path: /path/to/project"
+)
+```
 
-## 规则
+Example — dispatching DeepSeek for coding:
+```
+Use mcp__deepseek__* tools to implement the task.
+The engine will read source files and write code directly.
+```
 
-1. **每次新会话先调 `spec-workflow-guide`** 获取最新流程
-2. **先读后写** — 修改前先阅读理解现有代码
-3. **verify-task 必须执行** — 每个任务完成后必须通过验证
-4. **log-implementation 必须执行** — verify-task green 后必须记录
-5. **不扩大范围** — 只实现任务描述中规定的内容
-6. **审批必须通过** — 每个阶段文档必须用户审批后才能继续
+## Workflow
 
-## 文件结构
+### Phase 1: Planning (Claude executes directly)
+1. Call `spec-workflow-guide` to load workflow
+2. Discuss requirements with user → write `requirements.md` → submit for approval
+3. Write `design.md` → submit for approval
+4. Write `tasks.md` (mark `_Engine:` per task) → submit for approval
+5. User approves each phase on dashboard (can request changes)
+
+### Phase 2: Implementation (task loop)
+1. Call `spec-status` → get next pending task + engine suggestion
+2. Edit `tasks.md`: `[ ]` → `[-]` to mark started
+3. Dispatch to engine via MCP based on `_Engine` field
+4. Read engine's report from `.spec-workflow/reports/` or get result via `ai_cli_wait`
+5. Run tests to verify
+6. Call `verify-task`:
+   - `signal: "green"` → auto-marks `[x]`, then call `log-implementation`
+   - `signal: "red"` → record failure, fix and retry (auto-blocked after maxFixAttempts)
+7. Call `log-implementation` to record artifacts
+8. Continue to next task
+
+### Phase 3: Research Report (optional)
+After all tasks complete:
+1. Claude writes Markdown report (`docs/report/report.md`)
+2. Claude generates SVG diagrams → `docs/report/svg/`
+3. Dispatch Codex: `ai_cli_run(model="gpt-5.4", prompt="Convert SVG files in docs/report/svg/ to polished PNG images. Save to docs/report/images/. Use creative visual style.")`
+4. Run `python3 <spec-workflow-mcp>/tools/gen-report.py docs/report/report.md -o docs/report/report.docx --images docs/report/images/`
+
+Markdown report format:
+```
+# Title                         → Paper title (centered, bold)
+Author: xxx  Advisor: xxx       → Author line
+Abstract: xxx                   → Abstract
+Keywords: xxx                   → Keywords
+## 1. Introduction              → Level 1 heading
+### 1.1 xxx                     → Level 2 heading
+#### 1.1.1 xxx                  → Level 3 heading
+Body text                       → Normal paragraph
+![Caption](path)                → Image + caption
+| Header | ...                  → Table
+[1] Reference...                → Reference
+```
+
+## Skills (4, from GStack + Superpowers)
+
+Built-in skills in `.claude/skills/`, dispatch to engines via MCP:
+
+| Skill | Engine | Dispatch | Purpose |
+|-------|--------|----------|---------|
+| `/review` | Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Code review: security, logic, performance |
+| `/qa` | DeepSeek | `mcp__deepseek__*` | Systematic QA testing + atomic fixes |
+| `/design-review` | Claude | Execute directly | Visual/interaction audit (multimodal) |
+| `/tdd` | DeepSeek | `mcp__deepseek__*` | TDD red-green-refactor + worktree isolation |
+
+## Review Subagents (4, parallel isolated context)
+
+In `.claude/agents/`, run in isolated context:
+
+| Agent | Focus |
+|-------|-------|
+| `security-reviewer` | Injection, auth flaws, hardcoded secrets, CVE |
+| `logic-reviewer` | Edge cases, race conditions, resource leaks |
+| `performance-reviewer` | N+1 queries, memory leaks, blocking ops |
+| `api-reviewer` | Naming, HTTP semantics, versioning, validation |
+
+Usage: "Run security review with subagent" or "Full review" (launches all 4 in parallel).
+
+### Fault Handling
+- Blocked tasks: drag back to pending on dashboard to retry
+- Task auto-blocked after `maxFixAttempts` failures
+
+## Rules
+
+1. **IMPORTANT: Dispatch via MCP only** — When `_Engine` is set or user specifies an engine, use MCP tools (`mcp__deepseek__*` or `ai_cli_run`). Never execute yourself. Never call CLI via Bash. Exception: `_Engine: claude` or no engine specified → execute directly.
+2. **IMPORTANT: Never pre-read content** — Do not load file content into your context before dispatching. Tell the engine to read files and write a report to `.spec-workflow/reports/<engine>-<task>-<timestamp>.md`. Read the report afterward.
+3. **IMPORTANT: All prompts to external engines MUST be in English** — When dispatching tasks via `ai_cli_run` or `mcp__deepseek__*`, the prompt parameter MUST be written in English, even if the user speaks Chinese. External engines perform better with English prompts. User-facing output can remain in the user's language.
+4. **Call `spec-workflow-guide` first** each new session
+5. **Read before write** — understand existing code before modifying
+6. **verify-task is mandatory** — every task must pass verification
+7. **log-implementation is mandatory** — record after verify-task green
+8. **No scope creep** — only implement what the task describes
+9. **Approval required** — each phase document must be approved before proceeding
+
+## Engine Report Convention
+
+All engine outputs should be written to `.spec-workflow/reports/` with naming:
+```
+.spec-workflow/reports/
+├── gemini-review-20260521-143022.md      # Gemini code review
+├── deepseek-impl-task1-20260521-150000.md # DeepSeek implementation log
+├── codex-images-20260521-160000.md        # Codex image generation log
+└── ...
+```
+
+Format: `<engine>-<type>-<identifier>-<YYYYMMDD-HHMMSS>.md`
+
+## File Structure
 
 ```
 .spec-workflow/
-├── config.toml              # 引擎配置
-├── steering/                # 项目指导（可选）
+├── config.toml              # Engine config
+├── steering/                # Project steering (optional)
 ├── specs/{spec-name}/
 │   ├── requirements.md
 │   ├── design.md
-│   ├── tasks.md             # 含 _Engine 字段
+│   ├── tasks.md             # With _Engine fields
 │   ├── Implementation Logs/
 │   └── verify-results/
+├── reports/                 # Engine output reports (auto-generated)
+├── usage-log.json           # Multi-engine usage tracking (auto)
+├── session-usage.json       # Session usage tracking (statusline auto)
 └── approvals/
-docs/report/                 # 完成后研究报告（可选）
+docs/report/                 # Research report (optional)
 ├── report.md
-├── svg/                     # Claude 生成的 SVG 图表
-└── images/                  # Codex 生成的精美图像
+├── svg/
+└── images/
 ```

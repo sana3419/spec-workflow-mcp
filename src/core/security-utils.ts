@@ -81,12 +81,18 @@ export function getSecurityConfig(userConfig?: Partial<SecurityConfig>, port?: n
 export class RateLimiter {
   private requests: Map<string, number[]> = new Map();
   private config: SecurityConfig;
+  private cleanupTimer: NodeJS.Timeout;
 
   constructor(config: SecurityConfig) {
     this.config = config;
 
     // Clean up old entries every minute
-    setInterval(() => this.cleanup(), 60000);
+    this.cleanupTimer = setInterval(() => this.cleanup(), 60000);
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupTimer);
+    this.requests.clear();
   }
 
   /**
