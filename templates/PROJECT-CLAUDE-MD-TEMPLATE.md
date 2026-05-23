@@ -63,24 +63,25 @@ ai_cli_run(
 
 ## Workflow
 
-### Phase 1: Planning (Claude executes directly)
+### Phase 1: Planning (Claude executes directly, approval required)
 1. Call `spec-workflow-guide` to load workflow
 2. Discuss requirements with user → write `requirements.md` → submit for approval
 3. Write `design.md` → submit for approval
 4. Write `tasks.md` (mark `_Engine:` per task) → submit for approval
-5. User approves each phase on dashboard (can request changes)
+5. **Non-blocking approval**: after submitting, immediately continue writing the next document. Poll approval status in background. Only stop if approval is rejected (revise and resubmit). Do NOT wait idle for approval — write requirements → submit → write design → submit → write tasks → submit, then poll all three.
+6. All three must be approved before starting Phase 2. If still pending, poll every 30s. After 10 minutes, ask the user.
 
-### Phase 2: Implementation (task loop)
+### Phase 2: Implementation (task loop, NO approval needed)
 1. Call `spec-status` → get next pending task + engine suggestion
 2. Edit `tasks.md`: `[ ]` → `[-]` to mark started
-3. Dispatch to engine via MCP based on `_Engine` field
+3. Dispatch coding to DeepSeek via `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")`
 4. Read engine's report from `.spec-workflow/reports/` or get result via `ai_cli_wait`
 5. Run tests to verify
 6. Call `verify-task`:
    - `signal: "green"` → auto-marks `[x]`, then call `log-implementation`
    - `signal: "red"` → record failure, fix and retry (auto-blocked after maxFixAttempts)
 7. Call `log-implementation` to record artifacts
-8. Continue to next task
+8. Continue to next task — no approval needed between tasks
 
 ### Phase 3: Research Report (optional)
 After all tasks complete:
@@ -142,8 +143,8 @@ Usage: "Run security review with subagent" or "Full review" (launches all 4 in p
 6. **verify-task is mandatory** — every task must pass verification
 7. **log-implementation is mandatory** — record after verify-task green
 8. **No scope creep** — only implement what the task describes
-9. **Approval required** — each phase document must be approved before proceeding. NEVER delete or cancel an approval request yourself. NEVER skip approval by proceeding without it. Wait for the user to approve on dashboard.
-10. **Poll after submitting approval** — After calling `approvals action:"request"`, immediately start polling `approvals action:"status"` every 30 seconds until status changes from `pending`. Do NOT wait for user to tell you. Continue to next phase once approved. If rejected or changes requested, revise and resubmit. If still pending after 10 minutes, ask the user — do NOT auto-cancel or skip.
+9. **Approval only in Phase 1** — only planning documents (requirements/design/tasks) need approval. Implementation (Phase 2) does NOT need approval — just code, verify, and continue.
+10. **Non-blocking approval** — after submitting an approval, do NOT wait idle. Continue writing the next document immediately. Poll status every 30s in background. If rejected, revise and resubmit. If all Phase 1 docs approved, proceed to Phase 2. After 10 minutes pending, ask the user.
 
 ## Engine Report Convention
 
