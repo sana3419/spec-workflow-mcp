@@ -65,11 +65,15 @@ ai_cli_run(
 
 ### Phase 1: Planning (Claude executes directly, approval required)
 1. Call `spec-workflow-guide` to load workflow
-2. Discuss requirements with user → write `requirements.md` → submit for approval
-3. Write `design.md` → submit for approval
-4. Write `tasks.md` (mark `_Engine:` per task) → submit for approval
-5. **Non-blocking approval**: after submitting, immediately continue writing the next document. Poll approval status in background. Only stop if approval is rejected (revise and resubmit). Do NOT wait idle for approval — write requirements → submit → write design → submit → write tasks → submit, then poll all three.
-6. All three must be approved before starting Phase 2. If still pending, poll every 30s. After 10 minutes, ask the user.
+2. Write `requirements.md` → submit for approval → poll every 30s
+   - While waiting: use Gemini (`ai_cli_run`) to research codebase, read related docs, prepare technical notes
+   - Once approved → proceed to step 3. If rejected → revise and resubmit.
+3. Write `design.md` (based on approved requirements) → submit for approval → poll every 30s
+   - While waiting: continue research, prototype ideas, prepare task breakdown
+   - Once approved → proceed to step 4. If rejected → revise and resubmit.
+4. Write `tasks.md` (mark `_Engine:` per task, based on approved design) → submit for approval → poll every 30s
+   - Once approved → proceed to Phase 2. If rejected → revise and resubmit.
+5. After 10 minutes pending, ask the user — do NOT auto-cancel or skip.
 
 ### Phase 2: Implementation (task loop, NO approval needed)
 1. Call `spec-status` → get next pending task + engine suggestion
