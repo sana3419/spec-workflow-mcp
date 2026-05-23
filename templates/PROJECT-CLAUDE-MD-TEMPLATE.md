@@ -65,15 +65,28 @@ ai_cli_run(
 
 ### Phase 1: Planning (Claude executes directly, approval required)
 1. Call `spec-workflow-guide` to load workflow
-2. Write `requirements.md` → submit for approval → poll every 30s
-   - While waiting: use Gemini (`ai_cli_run`) to research codebase, read related docs, prepare technical notes
+2. Write `requirements.md` → submit for approval → wait for approval (see below)
    - Once approved → proceed to step 3. If rejected → revise and resubmit.
-3. Write `design.md` (based on approved requirements) → submit for approval → poll every 30s
-   - While waiting: continue research, prototype ideas, prepare task breakdown
+3. Write `design.md` (based on approved requirements) → submit for approval → wait
    - Once approved → proceed to step 4. If rejected → revise and resubmit.
-4. Write `tasks.md` (mark `_Engine:` per task, based on approved design) → submit for approval → poll every 30s
+4. Write `tasks.md` (mark `_Engine:` per task, based on approved design) → submit for approval → wait
    - Once approved → proceed to Phase 2. If rejected → revise and resubmit.
-5. After 10 minutes pending, ask the user — do NOT auto-cancel or skip.
+
+**How to wait for approval**: After submitting (you get back an `approvalId`), launch a background poller that watches the approval JSON file directly:
+```
+Bash(run_in_background=true):
+APPROVAL_DIR=".spec-workflow/approvals"
+APPROVAL_ID="<approvalId>"
+while true; do
+  FILE=$(find "$APPROVAL_DIR" -name "${APPROVAL_ID}.json" 2>/dev/null | head -1)
+  if [ -n "$FILE" ]; then
+    STATUS=$(jq -r '.status' "$FILE" 2>/dev/null)
+    if [ "$STATUS" != "pending" ]; then echo "APPROVAL_RESULT:$STATUS"; exit 0; fi
+  fi
+  sleep 15
+done
+```
+You will be notified when the background task completes with `APPROVAL_RESULT:approved` or `APPROVAL_RESULT:rejected`. Then continue or revise accordingly. Do NOT auto-cancel.
 
 ### Phase 2: Implementation (task loop, NO approval needed)
 1. Call `spec-status` → get next pending task + engine suggestion
