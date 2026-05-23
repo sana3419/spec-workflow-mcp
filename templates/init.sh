@@ -148,7 +148,11 @@ if [ ! -f "$SETTINGS_FILE" ]; then
       "WebFetch",
       "WebSearch",
       "Agent",
-      "NotebookEdit"
+      "NotebookEdit",
+      "mcp__spec-workflow__*",
+      "mcp__ai-cli__*",
+      "mcp__code-review-graph__*",
+      "mcp__gitnexus__*"
     ]
   }
 }
