@@ -40,6 +40,12 @@ export function generateAllowedOrigins(port: number): string[] {
     origins.push(`http://localhost:${VITE_DEV_PORT}`, `http://127.0.0.1:${VITE_DEV_PORT}`);
   }
 
+  // Allow additional origins from environment variable (comma-separated)
+  // e.g. SPEC_WORKFLOW_CORS_ORIGINS=http://my-domain.com,https://my-domain.com
+  if (process.env.SPEC_WORKFLOW_CORS_ORIGINS) {
+    origins.push(...process.env.SPEC_WORKFLOW_CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean));
+  }
+
   return origins;
 }
 

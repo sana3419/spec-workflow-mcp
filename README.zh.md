@@ -302,6 +302,42 @@ your-project/
 | `spec-status` 报错 | 确认 `.mcp.json` 中 args 的项目路径正确 |
 | 重置 MCP 审批 | `claude mcp reset-project-choices` |
 
+## Dashboard 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SPEC_WORKFLOW_BIND_ADDRESS` | `127.0.0.1` | 网络绑定地址（`0.0.0.0` 允许外部访问） |
+| `SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS` | `false` | 绑定非 localhost 时必须设为 `true` |
+| `SPEC_WORKFLOW_CORS_ORIGINS` | （无） | 额外 CORS 域名，逗号分隔（如 `http://my-domain.com,https://my-domain.com`） |
+
+示例 — 通过反向代理暴露 Dashboard：
+
+```bash
+SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS=true \
+SPEC_WORKFLOW_BIND_ADDRESS=0.0.0.0 \
+SPEC_WORKFLOW_CORS_ORIGINS=https://my-domain.com \
+node dist/index.js /path/to/project --dashboard --port 5000
+```
+
+示例 — systemd 服务：
+
+```ini
+[Unit]
+Description=Spec Workflow Dashboard
+After=network.target
+
+[Service]
+Type=simple
+Environment=SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS=true
+Environment=SPEC_WORKFLOW_BIND_ADDRESS=0.0.0.0
+Environment=SPEC_WORKFLOW_CORS_ORIGINS=https://my-domain.com
+ExecStart=/usr/bin/node /path/to/dist/index.js /path/to/project --dashboard --no-open --port 5000
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## 引擎配置
 
 `.spec-workflow/config.toml`：
