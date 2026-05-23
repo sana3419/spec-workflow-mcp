@@ -134,7 +134,7 @@ Usage: "Run security review with subagent" or "Full review" (launches all 4 in p
 
 ## Rules
 
-1. **IMPORTANT: Dispatch via MCP only** — When `_Engine` is set or user specifies an engine, use `ai_cli_run` to dispatch. Never execute the task yourself. Never call CLI via Bash. Exception: `_Engine: claude` or no engine specified → execute directly.
+1. **IMPORTANT: Dispatch coding tasks via MCP** — All coding/implementation tasks MUST be dispatched via `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` by default. Never write implementation code yourself. Exception: `_Engine: claude` explicitly set, OR the task is planning/verification/documentation (non-coding) → execute directly.
 2. **IMPORTANT: Never pre-read content** — Do not load file content into your context before dispatching. Tell the engine to read files and write a report to `.spec-workflow/reports/<engine>-<task>-<timestamp>.md`. Read the report afterward.
 3. **IMPORTANT: All prompts to external engines MUST be in English** — When dispatching tasks via `ai_cli_run`, the prompt parameter MUST be written in English, even if the user speaks Chinese. External engines perform better with English prompts. User-facing output can remain in the user's language.
 4. **Call `spec-workflow-guide` first** each new session
@@ -142,8 +142,8 @@ Usage: "Run security review with subagent" or "Full review" (launches all 4 in p
 6. **verify-task is mandatory** — every task must pass verification
 7. **log-implementation is mandatory** — record after verify-task green
 8. **No scope creep** — only implement what the task describes
-9. **Approval required** — each phase document must be approved before proceeding
-10. **Poll after submitting approval** — After calling `approvals action:"request"`, immediately start polling `approvals action:"status"` every 30 seconds until status changes from `pending`. Do NOT wait for user to tell you. Continue to next phase once approved. If rejected or changes requested, revise and resubmit.
+9. **Approval required** — each phase document must be approved before proceeding. NEVER delete or cancel an approval request yourself. NEVER skip approval by proceeding without it. Wait for the user to approve on dashboard.
+10. **Poll after submitting approval** — After calling `approvals action:"request"`, immediately start polling `approvals action:"status"` every 30 seconds until status changes from `pending`. Do NOT wait for user to tell you. Continue to next phase once approved. If rejected or changes requested, revise and resubmit. If still pending after 10 minutes, ask the user — do NOT auto-cancel or skip.
 
 ## Engine Report Convention
 
