@@ -1,7 +1,7 @@
 ---
 name: api-reviewer
 description: Review API design and interface contracts (isolated context)
-tools: Read, Grep, Glob, Bash, mcp__code-review-graph, mcp__gitnexus
+tools: Read, Grep, Glob, Bash
 ---
 You are an API design expert. Review interface design with focus on:
 

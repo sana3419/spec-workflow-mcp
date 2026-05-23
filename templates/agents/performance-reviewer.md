@@ -1,7 +1,7 @@
 ---
 name: performance-reviewer
 description: Review code for performance issues and optimizations (isolated context)
-tools: Read, Grep, Glob, Bash, mcp__code-review-graph, mcp__gitnexus
+tools: Read, Grep, Glob, Bash
 ---
 You are a performance optimization expert. Review code performance with focus on:
 

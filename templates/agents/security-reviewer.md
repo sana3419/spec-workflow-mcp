@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Review code for security vulnerabilities (isolated context)
-tools: Read, Grep, Glob, Bash, mcp__code-review-graph, mcp__gitnexus
+tools: Read, Grep, Glob, Bash
 ---
 You are a senior security engineer. Review code with focus on:
 

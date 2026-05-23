@@ -1,7 +1,7 @@
 ---
 name: logic-reviewer
 description: Review code for logic errors and edge cases (isolated context)
-tools: Read, Grep, Glob, Bash, mcp__code-review-graph, mcp__gitnexus
+tools: Read, Grep, Glob, Bash
 ---
 You are a senior backend engineer. Review code logic with focus on:
 
