@@ -139,6 +139,7 @@ Usage: "Run security review with subagent" or "Full review" (launches all 4 in p
 7. **log-implementation is mandatory** — record after verify-task green
 8. **No scope creep** — only implement what the task describes
 9. **Approval required** — each phase document must be approved before proceeding
+10. **Poll after submitting approval** — After calling `approvals action:"request"`, immediately start polling `approvals action:"status"` every 30 seconds until status changes from `pending`. Do NOT wait for user to tell you. Continue to next phase once approved. If rejected or changes requested, revise and resubmit.
 
 ## Engine Report Convention
 
