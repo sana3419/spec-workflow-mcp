@@ -2,19 +2,31 @@
 
 基于 [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) 改造的多引擎协同开发框架。Claude Code 作为主控大脑，调度 DeepSeek / Gemini / Codex / Claude 四个引擎，配合红绿灯验证和学术报告生成。
 
-## 启发来源
+## 前置要求
 
-| 来源 | 贡献 |
-|------|------|
-| [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) | 核心框架：Requirements → Design → Tasks → Implementation 流程、Dashboard、审批系统 |
-| [auto-claude](../auto-claude/) | 红绿灯验证机制（green/red 信号）、feature_list.json 进度追踪 |
-| [garrytan/gstack](https://github.com/garrytan/gstack) | 角色技能：/review、/qa、/design-review |
-| [obra/superpowers](https://github.com/obra/superpowers) | TDD 红绿重构纪律、子代理 worktree 隔离模式 |
-| [code-review-graph](https://github.com/tirth8205/code-review-graph) / [GitNexus](https://github.com/abhigyanpatwari/GitNexus) / [Understand-Anything](https://github.com/Lum1104/Understand-Anything) | 可选代码智能 MCP（知识图谱、依赖分析、可视化） |
+| 依赖 | 检查命令 | 安装方式 |
+|------|---------|---------|
+| Node.js ≥ 18 | `node -v` | [nodejs.org](https://nodejs.org) |
+| Claude Code | `claude -v` | `npm i -g @anthropic-ai/claude-code` |
+| jq | `jq --version` | `apt install jq` / `brew install jq` |
 
-## 快速开始
+需要的 API Key：
 
-### 1. 克隆并构建
+| Key | 用途 | 获取 |
+|-----|------|------|
+| `ANTHROPIC_API_KEY` | Claude Code（主控） | [console.anthropic.com](https://console.anthropic.com) |
+| `DEEPSEEK_API_KEY` | DeepSeek V4（编码引擎） | [platform.deepseek.com](https://platform.deepseek.com) |
+
+可选 API Key：
+
+| Key | 用途 | 获取 |
+|-----|------|------|
+| Google 账号 | Gemini CLI（免费审查引擎） | `gemini` → 浏览器登录 |
+| `OPENAI_API_KEY` | Codex CLI（图像生成） | [platform.openai.com](https://platform.openai.com) |
+
+## 安装配置
+
+### 第 1 步：克隆并构建 spec-workflow-mcp
 
 ```bash
 git clone https://github.com/sana3419/spec-workflow-mcp.git
@@ -22,13 +34,87 @@ cd spec-workflow-mcp
 npm install && npm run build
 ```
 
-### 2. 初始化新项目
+### 第 2 步：安装引擎 CLI
+
+**Crush**（DeepSeek 编码引擎 — OpenCode 继任者）：
 
 ```bash
-bash templates/init.sh /path/to/your-project
+# npm（全平台）
+npm install -g @charmland/crush
+
+# macOS (Homebrew)
+brew install charmbracelet/tap/crush
+
+# 验证
+crush --version
 ```
 
-init.sh 会自动完成 10 个步骤：
+**Gemini CLI**（免费代码审查引擎，可选）：
+
+```bash
+npm install -g @google/gemini-cli
+gemini    # 首次运行：跟随浏览器登录
+```
+
+**Codex CLI**（图像生成，可选）：
+
+```bash
+npm install -g @openai/codex
+```
+
+### 第 3 步：配置 DeepSeek API
+
+```bash
+mkdir -p ~/.config/crush
+cat > ~/.config/crush/crush.json << 'EOF'
+{
+  "$schema": "https://charm.land/crush.json",
+  "providers": {
+    "deepseek": {
+      "type": "openai-compat",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "sk-你的DEEPSEEK_API_KEY",
+      "models": [
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "cost_per_1m_in": 2.0,
+          "cost_per_1m_out": 8.0,
+          "context_window": 1048576,
+          "default_max_tokens": 65536
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "cost_per_1m_in": 0.2,
+          "cost_per_1m_out": 0.6,
+          "context_window": 1048576,
+          "default_max_tokens": 65536
+        }
+      ]
+    }
+  },
+  "mcpServers": {}
+}
+EOF
+```
+
+把 `sk-你的DEEPSEEK_API_KEY` 替换为你的实际 key。
+
+验证：
+
+```bash
+crush run "回复OK"     # 应该输出：OK
+crush models           # 应该显示：deepseek/deepseek-v4-pro, deepseek/deepseek-v4-flash
+```
+
+### 第 4 步：初始化项目
+
+```bash
+bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
+```
+
+init.sh 会自动完成 12 个步骤：
 
 | 步骤 | 内容 |
 |------|------|
@@ -36,89 +122,33 @@ init.sh 会自动完成 10 个步骤：
 | 2 | 创建 `.spec-workflow/` 目录结构 |
 | 3 | 写入 `config.toml` 引擎配置 |
 | 4 | 复制 `CLAUDE.md` 工作流模板 |
-| 5 | 复制 skills（review/qa/design-review/tdd） |
+| 5 | 复制 skills（review/qa/design-review/tdd）+ 审查子代理 |
 | 6 | 部署 statusline.sh 到 `~/.claude/`（全局状态栏） |
 | 7 | 创建项目级 `.claude/settings.json` |
-| 8 | 配置代码智能 MCP（可选，见下方） |
-| 9 | 配置 spec-workflow-mcp 为 MCP server |
-| 10 | 检查工具链 |
+| 8 | 配置 ai-cli-mcp（多引擎调度）→ `.mcp.json` |
+| 9 | 配置 spec-workflow-mcp + Gemini CLI + Crush MCP |
+| 10-12 | 可选代码智能 MCP、清理、依赖检查 |
 
-可选参数（步骤 8）：
+可选参数：
+
 ```bash
 bash templates/init.sh /path --with-graph       # code-review-graph（省 token）
 bash templates/init.sh /path --with-nexus       # GitNexus（依赖分析）
 bash templates/init.sh /path --with-understand  # Understand-Anything（可视化）
 bash templates/init.sh /path --with-all         # 全部安装
+bash templates/init.sh /path --force            # 强制覆盖 CLAUDE.md/skills/agents
 ```
 
-初始化后的项目结构：
-```
-your-project/
-├── CLAUDE.md                          # Claude Code 自动读取的工作流指南
-├── .claude/
-│   ├── settings.json                  # 权限配置
-│   ├── agents/                        # 审查子代理（独立上下文）
-│   │   ├── security-reviewer.md
-│   │   ├── logic-reviewer.md
-│   │   ├── performance-reviewer.md
-│   │   └── api-reviewer.md
-│   └── skills/
-│       ├── review/SKILL.md            # /review — 自动调用 gemini CLI
-│       ├── qa/SKILL.md                # /qa — 自动调用 deepseek CLI
-│       ├── design-review/SKILL.md     # /design-review — Claude 多模态审查
-│       └── tdd/SKILL.md               # /tdd — 自动调用 deepseek CLI
-└── .spec-workflow/
-    ├── config.toml                    # 引擎配置
-    ├── specs/                         # 规格文档（运行后生成）
-    ├── approvals/                     # 审批数据
-    ├── steering/                      # 项目指导（可选）
-    ├── usage-log.json                 # 多引擎消费记录（自动生成）
-    └── session-usage.json             # Claude 会话消费记录（statusline 自动写入）
-```
-
-### 3. 开始使用
+### 第 5 步：开始使用
 
 ```bash
 cd /path/to/your-project
 claude
 ```
 
-进入 Claude Code 后的推荐步骤：
+首次启动：Claude Code 会提示审批 `.mcp.json` 中的 MCP server — 选择 **Allow**。
 
-```
-1. 告诉 Claude 你的需求（例如"帮我做一个用户认证系统"）
-2. Claude 自动调用 spec-workflow-guide 获取流程 → 开始规划
-3. 在 Dashboard (localhost:5000) 上审批每个阶段文档
-4. Claude 按任务逐个执行，你可以观察 Kanban 看板进度
-5. 全部完成后可选生成研究报告
-```
-
-### MCP 工具使用指令
-
-在 Claude Code 对话中，MCP 工具会被自动调用。你也可以手动触发：
-
-```
-"查看 user-auth 的进度"          → Claude 调用 spec-status
-"审批通过"                       → Claude 调用 approvals action:request
-"这个任务测试通过了"              → Claude 调用 verify-task signal:green
-"测试失败了，报错 xxx"            → Claude 调用 verify-task signal:red
-"用 /review 审查代码"             → 自动调用 gemini CLI 审查
-"用 /tdd 模式开发这个功能"        → 自动调用 deepseek CLI TDD 开发
-"用 /qa 跑一遍测试"              → 自动调用 deepseek CLI QA 测试
-"帮我看看 UI"                    → Claude 直接执行视觉审查（多模态）
-```
-
-Dashboard 操作：
-```
-启动 Dashboard:  node <spec-workflow-mcp>/dist/index.js --dashboard
-访问地址:        http://localhost:5000
-审批文档:        在 Approvals 页面点击 approve/reject/request changes
-修改需求:        在 Specs 页面直接编辑 Markdown
-查看进度:        在 Tasks 页面查看 Kanban 看板
-恢复 blocked:   在看板中将 blocked 任务拖回 pending 列
-```
-
-## 工作流程
+## 工作原理
 
 ```
 阶段1  Claude 规划
@@ -128,9 +158,9 @@ Dashboard 操作：
        └── tasks.md        → 每个任务标注 _Engine → dashboard 审批
 
 阶段2  逐任务执行（循环）
-       ├── spec-status → 获取下一个 pending 任务 + 引擎建议 + 调度命令
+       ├── spec-status → 获取下一个 pending 任务 + 引擎建议
        ├── 编辑 tasks.md：[ ] → [-] 标记开始
-       ├── 根据 _Engine 调度对应引擎执行编码
+       ├── 通过 ai_cli_run MCP 工具调度对应引擎
        ├── 跑测试 → verify-task green/red
        │   ├── green → 自动标 [x]，调 log-implementation 记录
        │   └── red → 修复后重试，超限自动标 [~] blocked
@@ -138,114 +168,162 @@ Dashboard 操作：
 
 阶段3  完成 / 报告（可选）
        ├── Claude 写 Markdown 报告 + SVG 图表
-       ├── Codex 将 SVG 转精美图像（自主发挥风格）
+       ├── Codex 将 SVG 转精美图像
        └── gen-report.py → 学术论文格式 docx
 ```
 
-## 四大引擎
+## 引擎调度
 
-| 引擎 | 用途 | 调用方式 |
-|------|------|---------|
-| `deepseek`（默认） | 编码、重构、修 bug | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` |
-| `gemini` | 审查、大仓浏览（免费） | `gemini -p "..."` |
-| `codex` | SVG 转精美图像（报告阶段） | `codex -p "..."` |
-| `claude` | 规划、任务拆解、交叉验证 | 直接执行（主控引擎） |
+所有引擎通过 **ai-cli-mcp**（单一 MCP server）统一调度。Claude 不会直接通过 Bash 调用 CLI。
 
-引擎配置（`.spec-workflow/config.toml`）：
-```toml
-[engine]
-default = "deepseek"        # 默认引擎
-maxFixAttempts = 5           # 红灯最大修复次数
+| 引擎 | 模型字符串 | 用途 |
+|------|-----------|------|
+| DeepSeek V4 Pro | `oc-deepseek/deepseek-v4-pro` | 编码、重构、修 bug（默认） |
+| DeepSeek V4 Flash | `oc-deepseek/deepseek-v4-flash` | 快速/低成本编码任务 |
+| Gemini 2.5 Pro | `gemini-2.5-pro` | 代码审查、大仓浏览（免费） |
+| Gemini 2.5 Flash | `gemini-2.5-flash` | 快速审查（免费） |
+| Codex GPT-5.4 | `gpt-5.4` | 图像生成、SVG 转换 |
+| Claude | （直接执行） | 规划、验证、编排 |
+
+底层原理：ai-cli-mcp 通过 **Crush** CLI（OpenCode 继任者）调用 DeepSeek API。`.mcp.json` 中的 `OPENCODE_CLI_NAME=crush` 环境变量使其生效。
+
+## MCP 架构
+
+```
+Claude Code（主控）
+├── spec-workflow-mcp     — 工作流管理（6 个工具）
+├── ai-cli-mcp            — 引擎调度（run/wait/peek/get_result/doctor/models）
+│   ├── Crush CLI         → DeepSeek V4（通过 OPENCODE_CLI_NAME=crush）
+│   ├── Gemini CLI        → Gemini 2.5/3
+│   └── Codex CLI         → GPT-5.x
+├── code-review-graph     — 知识图谱（可选，--with-graph）
+└── gitnexus              — 依赖分析（可选，--with-nexus）
 ```
 
-tasks.md 中标注引擎：
-```markdown
-- [ ] 1. 实现数据库模型
-  - _Engine: deepseek_
-  - _Prompt: Role: Backend Dev | Task: ...
+## 使用方式
 
-- [ ] 2. 审查现有 API
-  - _Engine: gemini_
-  - _Prompt: Role: Reviewer | Task: ...
+MCP 工具会被自动调用。也可以用自然语言触发：
+
+```
+"帮我做一个用户认证系统"              → Claude 开始 spec-workflow 规划
+"查看 user-auth 的进度"              → spec-status
+"这个任务测试通过了"                  → verify-task signal:green
+"测试失败了，报错 xxx"                → verify-task signal:red
+"用 /review 审查代码"                → 调度 Gemini 进行代码审查
+"用 /tdd 模式开发这个功能"            → 调度 DeepSeek 进行 TDD 开发
+"用 /qa 跑一遍测试"                  → 调度 DeepSeek 进行 QA 测试
+"帮我看看 UI"                        → Claude 直接执行视觉审查（多模态）
+"全面审查一下"                       → 并行启动 4 个审查子代理
 ```
 
-## MCP 工具（6 个）
+## Dashboard
 
-| 工具 | 功能 |
+```bash
+node /path/to/spec-workflow-mcp/dist/index.js --dashboard
+# → http://localhost:5000
+```
+
+| 功能 | 说明 |
 |------|------|
-| `spec-workflow-guide` | 获取完整工作流指南（每次新会话先调用） |
-| `steering-guide` | 项目指导文档创建 |
-| `spec-status` | 查看进度 + 下一任务引擎建议 + 调度命令 |
-| `approvals` | 审批流程（request/status/delete） |
-| `verify-task` | 红绿灯验证（green→自动完成，red→修复/blocked） |
-| `log-implementation` | 记录实现日志和 artifacts（知识库） |
+| Kanban 看板 | 拖拽任务在 pending/in-progress/completed/blocked 之间 |
+| Spec 编辑器 | 在线编辑 requirements/design/tasks Markdown |
+| 审批系统 | approve / reject / request changes，支持 diff 对比 |
+| 实现日志 | 查看每个任务的 artifacts 记录 |
 
 ## 审查子代理（4 个，并行独立上下文）
 
-初始化时自动安装到 `.claude/agents/`，在独立上下文中运行审查，不污染主对话：
+自动安装到 `.claude/agents/`，在独立上下文中运行，不污染主对话：
 
-| 子代理 | 审查方向 | 可用 MCP |
-|--------|---------|---------|
-| `security-reviewer` | 注入漏洞、认证缺陷、硬编码密钥、CVE | code-review-graph, gitnexus |
-| `logic-reviewer` | 边界条件、竞态、资源泄漏、错误处理 | code-review-graph, gitnexus |
-| `performance-reviewer` | N+1 查询、内存泄漏、阻塞操作、包体积 | code-review-graph, gitnexus |
-| `api-reviewer` | 命名规范、HTTP 语义、版本兼容、数据验证 | code-review-graph, gitnexus |
-
-使用方式：
-```
-"用子代理审查安全性"              → 启动 security-reviewer
-"全面审查一下"                   → 并行启动 4 个子代理
-"用子代理检查性能问题"            → 启动 performance-reviewer
-```
-
-子代理会自动利用 code-review-graph / gitnexus 的知识图谱（如果已安装），只读取相关代码，大幅节省 token。
+| 子代理 | 审查方向 |
+|--------|---------|
+| `security-reviewer` | 注入漏洞、认证缺陷、硬编码密钥、CVE |
+| `logic-reviewer` | 边界条件、竞态、资源泄漏、错误处理 |
+| `performance-reviewer` | N+1 查询、内存泄漏、阻塞操作、包体积 |
+| `api-reviewer` | 命名规范、HTTP 语义、版本兼容、数据验证 |
 
 ## 技能（4 个，来自 GStack + Superpowers）
 
-初始化时自动安装到 `.claude/skills/`：
+自动安装到 `.claude/skills/`：
 
-| 技能 | 推荐引擎 | 用途 | 来源 |
-|------|---------|------|------|
-| `/review` | gemini | 自动调用 gemini CLI 审查代码（安全、逻辑、性能、API 契约） | GStack |
-| `/qa` | deepseek | 通过 ai-cli-mcp 调度 DeepSeek 执行 QA 测试 + 逐个修复 + 原子提交 | GStack |
-| `/design-review` | claude | Claude 直接执行视觉/交互审查（多模态分析截图） | GStack |
-| `/tdd` | deepseek | 通过 ai-cli-mcp 调度 DeepSeek TDD 开发 + 子代理 worktree 隔离 | Superpowers |
+| 技能 | 引擎 | 用途 |
+|------|------|------|
+| `/review` | Gemini | 代码审查（安全、逻辑、性能） |
+| `/qa` | DeepSeek | 系统化 QA 测试 + 原子修复 |
+| `/design-review` | Claude | 视觉/交互审查（多模态） |
+| `/tdd` | DeepSeek | TDD 红绿重构 + worktree 隔离 |
 
 ## Statusline（状态栏）
 
-init.sh 自动部署到 `~/.claude/statusline.sh`，显示两行实时信息：
+自动部署到 `~/.claude/statusline.sh`：
 
 ```
 Opus 4.6 (1M context)  |  my-project  |  main
 上下文 ████░░░░░░ 42%  |  令牌 入385.0K 出128.0K  |  花费 $1.85  |  时长 30分45秒  |  代码 +320/-67  |  限额 23%
 ```
 
-- 上下文进度条颜色：<50% 绿 → 50-80% 黄 → >80% 红
-- 花费颜色：<$1 绿 → $1-5 黄 → >$5 红
-- 时长为 API 实际调用时间（非墙钟时间）
-- 自动将会话消费数据写入 `.spec-workflow/session-usage.json`
+自动将会话消费数据写入 `.spec-workflow/session-usage.json`。
 
 ## 消费追踪
-
-两层自动追踪，无需手动操作：
 
 | 层级 | 文件 | 触发时机 | 记录内容 |
 |------|------|---------|---------|
 | 任务级 | `usage-log.json` | 每次 verify-task 调用 | 引擎、任务、token、花费 |
 | 会话级 | `session-usage.json` | statusline 每次 tick | 模型、总 token、总花费、代码增删 |
 
-## 报告生成
+## 项目结构（init 后）
+
+```
+your-project/
+├── CLAUDE.md                          # 工作流指南（Claude Code 自动读取）
+├── .mcp.json                          # MCP server 配置（ai-cli, spec-workflow 等）
+├── .claude/
+│   ├── settings.json                  # 权限配置
+│   ├── agents/                        # 审查子代理
+│   └── skills/                        # /review, /qa, /design-review, /tdd
+└── .spec-workflow/
+    ├── config.toml                    # 引擎配置
+    ├── specs/                         # 规格文档（工作流中生成）
+    ├── approvals/                     # 审批数据
+    ├── steering/                      # 项目指导（可选）
+    ├── reports/                       # 引擎输出报告（自动生成）
+    ├── usage-log.json                 # 任务级消费追踪（自动）
+    └── session-usage.json             # 会话级消费追踪（自动）
+```
+
+## 故障排查
+
+| 问题 | 解决方案 |
+|------|---------|
+| MCP 工具不可用 | 重启 Claude Code 会话。首次使用需审批 MCP server |
+| `ai-cli: Failed to reconnect` | 检查 `crush --version` 已安装。检查 `.mcp.json` 中 env 有 `"OPENCODE_CLI_NAME": "crush"` |
+| DeepSeek 调度失败 | 运行 `crush run "test"` 验证 API 配置。检查 `~/.config/crush/crush.json` |
+| Gemini 不工作 | 运行 `gemini` 进行浏览器登录 |
+| Dashboard 启动失败 | 检查 5000 端口是否被占用：`lsof -i :5000` |
+| `spec-status` 报错 | 确认 `.mcp.json` 中 args 的项目路径正确 |
+| 重置 MCP 审批 | `claude mcp reset-project-choices` |
+
+## 引擎配置
+
+`.spec-workflow/config.toml`：
+
+```toml
+[engine]
+default = "deepseek"        # 默认引擎
+maxFixAttempts = 5           # 红灯最大修复次数，超限自动 blocked
+```
+
+## 报告生成（可选）
 
 ```bash
-# Markdown → 学术论文 docx（宋体/Times New Roman，四号正文，1.5 倍行距）
+pip install python-docx
 python3 tools/gen-report.py docs/report/report.md -o docs/report/report.docx --images docs/report/images/
 ```
 
-依赖：`pip install python-docx`
+输出：学术论文格式（宋体/Times New Roman，A4，1.5 倍行距）。
 
 ## 可选：代码智能 MCP
 
-通过 init.sh 参数安装，作为独立 MCP server 运行：
+通过 init.sh 参数安装：
 
 | 工具 | 参数 | 用途 |
 |------|------|------|
@@ -253,32 +331,12 @@ python3 tools/gen-report.py docs/report/report.md -o docs/report/report.docx --i
 | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | `--with-nexus` | 函数/依赖图谱，影响分析，重构辅助 |
 | [Understand-Anything](https://github.com/Lum1104/Understand-Anything) | `--with-understand` | 多代理扫描 + React 可视化，理解新项目 |
 
-## 依赖工具
-
-| 工具 | 用途 | 安装 |
-|------|------|------|
-| Claude Code | 主控大脑 | `npm i -g @anthropic-ai/claude-code` |
-| Crush（或 OpenCode） | DeepSeek 编码引擎 | `brew install charmbracelet/tap/crush` 或 [安装脚本](https://github.com/charmbracelet/crush) |
-| Gemini CLI | 审查引擎（免费） | `npm i -g @google/gemini-cli` |
-| Codex CLI | 图像生成 | `npm i -g @openai/codex` |
-| python-docx | 报告生成 | `pip install python-docx` |
-| jq | JSON 处理（statusline 依赖） | `apt install jq` |
-
-## Dashboard
-
-启动：`node dist/index.js --dashboard`，访问 `http://localhost:5000`
-
-功能：
-- Kanban 看板：拖拽任务状态，显示引擎标签
-- Spec 编辑器：在线修改需求/设计/任务
-- 审批系统：approve / reject / request changes，支持 diff 对比
-- 实现日志：查看每个任务的 artifacts 记录
-
 ## 致谢
 
 - [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) — 核心框架
 - [DeepSeek](https://github.com/deepseek-ai) — V4 模型
 - [Crush](https://github.com/charmbracelet/crush) — 终端编码 Agent（OpenCode 继任者）
+- [ai-cli-mcp](https://github.com/mkXultra/ai-cli-mcp) — 多引擎 MCP 调度
 - [Anthropic](https://anthropic.com) — Claude Code + MCP 协议
 - [garrytan/gstack](https://github.com/garrytan/gstack) — 角色技能
 - [obra/superpowers](https://github.com/obra/superpowers) — TDD 纪律 + worktree 模式

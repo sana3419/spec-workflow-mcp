@@ -176,7 +176,18 @@ add_mcp_server() {
 
 # 8. 配置引擎 MCP
 echo "[8/12] 配置引擎调度 MCP → .mcp.json..."
-add_mcp_server "ai-cli" "npx" '["-y","ai-cli-mcp@latest"]'
+# ai-cli-mcp 需要 OPENCODE_CLI_NAME=crush 来识别 Crush 作为 OpenCode 替代
+MCP_JSON="$PROJECT_DIR/.mcp.json"
+if [ ! -f "$MCP_JSON" ]; then
+  echo '{"mcpServers":{}}' > "$MCP_JSON"
+fi
+if ! grep -q '"ai-cli"' "$MCP_JSON" 2>/dev/null; then
+  TMP=$(mktemp)
+  jq '.mcpServers["ai-cli"] = {"type":"stdio","command":"npx","args":["-y","ai-cli-mcp@latest"],"env":{"OPENCODE_CLI_NAME":"crush"}}' \
+    "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON" && echo "  ai-cli 已配置" || echo "  ai-cli 配置失败"
+else
+  echo "  ai-cli 已配置，跳过"
+fi
 
 # 9. 配置 spec-workflow-mcp
 echo "[9/12] 配置 spec-workflow-mcp..."
