@@ -180,8 +180,8 @@ claude
 |------|-----------|------|
 | DeepSeek V4 Pro | `oc-deepseek/deepseek-v4-pro` | 编码、重构、修 bug（默认） |
 | DeepSeek V4 Flash | `oc-deepseek/deepseek-v4-flash` | 快速/低成本编码任务 |
-| Gemini 2.5 Pro | `gemini-2.5-pro` | 代码审查、大仓浏览（免费） |
-| Gemini 2.5 Flash | `gemini-2.5-flash` | 快速审查（免费） |
+| Gemini 2.5 Pro | `gemini-2.5-pro` | 大规模代码/文档阅读、代码库研究（免费大上下文） |
+| Gemini 2.5 Flash | `gemini-2.5-flash` | 快速文件阅读（免费） |
 | Codex GPT-5.4 | `gpt-5.4` | 图像生成、SVG 转换 |
 | Claude | （直接执行） | 规划、验证、编排 |
 
@@ -209,7 +209,7 @@ MCP 工具会被自动调用。也可以用自然语言触发：
 "查看 user-auth 的进度"              → spec-status
 "这个任务测试通过了"                  → verify-task signal:green
 "测试失败了，报错 xxx"                → verify-task signal:red
-"用 /review 审查代码"                → 调度 Gemini 进行代码审查
+"用 /review 审查代码"                → 并行启动 4 个审查子代理
 "用 /tdd 模式开发这个功能"            → 调度 DeepSeek 进行 TDD 开发
 "用 /qa 跑一遍测试"                  → 调度 DeepSeek 进行 QA 测试
 "帮我看看 UI"                        → Claude 直接执行视觉审查（多模态）
@@ -247,7 +247,7 @@ node /path/to/spec-workflow-mcp/dist/index.js --dashboard
 
 | 技能 | 引擎 | 用途 |
 |------|------|------|
-| `/review` | Gemini | 代码审查（安全、逻辑、性能） |
+| `/review` | Claude | 并行启动 4 个审查子代理（安全、逻辑、性能、API） |
 | `/qa` | DeepSeek | 系统化 QA 测试 + 原子修复 |
 | `/design-review` | Claude | 视觉/交互审查（多模态） |
 | `/tdd` | DeepSeek | TDD 红绿重构 + worktree 隔离 |

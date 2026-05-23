@@ -26,9 +26,13 @@ When a task has `_Engine:` field or user requests a specific engine, **you MUST 
 | Engine | Dispatch Method | Purpose |
 |--------|----------------|---------|
 | DeepSeek (default) | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` | Coding, refactoring, bug fixes |
-| Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Code review, codebase browsing, file analysis |
+| Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Large-scale code/doc reading, codebase research, file analysis (free tier, large context) |
 | Codex | `ai_cli_run(model="gpt-5.4")` | Image generation, SVG to polished images |
 | Claude | Execute directly (no dispatch needed) | Planning, task decomposition, verification |
+
+### IMPORTANT: Use Gemini for large-scale reading
+
+When you need to read large codebases, documentation, or many files for research, **dispatch to Gemini** instead of reading files yourself or using Agent subagents. Gemini has a large free context window — use it to save Claude tokens. Tell Gemini what to read and where to write its summary report.
 
 ### IMPORTANT: Never pre-read content before dispatching
 

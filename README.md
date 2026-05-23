@@ -184,7 +184,7 @@ All engines are dispatched through **ai-cli-mcp** (a single MCP server). Claude 
 |--------|-------------|---------|
 | DeepSeek V4 Pro | `oc-deepseek/deepseek-v4-pro` | Coding, refactoring, bug fixes (default) |
 | DeepSeek V4 Flash | `oc-deepseek/deepseek-v4-flash` | Fast/cheap coding tasks |
-| Gemini 2.5 Pro | `gemini-2.5-pro` | Code review, codebase browsing (free) |
+| Gemini 2.5 Pro | `gemini-2.5-pro` | Large-scale code/doc reading, codebase research (free) |
 | Gemini 2.5 Flash | `gemini-2.5-flash` | Fast review (free) |
 | Codex GPT-5.4 | `gpt-5.4` | Image generation, SVG conversion |
 | Claude | (direct execution) | Planning, verification, orchestration |
@@ -237,7 +237,7 @@ MCP tools are called automatically. You can also trigger them with natural langu
 "Show progress for user-auth"           → spec-status
 "Tests passed"                          → verify-task signal:green
 "Tests failed, error: xxx"              → verify-task signal:red
-"Use /review to check the code"         → dispatches Gemini for code review
+"Use /review to check the code"         → launches 4 review subagents in parallel
 "Use /tdd to develop this feature"      → dispatches DeepSeek for TDD
 "Run /qa on the project"                → dispatches DeepSeek for QA testing
 "Check the UI"                          → Claude runs visual audit (multimodal)
@@ -275,7 +275,7 @@ Auto-installed to `.claude/skills/`:
 
 | Skill | Engine | Purpose |
 |-------|--------|---------|
-| `/review` | Gemini | Code review (security, logic, performance) |
+| `/review` | Claude | Launches 4 review subagents in parallel (security, logic, performance, API) |
 | `/qa` | DeepSeek | Systematic QA testing + atomic fixes |
 | `/design-review` | Claude | Visual/interaction audit (multimodal) |
 | `/tdd` | DeepSeek | TDD red-green-refactor + worktree isolation |

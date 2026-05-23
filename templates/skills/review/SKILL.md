@@ -1,37 +1,26 @@
 # /review — Code Review
 
-Engine: Gemini (via ai_cli_run MCP)
+Engine: Claude (via built-in review subagents)
 
 ## Trigger
 - User says "review code", "check for issues", "审查代码"
 
 ## Execution
 
-**Must dispatch via ai_cli_run. Never review code yourself.**
+**Use Claude's built-in review subagents (in .claude/agents/) for parallel isolated review.**
 
-1. Get changed file list (names only, do NOT read content):
-   ```bash
-   git diff --name-only HEAD~1
-   ```
+1. Launch all 4 review subagents in parallel via Agent tool:
+   - `security-reviewer` — injection, auth flaws, hardcoded secrets
+   - `logic-reviewer` — edge cases, race conditions, resource leaks
+   - `performance-reviewer` — N+1 queries, memory leaks, blocking ops
+   - `api-reviewer` — naming, HTTP semantics, versioning, validation
 
-2. Dispatch Gemini:
-   ```
-   ai_cli_run(
-     model="gemini-2.5-pro",
-     prompt="Review all changed files in this project. Read the files yourself.
-     Check: security vulnerabilities, logic errors, performance issues, API contract violations.
-     Classify each issue: BLOCK (must fix), WARN (should fix), NOTE (suggestion).
-     Write your complete review report to .spec-workflow/reports/gemini-review-<YYYYMMDD-HHMMSS>.md
-     Format: ## BLOCK / ## WARN / ## NOTE sections, each item: [file:line] description → fix suggestion.
-     Project path: <path>"
-   )
-   ```
+2. Each subagent runs in isolated context, reads relevant code, writes findings
 
-3. Wait: `ai_cli_wait(pid=<PID>)`
+3. Collect results from all subagents
 
-4. Read report from `.spec-workflow/reports/gemini-review-*.md`
+4. Summary: any BLOCK-level issue → fail, WARN/NOTE only → pass
 
-5. Summary: BLOCK > 0 → fail, WARN/NOTE only → pass
+For targeted review (e.g. "review security only"), launch only the relevant subagent.
 
-Fallback: if ai_cli_run fails, execute review yourself and inform user.
-After review, call verify-task with green/red signal.
+After review, call verify-task with green/red signal if applicable.
