@@ -1,6 +1,6 @@
 # /tdd — Test-Driven Development
 
-Engine: DeepSeek (via mcp__deepseek__* MCP tools)
+Engine: DeepSeek (via ai_cli_run)
 
 Inspired by Superpowers framework TDD discipline.
 
@@ -9,11 +9,11 @@ Inspired by Superpowers framework TDD discipline.
 
 ## Execution
 
-**Must dispatch via mcp__deepseek__* tools. Never write code yourself.**
+**Must dispatch via ai_cli_run(model="oc-deepseek/deepseek-v4-pro"). Never write code yourself.**
 
 ### Single Task TDD
 
-Dispatch DeepSeek via MCP to execute strict Red-Green-Refactor:
+Dispatch DeepSeek via ai_cli_run to execute strict Red-Green-Refactor:
 - RED: Write failing test first, run to confirm failure
 - GREEN: Write minimum code to pass test
 - REFACTOR: Clean up without changing behavior, confirm tests still pass
@@ -29,7 +29,7 @@ For parallelizable tasks, use Agent tool to launch subagents in git worktrees:
    git worktree add .worktrees/task-1 -b feat/task-1
    ```
 
-2. Launch subagent (via Agent tool) in worktree directory, instruct it to dispatch DeepSeek MCP for TDD
+2. Launch subagent (via Agent tool) in worktree directory, instruct it to dispatch DeepSeek via ai_cli_run for TDD
 
 3. After completion, merge:
    ```bash
@@ -42,4 +42,4 @@ For parallelizable tasks, use Agent tool to launch subagents in git worktrees:
 All tests pass → call verify-task signal=green
 Any test fails → call verify-task signal=red with failure details
 
-Fallback: if DeepSeek MCP unavailable, execute TDD yourself and inform user.
+Fallback: if ai-cli-mcp unavailable, execute TDD yourself and inform user.

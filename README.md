@@ -122,7 +122,7 @@ Phase 3  Complete / Report (optional)
 
 | Engine | Purpose | Invocation |
 |--------|---------|------------|
-| `deepseek` (default) | Coding, refactoring, bug fixes | `deepseek -p "..."` (DeepSeek TUI) |
+| `deepseek` (default) | Coding, refactoring, bug fixes | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` |
 | `gemini` | Code review, codebase browsing (free) | `gemini -p "..."` |
 | `codex` | SVG → polished images (report phase) | `codex -p "..."` |
 | `claude` | Planning, task decomposition, verification | Direct (orchestrator) |
@@ -165,9 +165,9 @@ Auto-installed to `.claude/skills/` during project init:
 | Skill | Engine | Purpose | Source |
 |-------|--------|---------|--------|
 | `/review` | gemini | Auto-calls gemini CLI for code review (security, logic, performance) | GStack |
-| `/qa` | deepseek | Auto-calls deepseek CLI for systematic QA + atomic fixes | GStack |
+| `/qa` | deepseek | Dispatches DeepSeek via ai-cli-mcp for systematic QA + atomic fixes | GStack |
 | `/design-review` | claude | Claude runs visual/interaction audit directly (multimodal) | GStack |
-| `/tdd` | deepseek | Auto-calls deepseek CLI for TDD + subagent worktree isolation | Superpowers |
+| `/tdd` | deepseek | Dispatches DeepSeek via ai-cli-mcp for TDD + subagent worktree isolation | Superpowers |
 
 ## Statusline
 
@@ -196,7 +196,6 @@ Two-level automatic tracking:
 ```toml
 [engine]
 default = "deepseek"        # Default engine
-deepseekModel = "auto"      # DeepSeek TUI model (auto = auto-routing)
 maxFixAttempts = 5           # Max red-light fix attempts
 ```
 
@@ -213,7 +212,7 @@ Requires: `pip install python-docx`
 | Tool | Purpose | Install |
 |------|---------|---------|
 | Claude Code | Orchestrator | `npm i -g @anthropic-ai/claude-code` |
-| DeepSeek TUI | Default coding engine | `npm i -g deepseek-tui` (ARM64: build with cargo) |
+| Crush (or OpenCode) | DeepSeek coding engine | `brew install charmbracelet/tap/crush` or [install script](https://github.com/charmbracelet/crush) |
 | Gemini CLI | Review engine (free) | `npm i -g @google/gemini-cli` |
 | Codex CLI | Image generation | `npm i -g @openai/codex` |
 | python-docx | Report generation | `pip install python-docx` |
@@ -228,7 +227,8 @@ Features: Kanban board with engine labels, spec editor, approval system with dif
 ## Credits
 
 - [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) — Core framework
-- [DeepSeek](https://github.com/deepseek-ai) — V4 model + TUI
+- [DeepSeek](https://github.com/deepseek-ai) — V4 model
+- [Crush](https://github.com/charmbracelet/crush) — Terminal coding agent (OpenCode successor)
 - [Anthropic](https://anthropic.com) — Claude Code + MCP protocol
 - [garrytan/gstack](https://github.com/garrytan/gstack) — Role-based skills
 - [obra/superpowers](https://github.com/obra/superpowers) — TDD discipline + worktree pattern

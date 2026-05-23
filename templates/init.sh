@@ -57,7 +57,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
   cat > "$CONFIG_FILE" << 'TOML'
 [engine]
 default = "deepseek"
-deepseekModel = "auto"
 maxFixAttempts = 5
 TOML
 else
@@ -178,9 +177,6 @@ add_mcp_server() {
 # 8. 配置引擎 MCP
 echo "[8/12] 配置引擎调度 MCP → .mcp.json..."
 add_mcp_server "ai-cli" "npx" '["-y","ai-cli-mcp@latest"]'
-if command -v deepseek &>/dev/null; then
-  add_mcp_server "deepseek" "deepseek" '["serve","--mcp"]'
-fi
 
 # 9. 配置 spec-workflow-mcp
 echo "[9/12] 配置 spec-workflow-mcp..."
@@ -217,23 +213,24 @@ if [ -n "$SWM_DIST_ABS" ]; then
   fi
 fi
 
-# 9c. DeepSeek TUI
-DS_MCP="$HOME/.deepseek/mcp.json"
+# 9c. Crush (OpenCode successor)
+CRUSH_CONFIG_DIR="$HOME/.config/crush"
+CRUSH_CONFIG="$CRUSH_CONFIG_DIR/crush.json"
 if [ -n "$SWM_DIST_ABS" ]; then
-  echo "  配置 DeepSeek TUI MCP..."
-  mkdir -p "$HOME/.deepseek"
-  if [ -f "$DS_MCP" ]; then
-    if ! grep -q "spec-workflow" "$DS_MCP" 2>/dev/null; then
+  echo "  配置 Crush MCP..."
+  mkdir -p "$CRUSH_CONFIG_DIR"
+  if [ -f "$CRUSH_CONFIG" ]; then
+    if ! grep -q "spec-workflow" "$CRUSH_CONFIG" 2>/dev/null; then
       TMP=$(mktemp)
       jq --arg dist "$SWM_DIST_ABS" --arg proj "$PROJECT_DIR" \
-        '.mcpServers = (.mcpServers // {}) + {"spec-workflow":{"command":"node","args":[$dist,$proj]}}' \
-        "$DS_MCP" > "$TMP" 2>/dev/null && mv "$TMP" "$DS_MCP" && echo "  DeepSeek: 已配置" || echo "  DeepSeek: 配置失败"
+        '.mcpServers = (.mcpServers // {}) + {"spec-workflow":{"type":"stdio","command":"node","args":[$dist,$proj]}}' \
+        "$CRUSH_CONFIG" > "$TMP" 2>/dev/null && mv "$TMP" "$CRUSH_CONFIG" && echo "  Crush: 已配置" || echo "  Crush: 配置失败"
     else
-      echo "  DeepSeek: 已配置，跳过"
+      echo "  Crush: 已配置，跳过"
     fi
   else
-    python3 -c "import json; print(json.dumps({'mcpServers':{'spec-workflow':{'command':'node','args':['$SWM_DIST_ABS','$PROJECT_DIR']}}},indent=2))" > "$DS_MCP"
-    echo "  DeepSeek: 已配置"
+    python3 -c "import json; print(json.dumps({'mcpServers':{'spec-workflow':{'type':'stdio','command':'node','args':['$SWM_DIST_ABS','$PROJECT_DIR']}}},indent=2))" > "$CRUSH_CONFIG"
+    echo "  Crush: 已配置"
   fi
 fi
 
@@ -288,11 +285,11 @@ MISSING=""
 if ! command -v claude &>/dev/null; then
   MISSING="$MISSING  - claude (Claude Code CLI)\n"
 fi
-if ! command -v deepseek &>/dev/null; then
-  MISSING="$MISSING  - deepseek (DeepSeek TUI: npm i -g deepseek-tui)\n"
+if ! command -v crush &>/dev/null; then
+  MISSING="$MISSING  - crush (Crush CLI: brew install charmbracelet/tap/crush 或 curl -fsSL https://raw.githubusercontent.com/charmbracelet/crush/main/install | bash)\n"
 fi
 if ! command -v codex &>/dev/null; then
-  MISSING="$MISSING  - codex (OpenAI Codex CLI, 用于图像生成)\n"
+  MISSING="$MISSING  - codex (OpenAI Codex CLI: npm i -g @openai/codex)\n"
 fi
 if ! command -v gemini &>/dev/null; then
   MISSING="$MISSING  - gemini (Gemini CLI: npm i -g @google/gemini-cli)\n"
@@ -305,7 +302,7 @@ if [ -n "$MISSING" ]; then
   echo "  警告: 以下工具未安装（不影响初始化，但运行时需要）:"
   echo -e "$MISSING"
 else
-  echo "  claude / deepseek / gemini / codex 均已安装"
+  echo "  claude / crush / gemini / codex 均已安装"
 fi
 
 echo ""

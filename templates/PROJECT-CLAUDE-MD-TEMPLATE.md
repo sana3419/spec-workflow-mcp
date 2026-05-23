@@ -10,11 +10,8 @@
 - `log-implementation` — Record implementation logs and artifacts
 - `verify-task` — Traffic-light verification (green/red signal)
 
-### deepseek MCP (DeepSeek TUI Native)
-- `mcp__deepseek__*` — DeepSeek TUI tools via `deepseek serve --mcp`, for coding tasks
-
-### ai-cli-mcp (Gemini/Codex Dispatch)
-- `ai_cli_run` — Launch Gemini/Codex engine in background, returns PID
+### ai-cli-mcp (Multi-Engine Dispatch)
+- `ai_cli_run` — Launch engine (DeepSeek/Gemini/Codex) in background, returns PID
 - `ai_cli_wait` — Wait for engine completion, return result
 - `ai_cli_peek` — Check engine progress
 - `ai_cli_get_result` — Get engine result
@@ -28,7 +25,7 @@ When a task has `_Engine:` field or user requests a specific engine, **you MUST 
 
 | Engine | Dispatch Method | Purpose |
 |--------|----------------|---------|
-| DeepSeek (default) | `mcp__deepseek__*` tools | Coding, refactoring, bug fixes |
+| DeepSeek (default) | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` | Coding, refactoring, bug fixes |
 | Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Code review, codebase browsing, file analysis |
 | Codex | `ai_cli_run(model="gpt-5.4")` | Image generation, SVG to polished images |
 | Claude | Execute directly (no dispatch needed) | Planning, task decomposition, verification |
@@ -54,8 +51,10 @@ ai_cli_run(
 
 Example — dispatching DeepSeek for coding:
 ```
-Use mcp__deepseek__* tools to implement the task.
-The engine will read source files and write code directly.
+ai_cli_run(
+  model="oc-deepseek/deepseek-v4-pro",
+  prompt="Implement the user login endpoint with JWT authentication. Read src/auth/ for existing patterns. Write implementation and update tests. Project path: /path/to/project"
+)
 ```
 
 ## Workflow
@@ -108,9 +107,9 @@ Built-in skills in `.claude/skills/`, dispatch to engines via MCP:
 | Skill | Engine | Dispatch | Purpose |
 |-------|--------|----------|---------|
 | `/review` | Gemini | `ai_cli_run(model="gemini-2.5-pro")` | Code review: security, logic, performance |
-| `/qa` | DeepSeek | `mcp__deepseek__*` | Systematic QA testing + atomic fixes |
+| `/qa` | DeepSeek | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` | Systematic QA testing + atomic fixes |
 | `/design-review` | Claude | Execute directly | Visual/interaction audit (multimodal) |
-| `/tdd` | DeepSeek | `mcp__deepseek__*` | TDD red-green-refactor + worktree isolation |
+| `/tdd` | DeepSeek | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` | TDD red-green-refactor + worktree isolation |
 
 ## Review Subagents (4, parallel isolated context)
 
@@ -131,9 +130,9 @@ Usage: "Run security review with subagent" or "Full review" (launches all 4 in p
 
 ## Rules
 
-1. **IMPORTANT: Dispatch via MCP only** — When `_Engine` is set or user specifies an engine, use MCP tools (`mcp__deepseek__*` or `ai_cli_run`). Never execute yourself. Never call CLI via Bash. Exception: `_Engine: claude` or no engine specified → execute directly.
+1. **IMPORTANT: Dispatch via MCP only** — When `_Engine` is set or user specifies an engine, use `ai_cli_run` to dispatch. Never execute the task yourself. Never call CLI via Bash. Exception: `_Engine: claude` or no engine specified → execute directly.
 2. **IMPORTANT: Never pre-read content** — Do not load file content into your context before dispatching. Tell the engine to read files and write a report to `.spec-workflow/reports/<engine>-<task>-<timestamp>.md`. Read the report afterward.
-3. **IMPORTANT: All prompts to external engines MUST be in English** — When dispatching tasks via `ai_cli_run` or `mcp__deepseek__*`, the prompt parameter MUST be written in English, even if the user speaks Chinese. External engines perform better with English prompts. User-facing output can remain in the user's language.
+3. **IMPORTANT: All prompts to external engines MUST be in English** — When dispatching tasks via `ai_cli_run`, the prompt parameter MUST be written in English, even if the user speaks Chinese. External engines perform better with English prompts. User-facing output can remain in the user's language.
 4. **Call `spec-workflow-guide` first** each new session
 5. **Read before write** — understand existing code before modifying
 6. **verify-task is mandatory** — every task must pass verification

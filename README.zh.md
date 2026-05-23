@@ -146,7 +146,7 @@ Dashboard 操作：
 
 | 引擎 | 用途 | 调用方式 |
 |------|------|---------|
-| `deepseek`（默认） | 编码、重构、修 bug | `deepseek -p "..."` (DeepSeek TUI) |
+| `deepseek`（默认） | 编码、重构、修 bug | `ai_cli_run(model="oc-deepseek/deepseek-v4-pro")` |
 | `gemini` | 审查、大仓浏览（免费） | `gemini -p "..."` |
 | `codex` | SVG 转精美图像（报告阶段） | `codex -p "..."` |
 | `claude` | 规划、任务拆解、交叉验证 | 直接执行（主控引擎） |
@@ -155,7 +155,6 @@ Dashboard 操作：
 ```toml
 [engine]
 default = "deepseek"        # 默认引擎
-deepseekModel = "auto"      # DeepSeek TUI 模型（auto 自动路由）
 maxFixAttempts = 5           # 红灯最大修复次数
 ```
 
@@ -208,9 +207,9 @@ tasks.md 中标注引擎：
 | 技能 | 推荐引擎 | 用途 | 来源 |
 |------|---------|------|------|
 | `/review` | gemini | 自动调用 gemini CLI 审查代码（安全、逻辑、性能、API 契约） | GStack |
-| `/qa` | deepseek | 自动调用 deepseek CLI 执行 QA 测试 + 逐个修复 + 原子提交 | GStack |
+| `/qa` | deepseek | 通过 ai-cli-mcp 调度 DeepSeek 执行 QA 测试 + 逐个修复 + 原子提交 | GStack |
 | `/design-review` | claude | Claude 直接执行视觉/交互审查（多模态分析截图） | GStack |
-| `/tdd` | deepseek | 自动调用 deepseek CLI TDD 开发 + 子代理 worktree 隔离 | Superpowers |
+| `/tdd` | deepseek | 通过 ai-cli-mcp 调度 DeepSeek TDD 开发 + 子代理 worktree 隔离 | Superpowers |
 
 ## Statusline（状态栏）
 
@@ -259,7 +258,7 @@ python3 tools/gen-report.py docs/report/report.md -o docs/report/report.docx --i
 | 工具 | 用途 | 安装 |
 |------|------|------|
 | Claude Code | 主控大脑 | `npm i -g @anthropic-ai/claude-code` |
-| DeepSeek TUI | 默认编码引擎 | `npm i -g deepseek-tui`（ARM64 需 cargo 编译） |
+| Crush（或 OpenCode） | DeepSeek 编码引擎 | `brew install charmbracelet/tap/crush` 或 [安装脚本](https://github.com/charmbracelet/crush) |
 | Gemini CLI | 审查引擎（免费） | `npm i -g @google/gemini-cli` |
 | Codex CLI | 图像生成 | `npm i -g @openai/codex` |
 | python-docx | 报告生成 | `pip install python-docx` |
@@ -278,7 +277,8 @@ python3 tools/gen-report.py docs/report/report.md -o docs/report/report.docx --i
 ## 致谢
 
 - [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) — 核心框架
-- [DeepSeek](https://github.com/deepseek-ai) — V4 模型 + TUI
+- [DeepSeek](https://github.com/deepseek-ai) — V4 模型
+- [Crush](https://github.com/charmbracelet/crush) — 终端编码 Agent（OpenCode 继任者）
 - [Anthropic](https://anthropic.com) — Claude Code + MCP 协议
 - [garrytan/gstack](https://github.com/garrytan/gstack) — 角色技能
 - [obra/superpowers](https://github.com/obra/superpowers) — TDD 纪律 + worktree 模式
