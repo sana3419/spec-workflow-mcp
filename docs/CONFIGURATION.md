@@ -250,8 +250,8 @@ approvalPolicy = "never"      # untrusted | on-failure | on-request | never
 # model = "..."              # optional — leave commented out to use Codex's latest default (recommended)
 
 [loop]
-autoLoop = false         # true = Stop hook drives Phase 4 to completion (opt-in)
-maxIterations = 50       # hard cap on auto-loop iterations (primary safety valve)
+autoLoop = false         # master on/off for the background loop runner (opt-in)
+maxIterations = 50       # hard cap on loop iterations (primary safety valve)
 noProgressStop = 3       # stop after N iterations with no tasks.md / verify-results change
 ```
 
@@ -279,29 +279,28 @@ The `sandbox`, `approvalPolicy`, and `model` values are translated into Codex MC
 call arguments at dispatch time (in particular, `approvalPolicy` becomes the tool input
 `approval-policy`).
 
-#### `[loop]` — Phase 4 Auto-Loop
+#### `[loop]` — Phase 4 Background Loop
 
-Controls the optional autonomous loop that repeatedly runs Phase 4 until the spec is
-complete.
+Controls the optional **background loop runner** (`.spec-workflow/spec-loop-run.sh`), which
+drives a spec's Phase 4 tasks to completion in a separate, headless `claude` process — so your
+interactive session stays free to chat and check progress.
 
 | Option | Type | Domain | Default | Description |
 |--------|------|--------|---------|-------------|
-| `autoLoop` | boolean | `true`, `false` | `false` | Master switch. When `true`, the registered Stop hook re-triggers Phase 4 automatically until completion. Opt-in. |
-| `maxIterations` | number | ≥ 1 | `50` | Hard cap on auto-loop iterations; the primary safety valve that guarantees the loop terminates. |
+| `autoLoop` | boolean | `true`, `false` | `false` | Master on/off. The runner refuses to run unless this is `true`. Opt-in. |
+| `maxIterations` | number | ≥ 1 | `50` | Hard cap on loop iterations; the primary safety valve that guarantees the loop terminates. |
 | `noProgressStop` | number | ≥ 1 | `3` | Stop the loop after this many consecutive iterations with no change to `tasks.md` or the verify-results, to avoid spinning on a stuck task. |
 
-#### How These Are Generated and Toggled
+#### How These Are Generated and Used
 
-- **Generation**: `bash init.sh <project-dir>` writes the `config.toml` above into
-  `<project-dir>/.spec-workflow/`.
-- **Enabling the auto-loop**: passing `--auto-loop` to `init.sh` sets
-  `[loop].autoLoop = true` and registers the Phase 4 Stop hook in the project's
-  `.claude/settings.json`.
-- **`autoLoop` only takes effect once the Stop hook is registered** — i.e. after you have
-  run `init.sh ... --auto-loop` at least once. Editing `[loop].autoLoop` by hand has no
-  effect until that hook exists.
-- **Pausing the auto-loop**: set `autoLoop = false`. You do not need to remove the hook;
-  flipping the flag is enough to stop the autonomous loop.
+- **Generation**: `bash init.sh <project-dir>` writes the `config.toml` above and installs the
+  runner at `<project-dir>/.spec-workflow/spec-loop-run.sh`.
+- **Enabling**: set `[loop].autoLoop = true` in `config.toml` (from inside the project), or pass
+  `--auto-loop` to `init.sh`, or just ask Claude to enable it.
+- **Starting** (from the project root): `nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &`
+  — or ask Claude to "run the loop in the background".
+- **Watching / stopping**: tail `.spec-workflow/loop-run.log` (or use `spec-status` / the dashboard);
+  stop with `touch .spec-workflow/.loop-stop` or `kill "$(cat .spec-workflow/.loop-run.pid)"`.
 
 #### Language Options
 

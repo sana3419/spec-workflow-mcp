@@ -251,20 +251,17 @@ When a task is \`_Engine: codex\`, use **per-spec session reuse** (efficiency + 
 
 Use spec-status to see the suggested engine and the exact dispatch hint for the next task.
 
-### Phase 4 Loop (authoritative)
-The implementation loop has two execution modes, controlled by \`[loop].autoLoop\` in config.toml:
+### Phase 4 Loop
+Work tasks one at a time: implement → test → verify-task → log-implementation, until every task is \`[x]\` or \`[~]\`.
+("Implement" = Claude writes the code by default, or offloads to Codex for \`_Engine: codex\` tasks. Inner fix loop: on red, fix and re-verify up to maxFixAttempts — claude tasks fix directly; codex tasks use \`codex-reply\` with the failure log — then it is left \`[~]\` blocked.)
 
-**Prompt-driven (autoLoop = false, default)** — you drive the loop yourself:
-- Repeat the per-task cycle (implement → test → verify-task → log-implementation) until every task is \`[x]\` or \`[~]\` blocked. "Implement" = Claude writes the code by default, or offloads to Codex for \`_Engine: codex\` tasks.
-- Inner fix loop: on a red verify-task, fix and re-verify up to maxFixAttempts (claude tasks: fix directly; codex tasks: \`codex-reply\` with the failure log to keep context); then it is left blocked.
+Two ways to run it:
+- **Interactive (default)**: you drive it in this session — do a task, continue to the next.
+- **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Start it in the background:
+  \`nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &\`
+  Watch \`.spec-workflow/loop-run.log\`; stop with \`touch .spec-workflow/.loop-stop\` (or kill the PID in \`.spec-workflow/.loop-run.pid\`). Guardrails: \`maxIterations\` + \`noProgressStop\` (config \`[loop]\`); audit in \`.spec-workflow/loop-audit.log\`.
 
-**Auto-loop (autoLoop = true)** — a Stop hook drives Phase 4 to completion:
-- **Entry point**: the moment you begin implementation (after tasks.md is approved by the user in chat and the user confirms "implement", i.e. before working the first task), read \`[loop].autoLoop\` from \`.spec-workflow/config.toml\`. Only if it is \`true\`, write the active spec name into the marker: \`echo "<spec-name>" > .spec-workflow/.autoloop-active\` (just the bare slug, one line). The Stop hook only engages while this marker exists. The marker always reflects the single active spec — overwrite it if you switch specs.
-- Work tasks exactly as in prompt-driven mode. If you try to end your turn while pending/in-progress tasks remain, the Stop hook blocks the stop and re-injects the loop prompt, so keep going to the next task.
-- When every task is \`[x]\` or \`[~]\` blocked, REMOVE the marker (\`rm -f .spec-workflow/.autoloop-active\`) so the loop can end. (The hook also self-removes it once no tasks remain, as a safety net.)
-- Safety stops (handled by the hook): maxIterations cap and noProgressStop (no tasks.md/verify-results change for N iterations); both end the loop automatically. Activity is logged to \`.spec-workflow/loop-audit.log\`.
-- **Fully autonomous — do NOT pause to ask the user mid-loop.** The "what to build" discussion already happened in Phases 1–3; auto-loop only executes already-approved tasks. If a single task genuinely needs a human decision you cannot make (ambiguous, risky/destructive, missing info), do NOT guess and do NOT stop the loop — mark just that task \`[~]\` blocked with a \`_Blocked: reason\` note and move to the next task. The loop ends when only \`[x]\`/\`[~]\` remain; report the blocked tasks to the user then.
-- Activation requires the hook to be registered (\`init.sh --auto-loop\`); flipping \`autoLoop\` in config alone has no effect if the hook was never installed.
+**When the user asks to "run/start the loop"**: launch the background runner with \`nohup … &\` (set \`[loop].autoLoop = true\` first if needed), report the PID, and keep chatting — do NOT loop in this interactive session yourself. Each background iteration is autonomous: do NOT pause to ask the user; if a task genuinely needs a human decision, mark it \`[~]\` blocked with a reason and move on.
 
 ### Phase 5: Research Report (Optional)
 **Purpose**: Generate an academic-style research report in docx format after all tasks are completed.

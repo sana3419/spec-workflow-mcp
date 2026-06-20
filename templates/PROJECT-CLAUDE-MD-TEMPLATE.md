@@ -51,9 +51,11 @@ Per task — verify→fix closed loop:
    - **red** → if attempts < `maxFixAttempts`: fix (claude tasks: fix directly; codex tasks: `codex-reply(threadId, "tests failed: <log>, fix")`) and re-verify; else leave blocked
 5. Next task — no approval needed between tasks
 
-**Loop mode** (the canonical algorithm lives in `spec-workflow-guide` — call it first; this is the operational summary):
-- **autoLoop = false** (default): you drive the loop until all tasks are `[x]`/`[~]`.
-- **autoLoop = true**: a Stop hook keeps you in Phase 4. At the start of implementation, read `[loop].autoLoop` from `.spec-workflow/config.toml`; if `true`, `echo "<spec-name>" > .spec-workflow/.autoloop-active` (bare slug). When all tasks are `[x]`/`[~]`, `rm -f .spec-workflow/.autoloop-active` to release the loop. (Hook safety: `maxIterations` + `noProgressStop`, audit in `.spec-workflow/loop-audit.log`. Requires the hook installed via `init.sh --auto-loop`.)
+**Background loop (optional, hands-off).** By default you drive Phase 4 in this session. To run it hands-off WITHOUT occupying this session, start the background runner — it drives the spec to completion in a SEPARATE headless `claude`, leaving this session free to chat / check progress:
+```bash
+nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &   # needs [loop].autoLoop = true
+```
+Watch `.spec-workflow/loop-run.log` (or `spec-status` / dashboard). Stop: `touch .spec-workflow/.loop-stop`. Guardrails: `maxIterations` + `noProgressStop` (config `[loop]`), audit in `.spec-workflow/loop-audit.log`. **When the user says "run the loop", launch this background runner and keep chatting — do NOT loop in this session yourself.**
 
 ### Research Report phase (optional)
 1. Claude writes Markdown report → `docs/report/report.md`

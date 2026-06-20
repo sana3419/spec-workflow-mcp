@@ -45,7 +45,7 @@ codex login    # First run: sign in with your ChatGPT account (or configure an O
 bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 ```
 
-Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all` (graph + nexus), `--auto-loop` (enable the Phase 4 Stop-hook loop), `--force` (overwrite existing).
+Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all` (graph + nexus), `--auto-loop` (pre-enable the Phase 4 background loop), `--force` (overwrite existing).
 
 > Want codebase visualization? [Understand-Anything](https://github.com/Lum1104/Understand-Anything) is a separate Claude Code plugin (not managed by `init.sh`) — install it from inside Claude Code with `/plugin install understand-anything`.
 
@@ -103,27 +103,34 @@ approvalPolicy = "never"     # untrusted | on-failure | on-request | never
 # model = "..."             # optional — leave commented out to use Codex's latest default (recommended)
 
 [loop]
-autoLoop = false             # true = Stop hook drives Phase 4 to completion (master switch)
+autoLoop = false             # master on/off for the background loop runner
 maxIterations = 50           # hard cap on auto-loop iterations
 noProgressStop = 3           # stop after N iterations with no tasks.md change
 ```
 
 **Autonomous verify→fix loop.** dispatch → worker writes a report to `.spec-workflow/reports/codex-<task>-<timestamp>.md` → Claude runs tests → `verify-task` green/red → on red, `codex-reply` with the failing log (bounded by `maxFixAttempts`) → `log-implementation`.
 
-## Auto-Loop (optional, opt-in)
+## Background Auto-Loop (optional)
 
-By default Phase 4 is **prompt-driven**: Claude pauses between tasks and you nudge it onward. Opting in lets a Stop hook drive Phase 4 to completion without prompting.
+By default you drive Phase 4 in your interactive session. To run it **hands-off**, start the background loop runner — it drives the spec to completion in a **separate, headless `claude` process**, so your interactive session **stays free to chat and check progress**.
+
+`init.sh` installs the runner at `.spec-workflow/spec-loop-run.sh`. Enable + start it:
 
 ```bash
-bash init.sh /path/to/your-project --auto-loop
+# 1. enable in .spec-workflow/config.toml
+[loop]
+autoLoop = true          # master on/off (or pass --auto-loop to init.sh, or just ask Claude)
+
+# 2. start it in the background (from the project root)
+nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &
 ```
 
-This registers a `Stop` hook in the project `.claude/settings.json` and sets `[loop].autoLoop = true` in `config.toml`. After each turn the hook checks the active spec and, if tasks remain, tells Claude to continue.
+You can also just tell Claude **"run the loop in the background"** and it launches the runner for you, then keeps chatting.
 
-- **Pause:** set `[loop].autoLoop = false` in `config.toml`. The hook stays registered and self-gates on this switch — no need to unregister it. (Editing the config alone without first registering the hook via `--auto-loop` has **no effect**.)
-- **Guardrails:** `maxIterations` (default 50) hard-caps the loop; `noProgressStop` (default 3) stops after N iterations with no change to `tasks.md`. The loop is only active while the `.spec-workflow/.autoloop-active` marker exists (Phase 4).
-- **Audit log:** every iteration and stop reason is appended to `.spec-workflow/loop-audit.log`.
-- **Manual takeover:** if the loop runs away, delete `.spec-workflow/.autoloop-active` to end it immediately.
+- **Watch progress:** `tail -f .spec-workflow/loop-run.log`, or `spec-status`, or the dashboard — all while your session stays interactive.
+- **Stop:** `touch .spec-workflow/.loop-stop` (or `kill "$(cat .spec-workflow/.loop-run.pid)"`).
+- **Guardrails:** `maxIterations` (default 50) hard-caps it; `noProgressStop` (default 3) stops after N iterations with no `tasks.md`/`verify-results` change. Every iteration + stop reason is logged to `.spec-workflow/loop-audit.log`.
+- **How it works:** the runner invokes a fresh headless `claude` per task (implement → test → verify-task → log-implementation), reading shared state from disk — classic "agentic loop" pattern.
 
 ## MCP Architecture
 

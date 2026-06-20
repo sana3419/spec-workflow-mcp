@@ -7,7 +7,7 @@
 #        bash init.sh /path --with-nexus       → add GitNexus (dependency analysis)
 #        bash init.sh /path --with-all         → install all three
 #        bash init.sh /path --force            → overwrite CLAUDE.md/skills/agents
-#        bash init.sh /path --auto-loop        → enable Phase 4 auto-loop (Stop hook driver)
+#        bash init.sh /path --auto-loop        → pre-enable the Phase 4 background loop ([loop].autoLoop=true)
 
 set -e
 
@@ -67,9 +67,9 @@ approvalPolicy = "never"      # untrusted | on-failure | on-request | never
 # model = "..."              # optional — leave commented out to use Codex's latest default (recommended)
 
 [loop]
-autoLoop = false              # true = Stop hook drives Phase 4 to completion (master switch)
-maxIterations = 50            # hard cap on auto-loop iterations
-noProgressStop = 3            # stop after N iterations with no tasks.md change
+autoLoop = false              # master on/off for the background loop runner (.spec-workflow/spec-loop-run.sh)
+maxIterations = 50            # hard cap on loop iterations
+noProgressStop = 3            # stop after N iterations with no tasks.md/verify-results change
 TOML
 else
   echo "[3/11] config.toml exists, skipping"
@@ -185,34 +185,18 @@ else
   echo "[7/11] Project settings.json exists, skipping"
 fi
 
-# 7b. Auto-loop: install + register the Phase 4 Stop hook (only with --auto-loop)
+# 7b. Install the background Phase 4 loop runner into the project.
+# The loop runs in a SEPARATE headless `claude` process, so your interactive session stays free.
+RUNNER_SRC="$SCRIPT_DIR/spec-loop-run.sh"
+RUNNER_DST="$PROJECT_DIR/.spec-workflow/spec-loop-run.sh"
+if [ -f "$RUNNER_SRC" ]; then
+  cp "$RUNNER_SRC" "$RUNNER_DST" && chmod +x "$RUNNER_DST"
+  echo "       Background loop runner installed: .spec-workflow/spec-loop-run.sh"
+fi
+# --auto-loop pre-enables the loop in config (off by default; toggle [loop].autoLoop any time).
 if [ "$AUTO_LOOP" = "1" ]; then
-  echo "       Enabling Phase 4 auto-loop (Stop hook)..."
-  HOOK_SRC="$SCRIPT_DIR/hooks/spec-loop-stop.sh"
-  HOOK_DIR="$PROJECT_DIR/.claude/hooks"
-  HOOK_DST="$HOOK_DIR/spec-loop-stop.sh"
-  if [ -f "$HOOK_SRC" ]; then
-    mkdir -p "$HOOK_DIR"
-    cp "$HOOK_SRC" "$HOOK_DST" && chmod +x "$HOOK_DST"
-    # register Stop hook in project settings.json (idempotent)
-    if ! jq -e '.hooks.Stop' "$SETTINGS_FILE" >/dev/null 2>&1; then
-      TMP=$(mktemp)
-      jq --arg cmd "bash $HOOK_DST" \
-        '.hooks = (.hooks // {}) | .hooks.Stop = [{"hooks":[{"type":"command","command":$cmd}]}]' \
-        "$SETTINGS_FILE" > "$TMP" && mv "$TMP" "$SETTINGS_FILE" && echo "       Stop hook registered" || echo "       Stop hook registration failed"
-    else
-      echo "       Stop hook already registered, skipping"
-    fi
-    # flip master switch on in config.toml
-    if grep -q '^\[loop\]' "$CONFIG_FILE" 2>/dev/null; then
-      sed -i 's/^autoLoop = false/autoLoop = true/' "$CONFIG_FILE"
-    else
-      printf '\n[loop]\nautoLoop = true\nmaxIterations = 50\nnoProgressStop = 3\n' >> "$CONFIG_FILE"
-    fi
-    echo "       config.toml [loop].autoLoop = true"
-  else
-    echo "       WARNING: hook template not found: $HOOK_SRC"
-  fi
+  sed -i 's/^autoLoop = false/autoLoop = true/' "$CONFIG_FILE" 2>/dev/null
+  echo "       config.toml [loop].autoLoop = true (loop pre-enabled)"
 fi
 
 # Helper: add MCP server to .mcp.json (idempotent via jq)
@@ -322,10 +306,7 @@ echo "    $PROJECT_DIR/AGENTS.md"
 echo "    $PROJECT_DIR/.spec-workflow/config.toml"
 echo "    $PROJECT_DIR/.claude/skills/{review,qa,design-review,tdd}/"
 echo "    $PROJECT_DIR/.claude/settings.json"
-echo ""
-if [ "$AUTO_LOOP" = "1" ]; then
-  echo "    $PROJECT_DIR/.claude/hooks/spec-loop-stop.sh   (Phase 4 auto-loop ON)"
-fi
+echo "    $PROJECT_DIR/.spec-workflow/spec-loop-run.sh   (background Phase 4 loop runner)"
 echo ""
 echo "  Next steps:"
 echo "    1. Ensure Codex is ready: codex login   (first time only)"
@@ -333,14 +314,15 @@ echo "    2. cd $PROJECT_DIR"
 echo "    3. claude"
 echo "    4. Tell Claude what you want to build"
 echo ""
+echo "  Background Phase 4 loop (optional): runs in a SEPARATE process so this session stays free."
 if [ "$AUTO_LOOP" = "1" ]; then
-  echo "  Auto-loop is ENABLED (config.toml [loop].autoLoop = true)."
-  echo "  Pause it any time by setting autoLoop = false — no need to remove the hook."
+  echo "    [loop].autoLoop is ENABLED. Start it (from the project root):"
 else
-  echo "  Phase 4 runs in prompt-driven mode (no Stop hook installed)."
-  echo "  To enable the autonomous Stop-hook loop, re-run:  bash init.sh $PROJECT_DIR --auto-loop"
-  echo "  (Editing [loop].autoLoop alone has no effect until the hook is registered.)"
+  echo "    Enable it with [loop].autoLoop = true in .spec-workflow/config.toml, then start (from the project root):"
 fi
+echo "      nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &"
+echo "    Or just ask Claude to 'run the loop in the background'. Watch: .spec-workflow/loop-run.log"
+echo "    Stop: touch .spec-workflow/.loop-stop"
 echo ""
 echo "  Recommended: add to your shell profile:"
 echo "    export SPEC_WORKFLOW_HOME=$SPEC_WORKFLOW_HOME"

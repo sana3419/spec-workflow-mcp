@@ -51,7 +51,7 @@ bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 bash templates/init.sh /path --with-graph       # code-review-graph（省 token）
 bash templates/init.sh /path --with-nexus       # GitNexus（依赖分析）
 bash templates/init.sh /path --with-all         # 安装 graph + nexus
-bash templates/init.sh /path --auto-loop        # 开启阶段4自动循环（Stop hook 驱动）
+bash templates/init.sh /path --auto-loop        # 预开启后台循环（[loop].autoLoop=true）
 bash templates/init.sh /path --force            # 强制覆盖 CLAUDE.md/skills/agents
 ```
 
@@ -128,27 +128,34 @@ approvalPolicy = "never"     # untrusted | on-failure | on-request | never
 # model = "..."             # 可选 — 建议保持注释，让 Codex 用最新默认模型
 
 [loop]
-autoLoop = false             # true = Stop hook 驱动阶段4跑到完成（总开关）
+autoLoop = false             # 后台循环 runner 总开关
 maxIterations = 50           # 自动循环硬上限
 noProgressStop = 3           # 连续 N 轮 tasks.md 无变化则停止
 ```
 
 **自主的 验证→修复 闭环。** 调度 → worker 把报告写入 `.spec-workflow/reports/codex-<task>-<timestamp>.md` → Claude 跑测试 → `verify-task` green/red → 红灯时用 `codex-reply` 带失败日志重试（受 `maxFixAttempts` 限制）→ `log-implementation`。
 
-## 自动循环（可选，需主动开启）
+## 后台自动循环（可选）
 
-默认情况下阶段4是**提示驱动**的：Claude 在任务之间会停下，由你推动继续。开启后，Stop hook 会驱动阶段4自动跑到完成，无需逐次提示。
+默认你在交互会话里推进阶段4。想**无人值守**地跑,就启动后台循环 runner——它在**另一个独立的 headless `claude` 进程**里把 spec 跑到完成,**你当前的对话框保持空闲**,随时聊天、查看进展。
+
+`init.sh` 会把 runner 装到 `.spec-workflow/spec-loop-run.sh`。开启 + 启动:
 
 ```bash
-bash init.sh /path/to/your-project --auto-loop
+# 1. 在 .spec-workflow/config.toml 开启
+[loop]
+autoLoop = true          # 总开关(也可 init.sh --auto-loop,或直接让 Claude 帮你开)
+
+# 2. 后台启动(在项目根目录)
+nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &
 ```
 
-这会在项目 `.claude/settings.json` 注册一个 `Stop` hook，并把 `config.toml` 的 `[loop].autoLoop` 置为 `true`。每轮结束后 hook 检查当前 spec，若仍有任务就提示 Claude 继续。
+也可以直接跟 Claude 说**"在后台跑循环"**,它会帮你拉起 runner,然后继续和你聊。
 
-- **暂停：** 把 `config.toml` 的 `[loop].autoLoop` 改为 `false`。hook 保持注册并按此开关自门控，无需删除 hook。（**未先通过 `--auto-loop` 注册 hook 时，仅改 config 无效。**）
-- **护栏：** `maxIterations`（默认 50）硬性封顶循环；`noProgressStop`（默认 3）在连续 N 轮 `tasks.md` 无变化后停止。仅当 `.spec-workflow/.autoloop-active` 标记存在（阶段4）时循环才生效。
-- **审计日志：** 每轮迭代与停止原因都会追加到 `.spec-workflow/loop-audit.log`。
-- **人工接管：** 若循环跑飞，删除 `.spec-workflow/.autoloop-active` 即可立即终止。
+- **看进展:** `tail -f .spec-workflow/loop-run.log`,或 `spec-status`,或开 dashboard —— 你的会话全程保持可交互。
+- **停止:** `touch .spec-workflow/.loop-stop`(或 `kill "$(cat .spec-workflow/.loop-run.pid)"`)。
+- **护栏:** `maxIterations`(默认 50)硬性封顶;`noProgressStop`(默认 3)在连续 N 轮 `tasks.md`/`verify-results` 无变化后停止。每轮迭代与停止原因记入 `.spec-workflow/loop-audit.log`。
+- **原理:** runner 每个任务起一个全新 headless `claude`(实现→测试→verify-task→log-implementation),共享状态都落在磁盘上——经典的 agentic loop 模式。
 
 ## MCP 架构
 

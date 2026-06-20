@@ -23,10 +23,10 @@ export interface SpecWorkflowConfig {
     };
   };
 
-  // Phase 4 implementation loop (consumed by the Stop hook in autoLoop mode)
+  // Phase 4 background loop runner config (.spec-workflow/spec-loop-run.sh)
   loop?: {
-    autoLoop?: boolean;      // false = prompt-driven; true = Stop hook drives the loop
-    maxIterations?: number;  // Hard cap on auto-loop iterations (primary safety stop)
+    autoLoop?: boolean;      // master on/off for the background loop runner
+    maxIterations?: number;  // Hard cap on loop iterations (primary safety stop)
     noProgressStop?: number; // Stop after N consecutive iterations with no tasks.md change
   };
 
