@@ -165,7 +165,7 @@ flowchart TD
    - Restrictions: what not to do, constraints to follow
    - _Leverage: files/utilities to use
    - _Requirements: requirements that the task implements
-   - _Engine: target execution engine (codex or claude; omit to use default codex)
+   - _Engine: who implements (claude or codex; omit to use default claude). Add _Engine: codex only to offload that task to Codex
    - Success: specific completion criteria
    - Instructions related to setting the task in progress in tasks.md, verifying with verify-task, logging the implementation with log-implementation tool after completion.
    - Start the prompt with "Implement the task for spec {spec-name}, first run spec-workflow-guide to get the workflow guide then implement the task:"
@@ -212,9 +212,9 @@ flowchart TD
      - Reuse existing code that already solves part of the task
    - **Read the _Prompt field** for guidance on role, approach, and success criteria
    - Follow _Leverage fields to use existing code/utilities
-   - Check _Engine field to determine which engine to use (codex [default] or claude)
-   - For codex tasks: dispatch via the Codex MCP server, reusing the per-spec session (see Codex Dispatch below). Never write the implementation code yourself.
-   - For claude tasks: implement directly
+   - Check _Engine field to determine who implements (claude [default] or codex)
+   - Default (claude): implement it yourself — write/edit the code directly
+   - For codex tasks (opt-in): offload to the Codex MCP server, reusing the per-spec session (see Codex Dispatch below)
    - Test your implementation
    - **MANDATORY: Call verify-task** with signal='green' (pass) or 'red' (fail):
      - verify-task auto-marks task [x] on green signal
@@ -236,13 +236,13 @@ flowchart TD
    - verify-task(green) auto-marks [x] — no manual edit needed
 4. Continue until every task is \`[x]\` completed or \`[~]\` blocked
 
-### Codex Dispatch
-Tasks may include an \`_Engine:\` field specifying which engine to use:
-- \`codex\` (default): Dispatch coding to the Codex MCP server. Never write the code yourself.
-- \`claude\`: Implement directly with Claude (planning/reasoning tasks).
-If no \`_Engine:\` field, use the default engine from config (codex).
+### Codex Dispatch (optional helper)
+Claude is the primary engine — it plans, implements, reviews, and verifies. Codex is an
+**auxiliary** engine you offload specific coding tasks to. Tasks may carry an \`_Engine:\` field:
+- \`claude\` (default): implement directly. If no \`_Engine:\` field, this is used.
+- \`codex\` (opt-in): dispatch the coding to the Codex MCP server — good for large, repetitive, or parallelizable tasks, or to save Claude's context.
 
-**Per-spec session reuse** (efficiency + accuracy):
+When a task is \`_Engine: codex\`, use **per-spec session reuse** (efficiency + accuracy):
 - Each spec keeps ONE Codex session in \`.spec-workflow/specs/{spec-name}/.codex-thread\`.
 - First task of a spec → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\`; save the returned threadId to \`.codex-thread\`.
 - Later tasks in the same spec, and any red→fix retry → \`mcp__codex__codex-reply(threadId, prompt)\` so the worker keeps its context.
@@ -255,8 +255,8 @@ Use spec-status to see the suggested engine and the exact dispatch hint for the 
 The implementation loop has two execution modes, controlled by \`[loop].autoLoop\` in config.toml:
 
 **Prompt-driven (autoLoop = false, default)** — you drive the loop yourself:
-- Repeat the per-task cycle (dispatch → test → verify-task → log-implementation) until every task is \`[x]\` or \`[~]\` blocked.
-- Inner fix loop: on a red verify-task, reuse the Codex session via codex-reply with the failure log, up to maxFixAttempts; then it is left blocked.
+- Repeat the per-task cycle (implement → test → verify-task → log-implementation) until every task is \`[x]\` or \`[~]\` blocked. "Implement" = Claude writes the code by default, or offloads to Codex for \`_Engine: codex\` tasks.
+- Inner fix loop: on a red verify-task, fix and re-verify up to maxFixAttempts (claude tasks: fix directly; codex tasks: \`codex-reply\` with the failure log to keep context); then it is left blocked.
 
 **Auto-loop (autoLoop = true)** — a Stop hook drives Phase 4 to completion:
 - **Entry point**: the moment you begin implementation (after tasks.md is approved by the user in chat and the user confirms "implement", i.e. before working the first task), read \`[loop].autoLoop\` from \`.spec-workflow/config.toml\`. Only if it is \`true\`, write the active spec name into the marker: \`echo "<spec-name>" > .spec-workflow/.autoloop-active\` (just the bare slug, one line). The Stop hook only engages while this marker exists. The marker always reflects the single active spec — overwrite it if you switch specs.

@@ -79,7 +79,7 @@ ${documentType === 'tasks' ? `
 - Make prompts specific to the project context and requirements
 - Include _Leverage fields pointing to existing code to reuse
 - Include _Requirements fields showing which requirements each task implements
-- Include _Engine fields when tasks should use a specific engine (e.g., _Engine: codex_, _Engine: claude_). Default is codex if omitted.
+- Claude implements tasks by default. Add an _Engine: codex_ field only to offload a specific task to Codex (e.g. large/repetitive/parallel work). Omit it (or _Engine: claude_) for the default Claude-implements path.
 - Tasks should be atomic (1-3 files each) and in logical order
 
 **Implementation Logging:**

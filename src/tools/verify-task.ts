@@ -168,7 +168,7 @@ export async function verifyTaskHandler(
         specName,
         taskId,
         taskName: task.description,
-        engine: engine || task.engine || context.engineConfig?.default || 'codex',
+        engine: engine || task.engine || context.engineConfig?.default || 'claude',
         signal: 'green',
         timestamp: verifyData.lastTimestamp,
         usage: usage || null
@@ -200,7 +200,7 @@ export async function verifyTaskHandler(
 
         await appendUsageLog(projectPath, {
           specName, taskId, taskName: task.description,
-          engine: engine || task.engine || context.engineConfig?.default || 'codex',
+          engine: engine || task.engine || context.engineConfig?.default || 'claude',
           signal: 'blocked', timestamp: verifyData.lastTimestamp,
           usage: usage || null
         });
@@ -229,8 +229,8 @@ export async function verifyTaskHandler(
           testResults
         },
         nextSteps: [
-          `Fix the failures (attempt ${verifyData.fixAttempts}/${maxFixAttempts})`,
-          `For Codex tasks: reuse the spec session via mcp__codex__codex-reply(threadId from .spec-workflow/specs/${specName}/.codex-thread) and pass the failing test output, so the fix keeps the original implementation context`,
+          `Fix the failures (attempt ${verifyData.fixAttempts}/${maxFixAttempts}) — Claude fixes directly by default`,
+          `For _Engine: codex tasks: reuse the spec session via mcp__codex__codex-reply(threadId from .spec-workflow/specs/${specName}/.codex-thread) with the failing test output, so the fix keeps the original implementation context`,
           'Re-run tests and call verify-task again'
         ]
       };

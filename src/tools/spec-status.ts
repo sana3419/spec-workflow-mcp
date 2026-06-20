@@ -200,7 +200,7 @@ async function getNextTaskInfo(
     const next = findNextPendingTask(parsed.tasks);
     if (!next) return {};
 
-    const defaultEngine = context.engineConfig?.default || 'codex';
+    const defaultEngine = context.engineConfig?.default || 'claude';
     const engine = next.engine || defaultEngine;
 
     return {
@@ -217,10 +217,11 @@ async function getNextTaskInfo(
 }
 
 function buildDispatchHint(engine: string, context: ToolContext, specName: string, taskId: string): string {
-  if (engine === 'claude') {
-    return `Implement task ${taskId} directly (Claude is the current engine).`;
+  if (engine !== 'codex') {
+    // Default path: Claude implements the task itself.
+    return `Implement task ${taskId} yourself (Claude is the default engine — write/edit the code directly).`;
   }
-  // Default: Codex via its MCP server, reusing the per-spec session thread.
+  // _Engine: codex → offload to Codex via its MCP server, reusing the per-spec session thread.
   const cx = context.engineConfig?.codex;
   const sandbox = cx?.sandbox || 'workspace-write';
   const approval = cx?.approvalPolicy || 'never';

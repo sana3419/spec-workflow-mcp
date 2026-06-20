@@ -106,7 +106,7 @@ printf '%s' "$HASH" > "$HASH_FILE" 2>/dev/null
 printf '%s' "$NOPROG" > "$NOPROG_FILE" 2>/dev/null
 printf '%s [%s] iter=%s BLOCK remaining=%s\n' "$(date -u +%FT%TZ)" "$SPEC" "$ITER" "$REMAINING" >> "$AUDIT" 2>/dev/null
 
-REASON="Auto-loop (iteration ${ITER}/${MAX_ITER}): spec '${SPEC}' still has ${REMAINING} pending/in-progress task(s). Continue Phase 4 — call spec-status to get the next task and dispatch it to Codex (reuse the .codex-thread session), run tests, and verify-task. When every task is [x] or [~] blocked, remove .spec-workflow/.autoloop-active so the loop can end. Do NOT stop to ask the user; if one task truly needs a human decision, mark just that task [~] blocked with a reason and continue to the next."
+REASON="Auto-loop (iteration ${ITER}/${MAX_ITER}): spec '${SPEC}' still has ${REMAINING} pending/in-progress task(s). Continue Phase 4 — call spec-status for the next task, implement it (Claude writes the code by default; only offload to Codex via codex-reply when the task is _Engine: codex), run tests, and verify-task. When every task is [x] or [~] blocked, remove .spec-workflow/.autoloop-active so the loop can end. Do NOT stop to ask the user; if one task truly needs a human decision, mark just that task [~] blocked with a reason and continue to the next."
 jq -cn --arg r "$REASON" '{decision:"block", reason:$r}' 2>/dev/null \
   || printf '{"decision":"block","reason":"Auto-loop: %s pending task(s) remain in spec %s. Continue Phase 4 via spec-status."}\n' "$REMAINING" "$SPEC"
 exit 0

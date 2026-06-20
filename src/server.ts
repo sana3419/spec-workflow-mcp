@@ -94,7 +94,7 @@ export class SpecWorkflowMCPServer {
 
       // Load engine config
       let engineConfig = {
-        default: 'codex',
+        default: 'claude',
         maxFixAttempts: 5,
         codex: { sandbox: 'workspace-write', approvalPolicy: 'never' as string | undefined, model: undefined as string | undefined },
       };

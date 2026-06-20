@@ -241,7 +241,7 @@ Configuration uses TOML format. Here is the complete structure used by this fork
 
 ```toml
 [engine]
-default = "codex"        # codex | claude
+default = "claude"       # claude | codex (claude = Claude implements directly; codex = offload to Codex)
 maxFixAttempts = 5       # red→fix loop cap; exceeding it marks the task "blocked"
 
 [engine.codex]
@@ -261,7 +261,7 @@ noProgressStop = 3       # stop after N iterations with no tasks.md / verify-res
 
 | Option | Type | Domain | Default | Description |
 |--------|------|--------|---------|-------------|
-| `default` | string | `codex`, `claude` | `codex` | Which engine executes coding tasks. `codex` dispatches to the Codex MCP server; `claude` runs the work in the host Claude session. |
+| `default` | string | `claude`, `codex` | `claude` | Which engine handles a task that has no `_Engine` field in `tasks.md`. `claude` (the primary engine) implements the work directly in the host Claude session; `codex` (auxiliary, opt-in per task) dispatches to the Codex MCP server. Tag a task `_Engine: codex` in `tasks.md` to offload just that task to Codex regardless of this default. |
 | `maxFixAttempts` | number | ≥ 1 | `5` | Maximum number of red→fix iterations on a single task. When a task keeps failing verification past this cap, it is marked `blocked` instead of looping forever. |
 
 #### `[engine.codex]` — Codex Engine Settings

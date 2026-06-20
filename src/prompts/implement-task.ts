@@ -60,7 +60,7 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
      - Success: Specific completion criteria
    - Note the _Leverage fields for files/utilities to use
    - Check _Requirements fields for which requirements this implements
-   - Check _Engine field for which engine should execute this task (codex [default] or claude)
+   - Check _Engine field for who implements this task (claude [default] or codex)
 
 4. **Discover Existing Implementations (CRITICAL):**
    - BEFORE writing any code, search implementation logs to understand existing artifacts
@@ -97,12 +97,12 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
    - Document any existing related implementations before proceeding
    - If you find existing code that does what the task asks, leverage it instead of recreating
 
-5. **Implement the Task** — dispatch by \`_Engine\`:
-   - **\`_Engine: codex\` (default)** — DO NOT write the code yourself. Dispatch to Codex via its MCP server, reusing the per-spec session:
+5. **Implement the Task** — by \`_Engine\` (default \`claude\`):
+   - **\`_Engine: claude\` (default)** — implement it yourself: follow the _Prompt guidance, use _Leverage files, create/modify the specified files, write clean code following existing patterns.
+   - **\`_Engine: codex\` (opt-in)** — offload the coding to Codex via its MCP server (good for large/repetitive/parallel tasks or to save your context), reusing the per-spec session:
      - Read \`.spec-workflow/specs/${specName}/.codex-thread\`: if missing → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\` and save the returned \`structuredContent.threadId\` to that file; if present → \`mcp__codex__codex-reply(threadId, prompt)\`.
      - Tell Codex the _Prompt guidance, which files to read/_Leverage and edit, and to write a report to \`.spec-workflow/reports/codex-${taskId || '<taskId>'}-<timestamp>.md\` ending with a structured summary block.
      - (\`sandbox\`/\`approval-policy\`/\`model\` come from config \`[engine.codex]\`; \`spec-status\` prints the exact hint.)
-   - **\`_Engine: claude\`** — implement directly: follow the _Prompt guidance, use _Leverage files, create/modify the specified files, write clean code following existing patterns.
    - Either way: test the implementation thoroughly before verifying.
 
 6. **Verify Implementation (MANDATORY - before logging):**
@@ -159,14 +159,14 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 - If you encounter blockers, document them and move to another task
 
 **Tools to Use:**
-- spec-status: Check overall progress + the exact Codex dispatch hint
-- mcp__codex__codex / mcp__codex__codex-reply: Dispatch coding to Codex (default engine) — do not write code yourself
+- Read/Write/Edit: Implement the code yourself — this is the default path (Claude is the primary engine)
+- spec-status: Check overall progress + the exact dispatch hint
+- mcp__codex__codex / mcp__codex__codex-reply: Offload coding to Codex ONLY for _Engine: codex tasks
 - Bash (grep/ripgrep): CRITICAL - Search existing implementations before coding (step 4)
 - Read: Examine markdown implementation log files directly (step 4)
 - verify-task: Record green/red, auto-marks [x] on green (step 6)
 - log-implementation: MANDATORY - Record implementation details with artifacts BEFORE marking task complete (step 7)
 - Edit: Update task marker [ ]→[-] only (verify-task auto-marks [x])
-- Read/Write/Edit: Implement the actual code changes ONLY for _Engine: claude tasks
 - Bash: Run tests and verify implementation
 
 **View Implementation Logs:**

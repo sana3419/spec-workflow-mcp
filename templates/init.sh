@@ -58,7 +58,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
   echo "[3/11] Writing engine config (config.toml)..."
   cat > "$CONFIG_FILE" << 'TOML'
 [engine]
-default = "codex"
+default = "claude"
 maxFixAttempts = 5
 
 [engine.codex]

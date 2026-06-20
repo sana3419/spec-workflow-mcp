@@ -7,7 +7,7 @@
   - Purpose: Establish type safety for feature implementation
   - _Leverage: src/types/base.ts_
   - _Requirements: 1.1_
-  - _Engine: codex_
+  - _Engine: codex_   # optional — omit to let Claude implement (default); add to offload this task to Codex
   - _Prompt: Role: TypeScript Developer specializing in type systems and interfaces | Task: Create comprehensive TypeScript interfaces for the feature data structures following requirements 1.1, extending existing base interfaces from src/types/base.ts | Restrictions: Do not modify existing base interfaces, maintain backward compatibility, follow project naming conventions | Success: All interfaces compile without errors, proper inheritance from base types, full type coverage for feature requirements_
 
 - [ ] 2. Create base model class in src/models/FeatureModel.ts

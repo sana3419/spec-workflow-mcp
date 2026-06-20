@@ -1,8 +1,8 @@
-# Spec Workflow MCP — Codex 驱动的协同开发框架
+# Spec Workflow MCP — Claude 主导的协同开发框架
 
 [English](README.md)
 
-Codex 驱动的协同开发框架。Claude Code 作为主控编排，OpenAI Codex 执行编码。基于 [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) 改造，配合红绿灯验证和学术报告生成。
+Claude 主导的协同开发框架。Claude Code 规划、实现、审查;OpenAI Codex 作为可选引擎,按需(任务标注 `_Engine: codex`)分担编码任务。基于 [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) 改造，配合红绿灯验证和学术报告生成。
 
 > **说明**：`docs/` 目录下的文件描述的是上游 Pimzino 的行为。本 fork 的具体用法请参考 `init.sh` 生成的项目 `CLAUDE.md`。
 
@@ -78,7 +78,7 @@ claude
 阶段4  逐任务执行（循环）
        ├── spec-status → 获取下一个 pending 任务 + 调度提示
        ├── 编辑 tasks.md：[ ] → [-] 标记开始
-       ├── 通过 codex MCP 工具调度 Codex 执行编码
+       ├── 默认由 Claude 自己实现该任务;仅当任务标注 _Engine: codex 时,才通过 codex MCP 工具分担给 Codex 编码
        ├── 跑测试 → verify-task green/red
        │   ├── green → 自动标 [x]，调 log-implementation 记录
        │   └── red → codex-reply 带失败日志重试，超限自动标 [~] blocked
@@ -92,9 +92,9 @@ claude
 
 **审批在对话内完成。** Claude 会把每份 `requirements.md` / `design.md` / `tasks.md` 在对话里呈给你，只有你在对话中同意后才进入下一阶段。没有 Dashboard 审批页，也没有 VS Code 审批流程。
 
-## Codex 调度
+## Codex 调度（可选）
 
-Claude 通过 Codex **自带的 MCP server** 调度编码。Claude 不会直接通过 Bash 调用 CLI。`init.sh` 会把 codex server 写入项目 `.mcp.json`：
+默认情况下,每个任务都由 Claude 自己实现。当某个任务在 `tasks.md` 中标注 `_Engine: codex` 时——适用于大规模、重复性或可并行的编码,或为节省 Claude 的上下文——Claude 才通过 Codex **自带的 MCP server** 把该任务分担给 OpenAI Codex。Claude 不会直接通过 Bash 调用 CLI。`init.sh` 会把 codex server 写入项目 `.mcp.json`：
 
 ```json
 "codex": { "type": "stdio", "command": "codex", "args": ["mcp-server"], "env": {} }
@@ -115,11 +115,11 @@ codex MCP server 暴露两个工具：
 | `approvalPolicy` | `untrusted` \| `on-failure` \| `on-request` \| `never` | `never` |
 | `model` | （可选）Codex 模型 | — |
 
-另有 `[engine] default = "codex"` 和 `maxFixAttempts = 5`。完整文件：
+另有 `[engine] default = "claude"` 和 `maxFixAttempts = 5`。完整文件：
 
 ```toml
 [engine]
-default = "codex"            # 默认引擎
+default = "claude"          # claude | codex（claude = Claude 直接实现;codex = 分担给 Codex）
 maxFixAttempts = 5           # 红灯最大修复次数，超限自动 blocked
 
 [engine.codex]

@@ -233,7 +233,7 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
 
     if (parsedConfig.engine !== undefined) {
       config.engine = {
-        default: parsedConfig.engine.default || 'codex',
+        default: parsedConfig.engine.default || 'claude',
         maxFixAttempts: parsedConfig.engine.maxFixAttempts || 5,
         codex: {
           model: parsedConfig.engine.codex?.model,
