@@ -16,7 +16,7 @@ Codex-powered collaborative development framework. Claude orchestrates, Codex ex
 
 ## Workflow
 
-Call `spec-workflow-guide` first to load the canonical 5-phase workflow (Requirements → Design → Tasks → Implementation → Research Report). Below are the multi-engine extensions on top of that base flow.
+Call `spec-workflow-guide` first to load the canonical 5-phase workflow (Requirements → Design → Tasks → Implementation → Research Report). Below are the Codex-dispatch extensions on top of that base flow.
 
 **How to get approval** (applies to Phase 1–3): After creating each document, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 

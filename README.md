@@ -143,7 +143,7 @@ Claude Code (orchestrator)
 |--------|------|---------|
 | spec-workflow-mcp | `spec-workflow-guide` | Full workflow guide (call first each session) |
 | | `steering-guide` | Project steering documents |
-| | `spec-status` | Progress + next task engine suggestion |
+| | `spec-status` | Progress + next-task dispatch hint |
 | | `verify-task` | Traffic-light verification (green→done, red→fix/blocked) |
 | | `log-implementation` | Record implementation logs and artifacts |
 | codex | `mcp__codex__codex` | Start a new Codex session (returns threadId) |
@@ -222,7 +222,7 @@ your-project/
 | MCP tools not available | Restart Claude Code. First time: approve MCP servers when prompted |
 | Codex dispatch fails | Run `codex login`. Check `codex --version`. Check `.mcp.json` has the codex server |
 | Dashboard won't start | `lsof -i :5000` to check port |
-| Reset MCP approvals | `claude mcp reset-project-choices` |
+| Reset MCP server trust | `claude mcp reset-project-choices` |
 
 ## Report Generation (optional)
 

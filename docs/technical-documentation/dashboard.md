@@ -1,5 +1,7 @@
 # Dashboard System
 
+> ⚠️ **Upstream reference — partially outdated for this fork.** This fork is **Codex-driven** (Claude Code orchestrates; coding is dispatched to **OpenAI Codex** — no DeepSeek/Gemini/multi-engine), document approval happens **in conversation** (no dashboard approval page, no VS Code approval extension, no `approvals` MCP tool), and the MCP server exposes **5 tools**. For current behavior see the project **README** and **CLAUDE.md**.
+
 > **TL;DR**: Real-time web dashboard for monitoring specs and tracking progress.
 
 ## 🌐 Dashboard Overview

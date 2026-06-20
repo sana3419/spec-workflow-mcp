@@ -70,14 +70,14 @@ claude
 ## 工作原理
 
 ```
-阶段1  Claude 规划
+阶段1-3  Claude 规划
        ├── 调用 spec-workflow-guide 获取流程指南
        ├── requirements.md → 对话内确认（可在对话里打回修改）
        ├── design.md       → 对话内确认
        └── tasks.md        → 每个任务标注 _Engine → 对话内确认
 
-阶段2  逐任务执行（循环）
-       ├── spec-status → 获取下一个 pending 任务 + 引擎建议
+阶段4  逐任务执行（循环）
+       ├── spec-status → 获取下一个 pending 任务 + 调度提示
        ├── 编辑 tasks.md：[ ] → [-] 标记开始
        ├── 通过 codex MCP 工具调度 Codex 执行编码
        ├── 跑测试 → verify-task green/red
@@ -85,7 +85,7 @@ claude
        │   └── red → codex-reply 带失败日志重试，超限自动标 [~] blocked
        └── 继续下一个任务
 
-阶段3  完成 / 报告（可选）
+阶段5  完成 / 报告（可选）
        ├── Claude 写 Markdown 报告 + SVG 图表
        ├── rsvg-convert 将 SVG 转图像
        └── gen-report.py → 学术论文格式 docx
@@ -169,7 +169,7 @@ Claude Code（主控）
 |--------|------|------|
 | spec-workflow-mcp | `spec-workflow-guide` | 完整工作流指南（每个会话先调用） |
 | | `steering-guide` | 项目指导文档 |
-| | `spec-status` | 进度 + 下一个任务的引擎建议 |
+| | `spec-status` | 进度 + 下一任务调度提示 |
 | | `verify-task` | 红绿灯验证（green→完成，red→修复/blocked） |
 | | `log-implementation` | 记录实现日志与产物 |
 | codex | `mcp__codex__codex` | 开启新 Codex 会话（返回 threadId） |
@@ -281,7 +281,7 @@ your-project/
 | Codex 调度失败 | 运行 `codex login`。检查 `codex --version`。检查 `.mcp.json` 是否包含 codex server |
 | Dashboard 启动失败 | 检查 5000 端口是否被占用：`lsof -i :5000` |
 | `spec-status` 报错 | 确认 `.mcp.json` 中 args 的项目路径正确 |
-| 重置 MCP 审批 | `claude mcp reset-project-choices` |
+| 重置 MCP server 授权 | `claude mcp reset-project-choices` |
 
 ## 报告生成（可选）
 
