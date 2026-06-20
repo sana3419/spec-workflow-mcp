@@ -75,7 +75,7 @@ Based on comprehensive codebase analysis, here are definitive answers to key tec
 | **AI Service Calls** | ❌ No independent AI calls | ✅ Multiple AI model integration | 🔮 Could add specialized AI services |
 | **Context Management** | ❌ No LLM context manipulation | ✅ Advanced context strategies | 🔮 Could add context optimization |
 | **Memory Management** | ❌ File-based only | ✅ Vector databases, embeddings | 🔮 Could add persistent memory |
-| **Multi-Model Usage** | ❌ Single LLM connection | ✅ GPT-4 + Claude + Gemini | 🔮 Could add model routing |
+| **Multi-Model Usage** | ❌ Single LLM connection | ✅ Multiple LLMs (e.g. GPT-4 + Claude) | 🔮 Could add model routing |
 
 #### **Question 3: Document Planning Process**
 **Answer: Template-guided LLM intelligence - no separate AI planning**
@@ -88,13 +88,12 @@ Based on comprehensive codebase analysis, here are definitive answers to key tec
 | **Project Analysis** | ✅ LLM analyzes project context | ✅ Specialized analysis tools | 🔮 Could add deep code analysis |
 
 #### **Question 4: Auto Review Process**
-**Answer: Human-only approval system - no automated AI review**
+**Answer: Human-only review - no automated AI review**
 
 | Aspect | This MCP | Other AI Agents | Expansion Opportunity |
 |--------|----------|----------------|---------------------|
-| **Review Automation** | ❌ Human approval required | ✅ Multi-stage AI review | 🔮 Could add optional AI gates |
+| **Review Automation** | ❌ User approves in conversation | ✅ Multi-stage AI review | 🔮 Could add optional AI gates |
 | **Quality Assurance** | ✅ LLM quality + Human oversight | ❌ AI-only (potential errors) | ✅ Best quality control |
-| **Approval Workflows** | ✅ Dashboard/VS Code integration | ❌ Often CLI-only | ✅ Superior UX |
 | **Review Intelligence** | ✅ LLM can suggest improvements | ✅ Specialized review models | 🔮 Could add review templates |
 
 #### **Question 5: Best Practice Standards**
@@ -112,7 +111,7 @@ Based on comprehensive codebase analysis, here are definitive answers to key tec
 **Strengths vs Other AI Agents:**
 ```typescript
 interface CompetitiveAdvantages {
-  humanOversight: "Mandatory approval prevents runaway AI behavior";
+  humanOversight: "Mandatory in-conversation approval prevents runaway AI behavior";
   llmLeverage: "Uses full power of connected LLM without limitations";
   structuredOutput: "Templates ensure consistent, professional documentation";
   realTimeUI: "Dashboard and VS Code integration for seamless workflow";
@@ -177,11 +176,10 @@ interface ExpansionRoadmap {
 - ❌ No cross-session AI context preservation
 - ✅ Provides structured project data for AI client consumption
 
-**Human-Only Approval System**:
+**Human-Only Review**:
 - ❌ No automated AI-powered document review
 - ❌ No AI-based approval recommendations
-- ❌ Verbal approval not accepted
-- ✅ All approvals require dashboard or VS Code interaction
+- ✅ The assistant presents each phase document to the user, who approves it in conversation before proceeding
 
 ### What This MCP Excels At
 
@@ -212,26 +210,24 @@ interface ExpansionRoadmap {
 ## 🎯 Key Concepts
 
 ### MCP Tools
-The server provides 12 MCP tools for spec-driven development:
+The server provides MCP tools for spec-driven development:
 - **Workflow Tools**: `spec-workflow-guide`, `steering-guide`
 - **Content Tools**: `create-spec-doc`, `create-steering-doc`, `get-template-context`
 - **Search Tools**: `get-spec-context`, `get-steering-context`, `spec-list`
 - **Status Tools**: `spec-status`, `manage-tasks`
-- **Approval Tools**: `request-approval`, `get-approval-status`, `delete-approval`
 
 ### File Organization
 ```
 .spec-workflow/
 ├── specs/           # Specification documents
 ├── steering/        # Project guidance documents
-├── approvals/       # Approval workflow data
 └── archive/         # Archived specifications
 ```
 
 ### Workflow Phases
 1. **Requirements** → 2. **Design** → 3. **Tasks** → 4. **Implementation**
 
-Each phase requires approval before proceeding to the next.
+For Phase 1-3, the assistant presents each document to the user and proceeds to the next phase only after the user approves it in conversation.
 
 ## 🔧 Development Workflow
 
@@ -288,16 +284,15 @@ This project implements a **pure Model Context Protocol (MCP) server** that:
 | **Context Management** | File-based structure | No LLM context window management |
 | **Content Generation** | LLM-powered with templates | LLM fills templates using built-in knowledge & search |
 | **Planning Process** | LLM reasoning + workflow validation | LLM plans content, MCP enforces structure |
-| **Review System** | Human approval only | Dashboard/VS Code integration for LLM output |
+| **Review System** | Human approval only | User approves each phase document in conversation |
 | **Best Practices** | LLM built-in knowledge | LLM applies best practices from its training |
 | **External Calls** | NPM version check only | All other capabilities through connected LLM |
 
 ### Key Files & Implementation
-- **MCP Tools**: `src/tools/*.ts` - 13 tools for workflow management
+- **MCP Tools**: `src/tools/*.ts` - tools for workflow management
 - **Templates**: `src/markdown/templates/*.md` - Static document structures  
-- **Approval System**: `src/dashboard/approval-storage.ts` - Human-only review
 - **Context Loading**: `src/core/*.ts` - File-based context structuring
-- **Web Dashboard**: `src/dashboard_frontend/` - React-based approval UI
+- **Web Dashboard**: `src/dashboard_frontend/` - React-based monitoring UI
 
 ### Performance Characteristics
 - **Memory Usage**: 50KB templates + 10-100KB per spec context
@@ -386,7 +381,7 @@ interface MarketPosition {
   
   competitiveAdvantages: {
     llmLeverage: "Full LLM power without additional API costs";
-    humanOversight: "Prevents AI errors through mandatory approval";
+    humanOversight: "Prevents AI errors through mandatory in-conversation approval";
     structuredProcess: "Enforces proven development methodology";
     simplicity: "No complex setup or API key management";
     realTimeUI: "Superior user experience with dashboard";
@@ -407,7 +402,7 @@ interface MarketPosition {
 ```typescript
 interface Phase1Strategy {
   buildOnStrengths: {
-    enhanceHumanOversight: "Advanced approval workflows, review templates";
+    enhanceHumanOversight: "Advanced review workflows, review templates";
     improveStructure: "Dynamic templates, adaptive workflows";
     expandLLMUsage: "Better context utilization, smarter suggestions";
   };
@@ -442,7 +437,7 @@ interface Phase2Strategy {
 **Immediate Opportunities (0-6 months):**
 1. **GitHub Integration**: Leverage LLM to create PRs, analyze codebases
 2. **Quality Templates**: Add project-type detection for smarter templates  
-3. **Team Coordination**: Multi-developer approval workflows
+3. **Team Coordination**: Multi-developer review workflows
 4. **Performance Analytics**: Track spec-to-delivery success rates
 
 **Medium-term Differentiators (6-18 months):**

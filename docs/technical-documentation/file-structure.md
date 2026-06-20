@@ -17,9 +17,6 @@ project-root/
 │   │   ├── product.md                # Product vision & strategy
 │   │   ├── tech.md                   # Technical standards
 │   │   └── structure.md              # Code organization
-│   ├── approvals/                     # Approval workflow data
-│   │   └── spec-name/                # Per-spec approvals
-│   │       └── approval-id.json      # Individual approval data
 │   ├── archive/                       # Completed/archived specs
 │   │   └── specs/                    # Archived specification docs
 │   └── config.toml (optional)        # Project-specific configuration
@@ -37,7 +34,6 @@ project-root/
 | `src/server.ts:74-85` | MCP server initialization | Tool registration, project registry |
 | `src/core/path-utils.ts:12-35` | Cross-platform paths | Windows/Unix path handling |
 | `src/core/project-registry.ts:96-114` | Project registration | Global project tracking |
-| `src/dashboard/approval-storage.ts:20-45` | Human approval system | JSON file persistence |
 | `src/dashboard/multi-server.ts:45-200` | Multi-project dashboard | WebSocket, file watching |
 
 **Template System** (static content, no AI generation):
@@ -60,14 +56,10 @@ src/
 │   ├── get-template-context.ts      # Load templates
 │   ├── spec-list.ts                 # List all specifications
 │   ├── spec-status.ts               # Get spec status
-│   ├── manage-tasks.ts              # Task management
-│   ├── request-approval.ts          # Create approval requests
-│   ├── get-approval-status.ts       # Check approval status
-│   └── delete-approval.ts           # Clean up approvals
+│   └── manage-tasks.ts              # Task management
 ├── dashboard/                       # Dashboard backend
 │   ├── multi-server.ts              # Multi-project Fastify server
 │   ├── project-manager.ts           # Project lifecycle management
-│   ├── approval-storage.ts          # Approval persistence
 │   ├── parser.ts                    # Dashboard-specific parsing
 │   ├── watcher.ts                   # File system watching
 │   ├── utils.ts                     # Dashboard utilities
@@ -79,7 +71,6 @@ src/
 │   │   ├── modules/
 │   │   │   ├── api/                 # API communication layer
 │   │   │   ├── app/                 # Main application component
-│   │   │   ├── approvals/           # Approval UI components
 │   │   │   ├── editor/              # Markdown editor
 │   │   │   ├── markdown/            # Markdown rendering
 │   │   │   ├── modals/              # Modal dialog components
@@ -133,7 +124,6 @@ vscode-extension/
 │       └── main.tsx                 # Webview entry point
 ├── webview-assets/                  # Static webview assets
 │   └── sounds/                      # Audio notification files
-│       ├── approval-pending.wav     # Approval request sound
 │       └── task-completed.wav       # Task completion sound
 ├── icons/                          # Extension icons
 │   ├── activity-bar-icon.svg       # Activity bar icon
@@ -233,8 +223,6 @@ const directories = [
 
 // Directories created on-demand
 const onDemandDirectories = [
-  '.spec-workflow/approvals/',
-  '.spec-workflow/approvals/{spec-name}/',
   '.spec-workflow/specs/{spec-name}/'
 ];
 ```
@@ -270,10 +258,6 @@ export class SpecArchiveService {
     
     // Move spec to archive
     await fs.rename(sourceDir, archiveDir);
-    
-    // Clean up approvals
-    const approvalsDir = PathUtils.getSpecApprovalPath(this.projectPath, specName);
-    await fs.rm(approvalsDir, { recursive: true, force: true });
   }
 }
 ```
@@ -287,7 +271,6 @@ export class SpecArchiveService {
 .spec-workflow/           # 755 (rwxr-xr-x)
 ├── specs/               # 755 (rwxr-xr-x)
 ├── steering/            # 755 (rwxr-xr-x)
-├── approvals/           # 755 (rwxr-xr-x)
 └── archive/             # 755 (rwxr-xr-x)
 ```
 
@@ -319,7 +302,6 @@ if (!safePath.startsWith(projectPath)) {
 | Design | 10-50 KB | 200 KB |
 | Tasks | 5-30 KB | 150 KB |
 | Steering Docs | 5-20 KB | 100 KB |
-| Approval Data | < 1 KB | 5 KB |
 | Session Data | < 1 KB | 2 KB |
 
 ### Disk Usage Estimation
@@ -329,7 +311,6 @@ if (!safePath.startsWith(projectPath)) {
 interface DiskUsage {
   singleSpec: '50-200 KB';      // All 3 documents
   steeringDocs: '20-100 KB';    // All steering documents  
-  approvalData: '1-10 KB';      // Per approval workflow
   sessionData: '< 1 KB';        // Session tracking
   totalTypical: '100-500 KB';   // For small-medium project
   totalLarge: '1-5 MB';         // For large project with many specs
@@ -340,9 +321,6 @@ interface DiskUsage {
 
 ```bash
 # Manual cleanup commands
-
-# Remove completed approvals (older than 30 days)
-find .spec-workflow/approvals -name "*.json" -mtime +30 -delete
 
 # Archive old specifications
 # (Move specs with all tasks completed to archive/)

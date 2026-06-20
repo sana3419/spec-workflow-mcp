@@ -133,58 +133,78 @@ To use a different port:
   spec-workflow-mcp --dashboard --port 8080
 ```
 
-## 配置文件（已弃用）
+## 引擎配置文件（config.toml）
+
+本 fork 驱动一个代码生成引擎以及一个可选的自动循环。两者均通过写入
+`<project-dir>/.spec-workflow/config.toml` 的 TOML 文件进行配置。
 
 ### 默认位置
 
 服务器在以下位置查找配置：`<project-dir>/.spec-workflow/config.toml`
 
+该文件由 `bash init.sh <project-dir>` 为你生成。通常你应就地编辑它，而非从头编写。
+
 ### 文件格式
 
-配置使用 TOML 格式。以下是完整示例：
+配置使用 TOML 格式。以下是本 fork 使用的完整结构：
 
 ```toml
-# 项目目录（默认为当前目录）
-projectDir = "/path/to/your/project"
+[engine]
+default = "codex"        # codex | claude
+maxFixAttempts = 5       # red→fix 闭环上限，超过则任务标 blocked
 
-# 仪表板端口（1024-65535）
-port = 3456
+[engine.codex]
+sandbox = "workspace-write"   # read-only | workspace-write | danger-full-access
+approvalPolicy = "never"      # untrusted | on-failure | on-request | never
+# model = "..."              # 可选 — 建议保持注释，让 Codex 用最新默认模型
 
-# 运行纯仪表板模式
-dashboardOnly = false
-
-# 界面语言
-# 选项：en, ja, zh, es, pt, de, fr, ru, it, ko, ar
-lang = "en"
-
-# 声音通知（仅限 VSCode 扩展）
-[notifications]
-enabled = true
-volume = 0.5
-
-# 高级设置
-[advanced]
-# WebSocket 重连尝试次数
-maxReconnectAttempts = 10
-
-# 文件监视器设置
-[watcher]
-enabled = true
-debounceMs = 300
+[loop]
+autoLoop = false         # true = Stop hook 驱动 Phase 4 自动跑到完成（opt-in）
+maxIterations = 50       # 自动循环硬上限（主安全阀）
+noProgressStop = 3       # 连续 N 轮 tasks.md / verify-results 无变化则停
 ```
 
 ### 配置选项
 
-#### 基本设置
+#### `[engine]` — 引擎选择
 
-| 选项 | 类型 | 默认值 | 描述 |
-|--------|------|---------|-------------|
-| `projectDir` | string | 当前目录 | 项目目录路径 |
-| `port` | number | 临时端口 | 仪表板端口（1024-65535） |
-| `dashboardOnly` | boolean | false | 运行仪表板而不运行 MCP 服务器 |
-| `lang` | string | "en" | 界面语言 |
+| 选项 | 类型 | 取值域 | 默认值 | 描述 |
+|--------|------|--------|---------|-------------|
+| `default` | string | `codex`、`claude` | `codex` | 执行编码任务的引擎。`codex` 将任务派发给 Codex MCP 服务器；`claude` 则在宿主 Claude 会话中执行。 |
+| `maxFixAttempts` | number | ≥ 1 | `5` | 单个任务 red→fix 闭环的最大迭代次数。当某任务持续未通过验证并超过此上限时，会被标记为 `blocked`，而非无限循环。 |
 
-> **注意**：`autoStartDashboard` 选项在 v2.0.0 中已移除。仪表板现在使用统一的多项目模式，可通过 `--dashboard` 标志访问。
+#### `[engine.codex]` — Codex 引擎设置
+
+这些字段仅在当前引擎为 `codex` 时生效。在派发任务时，它们会被映射到 Codex MCP 工具调用的参数上。
+
+| 选项 | 类型 | 取值域 | 默认值 | 描述 |
+|--------|------|--------|---------|-------------|
+| `sandbox` | string | `read-only`、`workspace-write`、`danger-full-access` | `workspace-write` | 授予 Codex 的文件系统访问级别。`read-only` 禁止写入；`workspace-write` 允许在工作区内编辑；`danger-full-access` 完全移除沙箱。 |
+| `approvalPolicy` | string | `untrusted`、`on-failure`、`on-request`、`never` | `never` | Codex 何时暂停以请求审批。映射为 Codex MCP 工具入参 `approval-policy`。`never` 表示全程无人值守；其余取值会在对应条件下拦截执行。 |
+| `model` | string | 任意 Codex 模型 id | _（省略）_ | 可选。覆盖 Codex 模型。省略时使用 Codex 默认模型。 |
+
+`sandbox`、`approvalPolicy` 和 `model` 的取值会在派发时被翻译为 Codex MCP 工具调用参数
+（其中 `approvalPolicy` 对应工具入参 `approval-policy`）。
+
+#### `[loop]` — Phase 4 自动循环
+
+控制可选的自动循环，它会反复运行 Phase 4 直至 spec 完成。
+
+| 选项 | 类型 | 取值域 | 默认值 | 描述 |
+|--------|------|--------|---------|-------------|
+| `autoLoop` | boolean | `true`、`false` | `false` | 主开关。为 `true` 时，已注册的 Stop hook 会自动重新触发 Phase 4 直至完成。opt-in。 |
+| `maxIterations` | number | ≥ 1 | `50` | 自动循环迭代次数的硬上限；保证循环终止的主安全阀。 |
+| `noProgressStop` | number | ≥ 1 | `3` | 连续该轮数内 `tasks.md` 或 verify-results 无变化时停止循环，以避免在卡住的任务上空转。 |
+
+#### 如何生成与切换
+
+- **生成**：`bash init.sh <project-dir>` 会将上述 `config.toml` 写入
+  `<project-dir>/.spec-workflow/`。
+- **启用自动循环**：向 `init.sh` 传入 `--auto-loop` 会把 `[loop].autoLoop` 置为 `true`，
+  并在项目的 `.claude/settings.json` 中注册 Phase 4 Stop hook。
+- **`autoLoop` 只有在 Stop hook 已注册后才生效** —— 即你至少跑过一次
+  `init.sh ... --auto-loop`。在该 hook 存在之前，手动编辑 `[loop].autoLoop` 不会有任何效果。
+- **暂停自动循环**：将 `autoLoop = false`。无需移除 hook，仅翻转该标志即可停止自动循环。
 
 #### 语言选项
 

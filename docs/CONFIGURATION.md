@@ -223,58 +223,85 @@ To use a different port:
   spec-workflow-mcp --dashboard --port 8080
 ```
 
-## Configuration File (Deprecated)
+## Engine Configuration File (config.toml)
+
+This fork drives a code-generation engine and an optional autonomous loop. Both are
+configured through a TOML file written to `<project-dir>/.spec-workflow/config.toml`.
 
 ### Default Location
 
 The server looks for configuration at: `<project-dir>/.spec-workflow/config.toml`
 
+This file is generated for you by `bash init.sh <project-dir>`. You normally edit it
+in place rather than writing it from scratch.
+
 ### File Format
 
-Configuration uses TOML format. Here's a complete example:
+Configuration uses TOML format. Here is the complete structure used by this fork:
 
 ```toml
-# Project directory (defaults to current directory)
-projectDir = "/path/to/your/project"
+[engine]
+default = "codex"        # codex | claude
+maxFixAttempts = 5       # red→fix loop cap; exceeding it marks the task "blocked"
 
-# Dashboard port (1024-65535)
-port = 3456
+[engine.codex]
+sandbox = "workspace-write"   # read-only | workspace-write | danger-full-access
+approvalPolicy = "never"      # untrusted | on-failure | on-request | never
+# model = "..."              # optional — leave commented out to use Codex's latest default (recommended)
 
-# Run dashboard-only mode
-dashboardOnly = false
-
-# Interface language
-# Options: en, ja, zh, es, pt, de, fr, ru, it, ko, ar
-lang = "en"
-
-# Sound notifications (VSCode extension only)
-[notifications]
-enabled = true
-volume = 0.5
-
-# Advanced settings
-[advanced]
-# WebSocket reconnection attempts
-maxReconnectAttempts = 10
-
-# File watcher settings
-[watcher]
-enabled = true
-debounceMs = 300
+[loop]
+autoLoop = false         # true = Stop hook drives Phase 4 to completion (opt-in)
+maxIterations = 50       # hard cap on auto-loop iterations (primary safety valve)
+noProgressStop = 3       # stop after N iterations with no tasks.md / verify-results change
 ```
 
 ### Configuration Options
 
-#### Basic Settings
+#### `[engine]` — Engine Selection
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `projectDir` | string | Current directory | Project directory path |
-| `port` | number | Ephemeral | Dashboard port (1024-65535) |
-| `dashboardOnly` | boolean | false | Run dashboard without MCP server |
-| `lang` | string | "en" | Interface language |
+| Option | Type | Domain | Default | Description |
+|--------|------|--------|---------|-------------|
+| `default` | string | `codex`, `claude` | `codex` | Which engine executes coding tasks. `codex` dispatches to the Codex MCP server; `claude` runs the work in the host Claude session. |
+| `maxFixAttempts` | number | ≥ 1 | `5` | Maximum number of red→fix iterations on a single task. When a task keeps failing verification past this cap, it is marked `blocked` instead of looping forever. |
 
-> **Note**: The `autoStartDashboard` option was removed in v2.0.0. The dashboard now uses a unified multi-project mode accessible via `--dashboard` flag.
+#### `[engine.codex]` — Codex Engine Settings
+
+These fields apply only when the active engine is `codex`. They are mapped onto the
+parameters of the Codex MCP tool call when a task is dispatched.
+
+| Option | Type | Domain | Default | Description |
+|--------|------|--------|---------|-------------|
+| `sandbox` | string | `read-only`, `workspace-write`, `danger-full-access` | `workspace-write` | Filesystem access level granted to Codex. `read-only` forbids writes; `workspace-write` allows edits inside the workspace; `danger-full-access` removes the sandbox entirely. |
+| `approvalPolicy` | string | `untrusted`, `on-failure`, `on-request`, `never` | `never` | When Codex pauses to ask for approval. Mapped to the Codex MCP tool's `approval-policy` argument. `never` runs unattended; the others gate execution on the named condition. |
+| `model` | string | any Codex model id | _(omitted)_ | Optional. Overrides the Codex model. When omitted, the Codex default model is used. |
+
+The `sandbox`, `approvalPolicy`, and `model` values are translated into Codex MCP tool
+call arguments at dispatch time (in particular, `approvalPolicy` becomes the tool input
+`approval-policy`).
+
+#### `[loop]` — Phase 4 Auto-Loop
+
+Controls the optional autonomous loop that repeatedly runs Phase 4 until the spec is
+complete.
+
+| Option | Type | Domain | Default | Description |
+|--------|------|--------|---------|-------------|
+| `autoLoop` | boolean | `true`, `false` | `false` | Master switch. When `true`, the registered Stop hook re-triggers Phase 4 automatically until completion. Opt-in. |
+| `maxIterations` | number | ≥ 1 | `50` | Hard cap on auto-loop iterations; the primary safety valve that guarantees the loop terminates. |
+| `noProgressStop` | number | ≥ 1 | `3` | Stop the loop after this many consecutive iterations with no change to `tasks.md` or the verify-results, to avoid spinning on a stuck task. |
+
+#### How These Are Generated and Toggled
+
+- **Generation**: `bash init.sh <project-dir>` writes the `config.toml` above into
+  `<project-dir>/.spec-workflow/`.
+- **Enabling the auto-loop**: passing `--auto-loop` to `init.sh` sets
+  `[loop].autoLoop = true` and registers the Phase 4 Stop hook in the project's
+  `.claude/settings.json`.
+- **`autoLoop` only takes effect once the Stop hook is registered** — i.e. after you have
+  run `init.sh ... --auto-loop` at least once. Editing `[loop].autoLoop` by hand has no
+  effect until that hook exists.
+- **Pausing the auto-loop**: set `autoLoop = false`. You do not need to remove the hook;
+  flipping the flag is enough to stop the autonomous loop.
 
 #### Language Options
 

@@ -333,11 +333,9 @@ src/
 │   ├── spec-*.ts           # Spec management tools
 │   ├── create-*.ts         # Document creation
 │   ├── get-*.ts            # Context loading
-│   ├── manage-*.ts         # Status management
-│   └── *-approval.ts       # Approval workflow
+│   └── manage-*.ts         # Status management
 ├── dashboard/              # Dashboard backend
 │   ├── server.ts          # Fastify server
-│   ├── approval-storage.ts # Approval persistence
 │   ├── parser.ts          # Dashboard-specific parsing
 │   ├── watcher.ts         # File system watching
 │   └── utils.ts           # Dashboard utilities
@@ -354,7 +352,6 @@ src/dashboard_frontend/src/
 ├── modules/
 │   ├── api/              # API communication
 │   ├── app/              # Main app component
-│   ├── approvals/        # Approval UI components
 │   ├── editor/           # Markdown editing
 │   ├── markdown/         # Markdown rendering
 │   ├── modals/           # Modal dialogs

@@ -1,6 +1,6 @@
 # MCP Tools API Reference
 
-> **Quick Nav**: [Workflow Tools](#workflow-tools) | [Content Tools](#content-tools) | [Search Tools](#search-tools) | [Status Tools](#status-tools) | [Approval Tools](#approval-tools)
+> **Quick Nav**: [Workflow Tools](#workflow-tools) | [Content Tools](#content-tools) | [Search Tools](#search-tools) | [Status Tools](#status-tools)
 
 ## 📋 Tool Categories
 
@@ -10,7 +10,6 @@
 | **Content** | `create-spec-doc`, `create-steering-doc`, `get-template-context` | Create and template documents |
 | **Search** | `get-spec-context`, `get-steering-context`, `spec-list` | Find and load existing content |
 | **Status** | `spec-status`, `manage-tasks` | Track progress |
-| **Approval** | `request-approval`, `get-approval-status`, `delete-approval` | Manage approval workflow |
 
 ## 🔄 Workflow Tools
 
@@ -36,7 +35,7 @@
   nextSteps: [
     "Follow sequence: Requirements → Design → Tasks → Implementation",
     "Load templates with get-template-context first",
-    "Request approval after each document"
+    "Present each document to the user for approval in conversation"
   ]
 }
 ```
@@ -46,9 +45,8 @@
 
 **Key Rules**:
 - ✅ Always use MCP tools, never manual document creation
-- ✅ Get explicit approval between each phase
+- ✅ Get explicit user approval in conversation between each phase
 - ✅ Complete phases in sequence (no skipping)
-- ❌ Never proceed on verbal approval - dashboard/VS Code only
 
 **Planning Process Architecture**:
 - ✅ **Template-Based Structure**: Uses static templates from `/src/markdown/templates/`
@@ -56,7 +54,7 @@
 - ✅ **LLM Built-in Knowledge**: LLM applies software engineering best practices using its training
 - ✅ **LLM Web Research**: LLM can perform web searches for current technologies and practices
 - ✅ **Workflow Validation**: Server enforces proper sequence and structure
-- ✅ **Human Review Required**: All LLM-generated content requires dashboard/VS Code approval
+- ✅ **Human Review Required**: The assistant presents each document to the user, who approves it in conversation before proceeding
 
 **Content Generation Flow**:
 ```mermaid
@@ -79,7 +77,7 @@ sequenceDiagram
     
     LLM->>MCP: create-spec-doc(intelligent_content)
     MCP->>FS: Save LLM-generated document
-    MCP-->>LLM: Document created, approval required
+    MCP-->>LLM: Document created, present to user for approval
     
     Note over MCP: MCP server provides structure,<br/>LLM provides intelligence
 ```
@@ -132,7 +130,7 @@ sequenceDiagram
 // Response
 {
   success: true,
-  message: "Created requirements.md at: .spec-workflow/specs/user-authentication/requirements.md\n\nBLOCKING: Must request approval via dashboard or VS Code extension.",
+  message: "Created requirements.md at: .spec-workflow/specs/user-authentication/requirements.md\n\nBLOCKING: Present this document to the user and proceed only after they approve it in conversation.",
   data: {
     specName: "user-authentication",
     document: "requirements",
@@ -146,7 +144,7 @@ sequenceDiagram
 - ❌ Cannot create `tasks.md` without `design.md`
 - ✅ Auto-creates `.spec-workflow/specs/` directory structure
 
-**Next Step**: Always call `request-approval` immediately after creation
+**Next Step**: Present the created document to the user and proceed only after they approve it in conversation
 
 ---
 
@@ -500,152 +498,6 @@ sequenceDiagram
 
 ---
 
-## ✅ Approval Tools
-
-### `request-approval`
-
-**Purpose**: Request user approval through dashboard interface
-
-**Usage**: Call IMMEDIATELY after creating each document
-
-```typescript
-// Parameters
-{
-  projectPath: "/absolute/path/to/project",
-  title: "Requirements Document Review",
-  filePath: ".spec-workflow/specs/user-auth/requirements.md",  // Relative to project root
-  type: "document",                    // "document" | "action"
-  category: "spec",                    // "spec" | "steering" 
-  categoryName: "user-auth"           // Spec name or "steering"
-}
-
-// Response
-{
-  success: true,
-  message: "Approval request created successfully. Please review in dashboard: http://localhost:3456",
-  data: {
-    approvalId: "user-auth-requirements-20241215-143022",
-    title: "Requirements Document Review",
-    filePath: ".spec-workflow/specs/user-auth/requirements.md",
-    status: "pending",
-    dashboardUrl: "http://localhost:3456"
-  },
-  nextSteps: [
-    "BLOCKING - Dashboard or VS Code extension approval required",
-    "VERBAL APPROVAL NOT ACCEPTED", 
-    "Poll status with: get-approval-status \"user-auth-requirements-20241215-143022\""
-  ]
-}
-```
-
-**Critical Rules**:
-- ❌ **Never include document content** - only provide `filePath`
-- ❌ **Verbal approval not accepted** - dashboard/VS Code only
-- ✅ **Wait for explicit approval** before proceeding
-
----
-
-### `get-approval-status`
-
-**Purpose**: Check the status of a pending approval request
-
-**Usage**: Poll until approved or needs revision
-
-```typescript
-// Parameters  
-{
-  projectPath: "/absolute/path/to/project",
-  approvalId: "user-auth-requirements-20241215-143022"
-}
-
-// Response - Pending
-{
-  success: true,
-  message: "Approval status retrieved",
-  data: {
-    status: "pending",
-    approvalId: "user-auth-requirements-20241215-143022",
-    createdAt: "2024-12-15T14:30:22Z"
-  },
-  nextSteps: ["Continue polling until status changes"]
-}
-
-// Response - Approved
-{
-  success: true,  
-  message: "Approval status retrieved",
-  data: {
-    status: "approved",
-    approvalId: "user-auth-requirements-20241215-143022",
-    approvedAt: "2024-12-15T14:35:10Z"
-  },
-  nextSteps: ["Delete approval and proceed to next phase"]
-}
-
-// Response - Needs Revision
-{
-  success: true,
-  message: "Approval status retrieved", 
-  data: {
-    status: "needs-revision",
-    approvalId: "user-auth-requirements-20241215-143022",
-    comments: "Please add more detail to the security requirements section.",
-    rejectedAt: "2024-12-15T14:33:45Z"
-  },
-  nextSteps: [
-    "Update document based on comments",
-    "Create new approval request",
-    "Do NOT proceed to next phase"
-  ]
-}
-```
-
-**Status Values**:
-- `pending`: Awaiting user review
-- `approved`: Ready to proceed
-- `needs-revision`: Requires changes  
-- `rejected`: Not approved (rare)
-
----
-
-### `delete-approval`
-
-**Purpose**: Clean up completed, rejected, or needs-revision approvals. Cannot delete pending approvals.
-
-**Usage**: Call to clean up old approval requests after workflow completion
-
-```typescript
-// Parameters
-{
-  projectPath: "/absolute/path/to/project",
-  approvalId: "user-auth-requirements-20241215-143022"
-}
-
-// Response - Success
-{
-  success: true,
-  message: "Approval deleted successfully",
-  data: {
-    approvalId: "user-auth-requirements-20241215-143022",
-    deleted: true
-  },
-  nextSteps: ["Proceed to next phase"]
-}
-
-// Response - Failed
-{
-  success: false,
-  message: "Failed to delete approval: Approval not found or is still pending",
-  nextSteps: [
-    "Check approval status first",
-    "Cannot delete pending approvals - wait for approval/rejection/revision",
-    "Can delete: approved, rejected, or needs-revision status"
-  ]
-}
-```
-
-**Note**: Pending approvals cannot be deleted. You can delete approvals with status: `approved`, `rejected`, or `needs-revision`.
-
 ## 🔄 Common Usage Patterns
 
 ### Starting a New Spec
@@ -654,10 +506,8 @@ sequenceDiagram
 2. get-steering-context(projectPath)  // Optional
 3. get-template-context(projectPath, "spec", "requirements")
 4. create-spec-doc(projectPath, specName, "requirements", content)
-5. request-approval(projectPath, title, filePath, "document", "spec", specName)
-6. get-approval-status(projectPath, approvalId) // Poll until approved
-7. delete-approval(projectPath, approvalId)
-8. // Repeat for design, then tasks
+5. // Present requirements.md to the user; proceed only after they approve it in conversation
+6. // Repeat for design, then tasks
 ```
 
 ### Implementing Tasks

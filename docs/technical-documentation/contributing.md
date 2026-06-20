@@ -454,7 +454,7 @@ develop                 # Integration branch for features
 
 # Feature branches  
 feature/add-new-tool   # New features
-bugfix/fix-approval    # Bug fixes
+bugfix/fix-parser      # Bug fixes
 docs/update-api        # Documentation updates
 chore/update-deps      # Maintenance tasks
 ```

@@ -82,36 +82,6 @@ npx -y @pimzino/spec-workflow-mcp@latest --help
 
 ---
 
-### Approval System Not Working  
-
-**Symptoms**: Approvals stay "pending", buttons don't work
-
-**Debugging Steps**:
-
-1. **Check Approval Files**
-   ```bash
-   ls -la .spec-workflow/approvals/
-   # Should show approval JSON files
-   ```
-
-2. **Browser Console Errors**
-   - Open browser DevTools (F12)  
-   - Check Console tab for JavaScript errors
-   - Check Network tab for failed requests
-
-3. **WebSocket Connection**
-   ```javascript
-   // In browser console
-   console.log('WebSocket state:', WebSocket.CONNECTING);
-   // Should show active connection
-   ```
-
-4. **Clear Browser Cache**
-   - Hard refresh (Ctrl+Shift+R)
-   - Clear localStorage/cookies for dashboard domain
-
----
-
 ### File Permission Errors
 
 **Symptoms**: "EACCES", "Permission denied" errors
@@ -130,7 +100,7 @@ npx -y @pimzino/spec-workflow-mcp@latest --help
 2. **`.spec-workflow/` Directory**
    ```bash
    # Create directory manually if needed
-   mkdir -p .spec-workflow/specs .spec-workflow/steering .spec-workflow/approvals
+   mkdir -p .spec-workflow/specs .spec-workflow/steering
    
    # Fix permissions
    chmod -R 755 .spec-workflow/
@@ -249,17 +219,8 @@ console.log('Platform:', process.platform);
 
 **Solution**: Follow workflow order:
 1. Create requirements.md first
-2. Get approval
+2. Get the user's approval in conversation
 3. Then create design.md
-
-### `Approval not found or still pending`
-
-**Meaning**: Trying to delete approval that doesn't exist or isn't approved
-
-**Solutions**:
-1. Check approval status first
-2. Wait for approval before deletion  
-3. Don't proceed without successful cleanup
 
 ### `Port X is already in use`
 
@@ -295,11 +256,11 @@ rm -rf .spec-workflow/
 
 ### Q: Can multiple AI clients use the same project?
 
-**A**: Yes, but only one dashboard per project. Multiple MCP clients can connect, but they'll share the same approval workflow.
+**A**: Yes, but only one dashboard per project. Multiple MCP clients can connect, and they'll share the same project data.
 
-### Q: Why do approval requests need dashboard/VS Code approval?
+### Q: How are Phase 1-3 documents approved?
 
-**A**: This prevents runaway AI behavior. The system requires human oversight for document approval to maintain quality and control.
+**A**: The assistant presents each document (requirements.md, design.md, tasks.md) to you in conversation and proceeds only after you approve it. This human oversight prevents runaway AI behavior and maintains quality and control.
 
 ### Q: Can I customize the templates?
 
@@ -472,7 +433,7 @@ echo -e "\n=== End Diagnostics ==="
 ```bash
 # Collect all relevant logs
 mkdir -p debug-logs
-find .spec-workflow/approvals -name "*.json" -exec cp {} debug-logs/ \; 2>/dev/null
+cp -r .spec-workflow/specs debug-logs/ 2>/dev/null
 echo "Logs collected in debug-logs/"
 ```
 

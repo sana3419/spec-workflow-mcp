@@ -30,7 +30,6 @@ graph TB
     subgraph "Dashboard Backend"
         DASH[Dashboard Server]
         WS[WebSocket Manager]
-        APPROVAL[Approval Storage]
         WATCHER[File Watcher]
     end
     
@@ -49,7 +48,6 @@ graph TB
     
     SERVER --> DASH
     DASH --> WS
-    DASH --> APPROVAL
     DASH --> WATCHER
     
     TOOLS --> PARSER
@@ -58,7 +56,6 @@ graph TB
     
     PARSER --> WORKFLOW
     TASKS --> WORKFLOW
-    APPROVAL --> WORKFLOW
     WATCHER --> WORKFLOW
     WORKFLOW --> FS
 ```
@@ -104,7 +101,7 @@ graph TB
 2. **No Separate External Calls**: MCP server makes no independent API calls (except NPM version check)
 3. **LLM-Powered Content Generation**: The connected LLM generates all content using its built-in understanding
 4. **Structured Workflow**: Provides templates and enforces workflow, letting LLM fill in intelligent content
-5. **Human Approval Gateway**: All LLM-generated content requires human review before proceeding
+5. **Human Approval Gateway**: The assistant presents each phase document to the user, who approves it in conversation before the workflow proceeds
 
 ### Detailed Capability Analysis & Expansion Opportunities
 
@@ -114,7 +111,7 @@ graph TB
 | **AI-Powered Analysis** | ❌ No independent AI calls | ✅ LLM provides all analysis | 🔮 Could add: Specialized analysis tools, code quality metrics | Other agents: Multiple AI model integration |
 | **Context Window Management** | ❌ No LLM context management | ✅ LLM manages conversation context | 🔮 Could add: Context optimization, memory management | Other agents: Advanced context strategies |
 | **External Integrations** | ❌ Only NPM version check | ✅ LLM can call external APIs | 🔮 Could add: GitHub integration, CI/CD hooks, database connections | Other agents: Extensive API ecosystems |
-| **Auto Review Process** | ❌ Human approval only | ✅ LLM can analyze and review | 🔮 Could add: Automated quality gates, AI-powered approvals | Other agents: Multi-stage AI review |
+| **Auto Review Process** | ❌ User approves documents in conversation | ✅ LLM can analyze and review | 🔮 Could add: Automated quality gates, AI-powered reviews | Other agents: Multi-stage AI review |
 | **Best Practice Standards** | ❌ Static templates only | ✅ LLM has current best practices | 🔮 Could add: Dynamic template updates, standards APIs | Other agents: Live standards databases |
 | **Planning & Orchestration** | ❌ Fixed workflow sequence | ✅ LLM can plan and reason | 🔮 Could add: Dynamic workflows, adaptive planning | Other agents: Complex orchestration engines |
 
@@ -239,10 +236,7 @@ const tools = [
   'get-spec-context', 'get-steering-context', 'get-template-context',
   
   // Status management
-  'spec-list', 'spec-status', 'manage-tasks',
-  
-  // Approval workflow
-  'request-approval', 'get-approval-status', 'delete-approval'
+  'spec-list', 'spec-status', 'manage-tasks'
 ];
 ```
 
@@ -286,10 +280,10 @@ interface ToolContext {
 
 ```mermaid
 sequenceDiagram
+    participant USER as User
     participant AI as AI Assistant
     participant MCP as MCP Server
     participant FS as File System
-    participant DASH as Dashboard
     
     AI->>MCP: spec-workflow-guide
     MCP-->>AI: Workflow instructions
@@ -303,16 +297,10 @@ sequenceDiagram
     MCP->>FS: Write requirements.md
     MCP-->>AI: File created
     
-    AI->>MCP: request-approval
-    MCP->>DASH: Create approval
-    MCP-->>AI: Approval requested
+    AI->>USER: Present requirements.md for review
+    USER-->>AI: Approve in conversation
     
-    Note over DASH: User reviews in dashboard
-    
-    AI->>MCP: get-approval-status
-    MCP->>DASH: Check status
-    DASH-->>MCP: Approved
-    MCP-->>AI: Status: approved
+    Note over AI,USER: Proceed to next phase only after approval
 ```
 
 ### 2. Real-time Dashboard Updates
@@ -345,8 +333,6 @@ project-root/
 │   │   ├── product.md           # Product vision
 │   │   ├── tech.md              # Technical standards
 │   │   └── structure.md         # Code organization
-│   ├── approvals/               # Approval workflow data
-│   │   └── spec-name/           # Per-spec approvals
 │   └── archive/                 # Archived specs
 └── [your project files]        # Existing project
 ```
@@ -357,7 +343,6 @@ project-root/
 |-----------|---------|--------------|
 | `specs/` | Specification documents | ✅ |  
 | `steering/` | Project guidance | ✅ |
-| `approvals/` | Approval workflow | On-demand |
 | `archive/` | Completed specs | On-demand |
 
 ## 🌐 Dashboard Architecture
@@ -414,11 +399,6 @@ src/
 - **Client**: Maintains connection to dashboard WebSocket
 - **Persistence**: `~/.spec-workflow-mcp/activeProjects.json` (global registry)
 
-### Approval State  
-- **Storage**: JSON files in `approvals/` directory
-- **Lifecycle**: pending → approved/rejected → archived
-- **Sync**: Real-time updates via WebSocket
-
 ### Spec State
 - **Parsing**: On-demand from markdown files
 - **Caching**: In-memory with file change invalidation  
@@ -457,7 +437,6 @@ interface ResourceLimits {
   // Per-project memory usage
   templates: "~50KB (cached at startup)";
   specContext: "10-100KB per spec";
-  approvalData: "1-5KB per approval";
   sessionData: "<1KB per project";
   
   // Recommended project limits
@@ -505,8 +484,7 @@ File watch depth: .spec-workflow/ only
 1. "Template pre-loading and permanent caching";
 2. "LRU cache for spec contexts (50 entries max)";
 3. "Debounced file watching (500ms)";
-4. "Lazy loading of approval data";
-5. "Efficient path resolution with PathUtils";
+4. "Efficient path resolution with PathUtils";
 ```
 
 **Memory Management**:
@@ -515,12 +493,10 @@ File watch depth: .spec-workflow/ only
 interface MemoryOptimization {
   templateCache: "Permanent - small static data";
   specCache: "LRU with 50MB limit";
-  approvalStorage: "On-demand loading";
   sessionTracking: "Minimal metadata only";
   
   cleanup: {
     specCacheEviction: "LRU when limit reached";
-    approvalCleanup: "Manual deletion after approval";
     sessionExpiry: "On server restart";
   };
 }

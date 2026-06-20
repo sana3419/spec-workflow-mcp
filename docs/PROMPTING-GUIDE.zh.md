@@ -1,5 +1,7 @@
 # 提示指南
 
+> ⚠️ **上游参考文档 —— 对本 fork 已部分过时。** 本文描述的是原版 Pimzino spec-workflow-mcp。本 fork 有差异:编码任务派发给 **OpenAI Codex**(非多引擎/DeepSeek/Gemini);文档审批改为**在对话中确认**(**没有**网页审批页、没有 VS Code 审批扩展、也没有 `approvals` MCP 工具);MCP server 暴露 **5 个工具**(`spec-workflow-guide`、`steering-guide`、`spec-status`、`verify-task`、`log-implementation`)。当前真实行为请看项目 **README** 与生成的 **CLAUDE.md**。
+
 一个全面的指南，包含通过 AI 助手与 Spec Workflow MCP 交互的示例和最佳实践。
 
 ## 快速参考

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] (fork)
+
+### Changed
+- **Switch to Codex-only dispatch via the Codex MCP server.** Removed the DeepSeek (Crush), Gemini, and `ai-cli-mcp` dispatch layer. Claude now dispatches coding to OpenAI Codex through `codex mcp-server`, using `mcp__codex__codex` (new session) and `mcp__codex__codex-reply` (continue session).
+- **Per-spec Codex session reuse.** Each spec keeps one Codex `threadId` in `.spec-workflow/specs/<spec>/.codex-thread`; follow-up tasks and red→fix retries reuse the session for context continuity, only opening a new session for a new/unrelated spec.
+- **Engine config (`[engine.codex]`).** `engine.default` is now `codex`; added `[engine.codex]` with `sandbox` (default `workspace-write`), `approvalPolicy` (default `never`), and optional `model` (left unset by default so Codex uses its latest model). Removed `engine.deepseekModel`.
+- **Removed the web/dashboard approval system.** Deleted the `approvals` MCP tool, the dashboard approval page/components/storage/routes/WebSocket events, and all related tests. Phase 1–3 documents are now approved **in conversation** (present to the user → proceed on confirmation). The MCP server now exposes **5 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`). The dashboard remains for monitoring (Kanban / specs / tasks / logs / statistics).
+
+### Added
+- **Phase 4 auto-loop (opt-in).** `bash init.sh <proj> --auto-loop` registers a Claude Code Stop hook (`templates/hooks/spec-loop-stop.sh`) that keeps Claude in Phase 4 until all tasks are `[x]`/`[~]`. New `[loop]` config (`autoLoop`, `maxIterations`, `noProgressStop`); gated by an `.autoloop-active` marker; safety stops + audit log (`.spec-workflow/loop-audit.log`). Default remains prompt-driven.
+
+### Fixed
+- Corrected the optional-MCP integration: `/review` skill now uses the real `code-review-graph` / `gitnexus` tool names; `init.sh --with-nexus` indexes the repo (`gitnexus analyze`); clearer `--with-understand` (manual install) messaging.
+
+### Other
+- Updated `init.sh`, the CLAUDE.md/AGENTS.md templates, the `/qa` `/tdd` `/review` skills, and the EN/ZH README + docs (auto-loop, config reference, in-conversation approval; outdated upstream docs carry a fork banner).
+
 ## [2.2.7] - 2026-05-04
 
 ### Added

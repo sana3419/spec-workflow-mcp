@@ -257,7 +257,6 @@ class FileWatcher {
 **Watched Paths**:
 - `.spec-workflow/specs/**/*.md` - Specification documents
 - `.spec-workflow/steering/*.md` - Steering documents
-- `.spec-workflow/approvals/**/*.json` - Approval records
 
 ### Context Loading Pipeline
 

@@ -1,12 +1,11 @@
 # Dashboard System
 
-> **TL;DR**: Real-time web dashboard for monitoring specs, managing approvals, and tracking progress.
+> **TL;DR**: Real-time web dashboard for monitoring specs and tracking progress.
 
 ## 🌐 Dashboard Overview
 
 The dashboard provides a web interface for:
 - **Specification Management** - View, create, and organize specs
-- **Approval Workflow** - Review and approve documents  
 - **Task Tracking** - Monitor implementation progress
 - **Real-time Updates** - Live sync via WebSocket
 - **Document Viewing** - Browse markdown documents with syntax highlighting
@@ -45,10 +44,6 @@ sequenceDiagram
     FS->>Server: File Modified
     Server->>Browser: Real-time Update
     Browser->>Browser: Update UI
-    
-    Browser->>Server: Approval Action
-    Server->>FS: Update Approval
-    Server->>Browser: Confirmation
     
     MCP->>Server: Tool Request
     Server-->>MCP: Tool Response
@@ -99,7 +94,6 @@ npm run dev:dashboard
 ├─────────────────────────────────────┤
 │ 📋 Specs      │ Main Content Area   │
 │ 📝 Steering   │                     │
-│ ✅ Approvals  │                     │  
 │ 📊 Tasks      │                     │
 │ 📈 Statistics │                     │
 └─────────────────────────────────────┘
@@ -119,20 +113,6 @@ interface SpecsPageProps {
 // - Show status (not-started, in-progress, ready, implementing, completed)
 // - Progress bars for task completion
 // - Quick actions (view, archive, delete)
-```
-
-#### Approval Page (`ApprovalsPage.tsx`)
-```typescript
-interface ApprovalsPageProps {
-  approvals: ApprovalData[];
-  onApprovalAction: (id: string, action: 'approve' | 'reject') => void;
-}
-
-// Features:
-// - List pending approvals
-// - Document preview with syntax highlighting
-// - Approve/reject with comments
-// - Real-time status updates
 ```
 
 #### Spec Viewer (`SpecViewerPage.tsx`)
@@ -208,7 +188,7 @@ const WebSocketProvider = ({ children }: { children: React.ReactNode }) => {
 **Message Types**:
 ```typescript
 interface WebSocketMessage {
-  type: 'initial' | 'specs-updated' | 'approval-updated' | 'task-updated';
+  type: 'initial' | 'specs-updated' | 'task-updated';
   data: any;
   timestamp: string;
 }
@@ -217,17 +197,12 @@ interface WebSocketMessage {
 const messages = {
   initial: {
     type: 'initial',
-    data: { specs: [], approvals: [] }
+    data: { specs: [] }
   },
   
   specsUpdated: {
     type: 'specs-updated', 
     data: { specs: [/* updated specs */] }
-  },
-  
-  approvalUpdated: {
-    type: 'approval-updated',
-    data: { approvalId: '...', status: 'approved' }
   }
 };
 ```
@@ -363,13 +338,6 @@ const routes = {
   'PUT /api/specs/:name': 'Update spec metadata',
   'DELETE /api/specs/:name': 'Delete specification',
   
-  // Approvals
-  'GET /api/approvals': 'List pending approvals',
-  'GET /api/approvals/:id': 'Get approval details',
-  'POST /api/approvals/:id/approve': 'Approve document',
-  'POST /api/approvals/:id/reject': 'Reject with comments',
-  'DELETE /api/approvals/:id': 'Delete approval',
-  
   // Tasks
   'GET /api/tasks/:specName': 'Get tasks for specification',
   'PUT /api/tasks/:specName/:taskId': 'Update task status',
@@ -395,28 +363,6 @@ export class MultiProjectDashboardServer {
         }
         const specs = await project.parser.getAllSpecs();
         reply.send({ success: true, data: specs });
-      } catch (error) {
-        reply.status(500).send({ success: false, error: error.message });
-      }
-    });
-
-    // Approve document
-    this.app.post('/api/projects/:projectId/approvals/:id/approve', async (request, reply) => {
-      try {
-        const { projectId, id } = request.params as { projectId: string; id: string };
-        const project = this.projectManager.getProject(projectId);
-        if (!project) {
-          return reply.code(404).send({ error: 'Project not found' });
-        }
-        await project.approvalStorage.approveDocument(id);
-
-        // Broadcast update to project subscribers
-        this.broadcastToProjectClients(projectId, 'approval-updated', {
-          approvalId: id,
-          status: 'approved'
-        });
-
-        reply.send({ success: true });
       } catch (error) {
         reply.status(500).send({ success: false, error: error.message });
       }
@@ -463,13 +409,13 @@ const VirtualizedTaskList = ({ tasks }: { tasks: TaskData[] }) => {
 ```typescript
 // Code splitting for pages
 const SpecsPage = lazy(() => import('./modules/pages/SpecsPage'));
-const ApprovalsPage = lazy(() => import('./modules/pages/ApprovalsPage'));
+const TasksPage = lazy(() => import('./modules/pages/TasksPage'));
 
 // Suspense boundaries
 <Suspense fallback={<LoadingSpinner />}>
   <Routes>
     <Route path="/specs" element={<SpecsPage />} />
-    <Route path="/approvals" element={<ApprovalsPage />} />
+    <Route path="/tasks" element={<TasksPage />} />
   </Routes>
 </Suspense>
 ```
@@ -551,7 +497,6 @@ DEBUG=dashboard:server,dashboard:watcher npm run dev:dashboard
 # Test endpoints directly
 curl -X GET http://localhost:3456/api/specs
 curl -X GET http://localhost:3456/api/health
-curl -X POST http://localhost:3456/api/approvals/test-id/approve
 ```
 
 ---
