@@ -5,7 +5,6 @@
 #        bash init.sh /path/to/project         → initialize target directory
 #        bash init.sh /path --with-graph       → add code-review-graph (save tokens)
 #        bash init.sh /path --with-nexus       → add GitNexus (dependency analysis)
-#        bash init.sh /path --with-understand  → add Understand-Anything (visualization)
 #        bash init.sh /path --with-all         → install all three
 #        bash init.sh /path --force            → overwrite CLAUDE.md/skills/agents
 #        bash init.sh /path --auto-loop        → enable Phase 4 auto-loop (Stop hook driver)
@@ -13,13 +12,12 @@
 set -e
 
 # Parse arguments
-WITH_GRAPH=""; WITH_NEXUS=""; WITH_UNDERSTAND=""; WITH_ALL=""; FORCE=""; AUTO_LOOP=""
+WITH_GRAPH=""; WITH_NEXUS=""; WITH_ALL=""; FORCE=""; AUTO_LOOP=""
 POSITIONAL=""
 for arg in "$@"; do
   case $arg in
     --with-graph)      WITH_GRAPH=1 ;;
     --with-nexus)      WITH_NEXUS=1 ;;
-    --with-understand) WITH_UNDERSTAND=1 ;;
     --with-all)        WITH_ALL=1 ;;
     --force)           FORCE=1 ;;
     --auto-loop)       AUTO_LOOP=1 ;;
@@ -288,15 +286,8 @@ if [ "$WITH_NEXUS" = "1" ] || [ "$WITH_ALL" = "1" ]; then
   MCP_INSTALLED="1"
 fi
 
-if [ "$WITH_UNDERSTAND" = "1" ]; then
-  echo "[10/11] NOTE: Understand-Anything is NOT auto-configured by this script."
-  echo "  It is a Claude Code plugin — install it manually from inside Claude Code:"
-  echo "    /plugin install understand-anything"
-  MCP_INSTALLED="1"
-fi
-
 if [ -z "$MCP_INSTALLED" ]; then
-  echo "[10/11] Skipping optional code intelligence MCP (use --with-graph / --with-nexus / --with-understand / --with-all)"
+  echo "[10/11] Skipping optional code intelligence MCP (use --with-graph / --with-nexus / --with-all)"
 fi
 
 # 11. Check dependencies (required vs optional)

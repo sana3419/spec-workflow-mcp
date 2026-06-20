@@ -45,9 +45,9 @@ codex login    # First run: sign in with your ChatGPT account (or configure an O
 bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 ```
 
-Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-understand` (Understand-Anything — prints manual install instructions, see below), `--with-all`, `--auto-loop` (enable the Phase 4 Stop-hook loop), `--force` (overwrite existing).
+Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all` (graph + nexus), `--auto-loop` (enable the Phase 4 Stop-hook loop), `--force` (overwrite existing).
 
-> `--with-understand` does **not** auto-install. It is a Claude Code plugin; from inside Claude Code run `/plugin install understand-anything`.
+> Want codebase visualization? [Understand-Anything](https://github.com/Lum1104/Understand-Anything) is a separate Claude Code plugin (not managed by `init.sh`) — install it from inside Claude Code with `/plugin install understand-anything`.
 
 ### Step 4: Start
 

@@ -50,13 +50,12 @@ bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 ```bash
 bash templates/init.sh /path --with-graph       # code-review-graph（省 token）
 bash templates/init.sh /path --with-nexus       # GitNexus（依赖分析）
-bash templates/init.sh /path --with-understand  # Understand-Anything（仅提示手动安装，见下）
-bash templates/init.sh /path --with-all         # 全部安装
+bash templates/init.sh /path --with-all         # 安装 graph + nexus
 bash templates/init.sh /path --auto-loop        # 开启阶段4自动循环（Stop hook 驱动）
 bash templates/init.sh /path --force            # 强制覆盖 CLAUDE.md/skills/agents
 ```
 
-> `--with-understand` **不会自动安装**。它是 Claude Code 插件；请在 Claude Code 内运行 `/plugin install understand-anything` 手动安装。
+> 想要代码库可视化?[Understand-Anything](https://github.com/Lum1104/Understand-Anything) 是一个独立的 Claude Code 插件(**不由 `init.sh` 托管**)——需要的话在 Claude Code 内运行 `/plugin install understand-anything` 手动安装。
 
 ### 第 4 步：开始使用
 
@@ -294,13 +293,11 @@ python3 tools/gen-report.py docs/report/report.md -o docs/report/report.docx --i
 
 ## 可选：代码智能 MCP
 
-通过 init.sh 参数安装：
-
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| [code-review-graph](https://github.com/tirth8205/code-review-graph) | `--with-graph` | Tree-sitter 知识图谱，review 时省 6.8-49x token |
-| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | `--with-nexus` | 函数/依赖图谱，影响分析，重构辅助 |
-| [Understand-Anything](https://github.com/Lum1104/Understand-Anything) | `--with-understand` | 多代理扫描 + React 可视化，理解新项目 |
+| 工具 | 安装方式 | 用途 |
+|------|---------|------|
+| [code-review-graph](https://github.com/tirth8205/code-review-graph) | `init.sh --with-graph` | Tree-sitter 知识图谱，review 时省 6.8-49x token |
+| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | `init.sh --with-nexus` | 函数/依赖图谱，影响分析，重构辅助 |
+| [Understand-Anything](https://github.com/Lum1104/Understand-Anything) | Claude Code 内 `/plugin install understand-anything`（独立插件，init.sh 不托管） | 多代理扫描 + React 可视化，理解新项目 |
 
 ## 致谢
 
