@@ -122,7 +122,7 @@ export interface ParsedTask {
   prompt?: string;                     // AI prompt for this task (full text)
   promptStructured?: PromptSection[];  // Structured prompt sections (if prompt contains pipe separators)
   blockedReason?: string;              // Reason the task is blocked (from _Blocked: reason_)
-  engine?: string;                     // Execution engine (e.g., 'deepseek', 'gemini', 'claude')
+  engine?: string;                     // Execution engine (e.g., 'codex', 'claude')
 
   // For backward compatibility
   completed: boolean;                  // true if status === 'completed'

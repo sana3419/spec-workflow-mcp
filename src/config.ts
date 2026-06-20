@@ -12,11 +12,22 @@ export interface SpecWorkflowConfig {
   dashboardOnly?: boolean;
   lang?: string;
 
-  // Engine configuration for multi-engine dispatch
+  // Engine configuration for Codex dispatch
   engine?: {
-    default?: string;        // Default engine: 'deepseek', 'gemini', 'claude'
-    deepseekModel?: string;  // Model for deepseek engine (e.g., 'auto', 'deepseek-v4-pro')
-    maxFixAttempts?: number;  // Max fix attempts before blocking task
+    default?: string;        // Default engine: 'codex' or 'claude'
+    maxFixAttempts?: number; // Max fix attempts before blocking task
+    codex?: {
+      model?: string;          // Optional Codex model override (omit to use Codex default)
+      sandbox?: string;        // 'read-only' | 'workspace-write' | 'danger-full-access'
+      approvalPolicy?: string; // 'untrusted' | 'on-failure' | 'on-request' | 'never'
+    };
+  };
+
+  // Phase 4 implementation loop (consumed by the Stop hook in autoLoop mode)
+  loop?: {
+    autoLoop?: boolean;      // false = prompt-driven; true = Stop hook drives the loop
+    maxIterations?: number;  // Hard cap on auto-loop iterations (primary safety stop)
+    noProgressStop?: number; // Stop after N consecutive iterations with no tasks.md change
   };
 
   // Security features
@@ -106,16 +117,41 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
   if (config.engine !== undefined) {
     const eng = config.engine;
     if (eng.default !== undefined) {
-      const validEngines = ['deepseek', 'gemini', 'claude', 'codex'];
+      const validEngines = ['codex', 'claude'];
       if (typeof eng.default !== 'string' || !validEngines.includes(eng.default)) {
         return { valid: false, error: `Invalid engine.default: must be one of ${validEngines.join(', ')}.` };
       }
     }
-    if (eng.deepseekModel !== undefined && typeof eng.deepseekModel !== 'string') {
-      return { valid: false, error: `Invalid engine.deepseekModel: must be a string.` };
-    }
     if (eng.maxFixAttempts !== undefined && (typeof eng.maxFixAttempts !== 'number' || eng.maxFixAttempts < 1)) {
       return { valid: false, error: `Invalid engine.maxFixAttempts: must be a positive number.` };
+    }
+    if (eng.codex !== undefined) {
+      const cx = eng.codex;
+      if (cx.model !== undefined && typeof cx.model !== 'string') {
+        return { valid: false, error: `Invalid engine.codex.model: must be a string.` };
+      }
+      const validSandbox = ['read-only', 'workspace-write', 'danger-full-access'];
+      if (cx.sandbox !== undefined && (typeof cx.sandbox !== 'string' || !validSandbox.includes(cx.sandbox))) {
+        return { valid: false, error: `Invalid engine.codex.sandbox: must be one of ${validSandbox.join(', ')}.` };
+      }
+      const validApproval = ['untrusted', 'on-failure', 'on-request', 'never'];
+      if (cx.approvalPolicy !== undefined && (typeof cx.approvalPolicy !== 'string' || !validApproval.includes(cx.approvalPolicy))) {
+        return { valid: false, error: `Invalid engine.codex.approvalPolicy: must be one of ${validApproval.join(', ')}.` };
+      }
+    }
+  }
+
+  // Validate loop configuration
+  if (config.loop !== undefined) {
+    const lp = config.loop;
+    if (lp.autoLoop !== undefined && typeof lp.autoLoop !== 'boolean') {
+      return { valid: false, error: `Invalid loop.autoLoop: must be a boolean.` };
+    }
+    if (lp.maxIterations !== undefined && (typeof lp.maxIterations !== 'number' || lp.maxIterations < 1)) {
+      return { valid: false, error: `Invalid loop.maxIterations: must be a positive number.` };
+    }
+    if (lp.noProgressStop !== undefined && (typeof lp.noProgressStop !== 'number' || lp.noProgressStop < 1)) {
+      return { valid: false, error: `Invalid loop.noProgressStop: must be a positive number.` };
     }
   }
 
@@ -197,9 +233,21 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
 
     if (parsedConfig.engine !== undefined) {
       config.engine = {
-        default: parsedConfig.engine.default || 'deepseek',
-        deepseekModel: parsedConfig.engine.deepseekModel || 'auto',
+        default: parsedConfig.engine.default || 'codex',
         maxFixAttempts: parsedConfig.engine.maxFixAttempts || 5,
+        codex: {
+          model: parsedConfig.engine.codex?.model,
+          sandbox: parsedConfig.engine.codex?.sandbox || 'workspace-write',
+          approvalPolicy: parsedConfig.engine.codex?.approvalPolicy || 'never',
+        },
+      };
+    }
+
+    if (parsedConfig.loop !== undefined) {
+      config.loop = {
+        autoLoop: parsedConfig.loop.autoLoop ?? false,
+        maxIterations: parsedConfig.loop.maxIterations || 50,
+        noProgressStop: parsedConfig.loop.noProgressStop || 3,
       };
     }
 

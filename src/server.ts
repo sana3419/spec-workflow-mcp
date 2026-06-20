@@ -93,15 +93,23 @@ export class SpecWorkflowMCPServer {
       }
 
       // Load engine config
-      let engineConfig = { default: 'deepseek', deepseekModel: 'auto', maxFixAttempts: 5 };
+      let engineConfig = {
+        default: 'codex',
+        maxFixAttempts: 5,
+        codex: { sandbox: 'workspace-write', approvalPolicy: 'never' as string | undefined, model: undefined as string | undefined },
+      };
       try {
         const { loadConfigFile } = await import('./config.js');
         const configResult = loadConfigFile(this.projectPath);
         if (configResult.config?.engine) {
           engineConfig = {
             default: configResult.config.engine.default || engineConfig.default,
-            deepseekModel: configResult.config.engine.deepseekModel || engineConfig.deepseekModel,
             maxFixAttempts: configResult.config.engine.maxFixAttempts || engineConfig.maxFixAttempts,
+            codex: {
+              sandbox: configResult.config.engine.codex?.sandbox || engineConfig.codex.sandbox,
+              approvalPolicy: configResult.config.engine.codex?.approvalPolicy || engineConfig.codex.approvalPolicy,
+              model: configResult.config.engine.codex?.model || engineConfig.codex.model,
+            },
           };
         }
       } catch { /* Use defaults if config loading fails */ }

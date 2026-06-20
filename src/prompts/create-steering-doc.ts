@@ -50,7 +50,7 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 2. Check if steering docs exist at: .spec-workflow/steering/
 3. Create comprehensive content following the template structure
 4. Create the document at: .spec-workflow/steering/${docType}.md
-5. After creating, use approvals tool with action:'request' to get user approval
+5. After creating the document, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 **File Paths:**
 - Template location: .spec-workflow/templates/${docType}-template.md

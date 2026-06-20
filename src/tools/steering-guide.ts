@@ -53,39 +53,30 @@ flowchart TD
     Guide --> P1_Template[Check user-templates first,<br/>then read template:<br/>product-template.md]
     P1_Template --> P1_Generate[Generate vision & goals]
     P1_Generate --> P1_Create[Create file:<br/>.spec-workflow/steering/<br/>product.md]
-    P1_Create --> P1_Approve[approvals<br/>action: request<br/>filePath only]
-    P1_Approve --> P1_Status[approvals<br/>action: status<br/>poll status]
-    P1_Status --> P1_Check{Status?}
-    P1_Check -->|needs-revision| P1_Update[Update document using user comments for guidance]
+    P1_Create --> P1_Approve[Ask user to review &<br/>approve in chat]
+    P1_Approve --> P1_Check{Approved?}
+    P1_Check -->|changes| P1_Update[Update document using user comments for guidance]
     P1_Update --> P1_Create
-    P1_Check -->|approved| P1_Clean[approvals<br/>action: delete]
-    P1_Clean -->|failed| P1_Status
 
     %% Phase 2: Tech
-    P1_Clean -->|success| P2_Template[Check user-templates first,<br/>then read template:<br/>tech-template.md]
+    P1_Check -->|approved| P2_Template[Check user-templates first,<br/>then read template:<br/>tech-template.md]
     P2_Template --> P2_Analyze[Analyze tech stack]
     P2_Analyze --> P2_Create[Create file:<br/>.spec-workflow/steering/<br/>tech.md]
-    P2_Create --> P2_Approve[approvals<br/>action: request<br/>filePath only]
-    P2_Approve --> P2_Status[approvals<br/>action: status<br/>poll status]
-    P2_Status --> P2_Check{Status?}
-    P2_Check -->|needs-revision| P2_Update[Update document using user comments for guidance]
+    P2_Create --> P2_Approve[Ask user to review &<br/>approve in chat]
+    P2_Approve --> P2_Check{Approved?}
+    P2_Check -->|changes| P2_Update[Update document using user comments for guidance]
     P2_Update --> P2_Create
-    P2_Check -->|approved| P2_Clean[approvals<br/>action: delete]
-    P2_Clean -->|failed| P2_Status
 
     %% Phase 3: Structure
-    P2_Clean -->|success| P3_Template[Check user-templates first,<br/>then read template:<br/>structure-template.md]
+    P2_Check -->|approved| P3_Template[Check user-templates first,<br/>then read template:<br/>structure-template.md]
     P3_Template --> P3_Analyze[Analyze codebase structure]
     P3_Analyze --> P3_Create[Create file:<br/>.spec-workflow/steering/<br/>structure.md]
-    P3_Create --> P3_Approve[approvals<br/>action: request<br/>filePath only]
-    P3_Approve --> P3_Status[approvals<br/>action: status<br/>poll status]
-    P3_Status --> P3_Check{Status?}
-    P3_Check -->|needs-revision| P3_Update[Update document using user comments for guidance]
+    P3_Create --> P3_Approve[Ask user to review &<br/>approve in chat]
+    P3_Approve --> P3_Check{Approved?}
+    P3_Check -->|changes| P3_Update[Update document using user comments for guidance]
     P3_Update --> P3_Create
-    P3_Check -->|approved| P3_Clean[approvals<br/>action: delete]
-    P3_Clean -->|failed| P3_Status
 
-    P3_Clean -->|success| Complete([Steering docs complete])
+    P3_Check -->|approved| Complete([Steering docs complete])
 
     style Start fill:#e6f3ff
     style Complete fill:#e6f3ff
@@ -106,7 +97,6 @@ flowchart TD
 
 **Tools**:
 - steering-guide: Load workflow instructions
-- approvals: Manage approval workflow (actions: request, status, delete)
 
 **Process**:
 1. Load steering guide for workflow overview
@@ -114,11 +104,7 @@ flowchart TD
 3. If no custom template, read from \`.spec-workflow/templates/product-template.md\`
 4. Generate product vision and goals
 5. Create \`product.md\` at \`.spec-workflow/steering/product.md\`
-6. Request approval using approvals tool with action:'request' (filePath only)
-7. Poll status using approvals with action:'status' until approved/needs-revision (NEVER accept verbal approval)
-8. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-9. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-10. If delete fails: STOP - return to polling
+6. After creating product.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 ### Phase 2: Tech Document
 **Purpose**: Document technology decisions and architecture.
@@ -128,20 +114,13 @@ flowchart TD
 - Read template: \`.spec-workflow/templates/tech-template.md\` (if no custom template)
 - Create document: \`.spec-workflow/steering/tech.md\`
 
-**Tools**:
-- approvals: Manage approval workflow (actions: request, status, delete)
-
 **Process**:
 1. Check for custom template at \`.spec-workflow/user-templates/tech-template.md\`
 2. If no custom template, read from \`.spec-workflow/templates/tech-template.md\`
 3. Analyze existing technology stack
 4. Document architectural decisions and patterns
 5. Create \`tech.md\` at \`.spec-workflow/steering/tech.md\`
-6. Request approval using approvals tool with action:'request'
-7. Poll status using approvals with action:'status' until approved/needs-revision
-8. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-9. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-10. If delete fails: STOP - return to polling
+6. After creating tech.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 ### Phase 3: Structure Document
 **Purpose**: Map codebase organization and patterns.
@@ -151,21 +130,14 @@ flowchart TD
 - Read template: \`.spec-workflow/templates/structure-template.md\` (if no custom template)
 - Create document: \`.spec-workflow/steering/structure.md\`
 
-**Tools**:
-- approvals: Manage approval workflow (actions: request, status, delete)
-
 **Process**:
 1. Check for custom template at \`.spec-workflow/user-templates/structure-template.md\`
 2. If no custom template, read from \`.spec-workflow/templates/structure-template.md\`
 3. Analyze directory structure and file organization
 4. Document coding patterns and conventions
 5. Create \`structure.md\` at \`.spec-workflow/steering/structure.md\`
-6. Request approval using approvals tool with action:'request'
-7. Poll status using approvals with action:'status' until approved/needs-revision
-8. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-9. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-10. If delete fails: STOP - return to polling
-11. After successful cleanup: "Steering docs complete. Ready for spec creation?"
+6. After creating structure.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
+7. After the user confirms: "Steering docs complete. Ready for spec creation?"
 
 ## Workflow Rules
 
@@ -173,13 +145,9 @@ flowchart TD
 - Check for custom templates in \`.spec-workflow/user-templates/\` first
 - Read templates from \`.spec-workflow/templates/\` directory if no custom template exists
 - Follow exact template structures
-- Get explicit user approval between phases (using approvals tool with action:'request')
+- Get explicit user approval between phases by presenting each document and asking the user to approve it in chat
 - Complete phases in sequence (no skipping)
-- Approval requests: provide filePath only, never content
-- BLOCKING: Never proceed if approval delete fails
-- CRITICAL: Must have approved status AND successful cleanup before next phase
-- CRITICAL: Verbal approval is NEVER accepted - dashboard or VS Code extension only
-- NEVER proceed on user saying "approved" - check system status only
+- CRITICAL: Proceed to the next phase only after the user confirms approval in chat
 
 ## File Structure
 \`\`\`

@@ -5,7 +5,7 @@ import { encode } from '@toon-format/toon';
 export interface AutomationJob {
   id: string;
   name: string;
-  type: 'cleanup-approvals' | 'cleanup-specs' | 'cleanup-archived-specs';
+  type: 'cleanup-specs' | 'cleanup-archived-specs';
   enabled: boolean;
   config: {
     daysOld: number; // Number of days to keep; delete older records
@@ -55,10 +55,16 @@ export interface JobExecutionLog {
   lastUpdated?: string;
 }
 
+export interface CodexConfig {
+  model?: string;
+  sandbox?: string;
+  approvalPolicy?: string;
+}
+
 export interface EngineConfig {
   default: string;
-  deepseekModel: string;
   maxFixAttempts: number;
+  codex?: CodexConfig;
 }
 
 export interface ToolContext {

@@ -11,7 +11,7 @@ export const specStatusTool: Tool = {
   description: `Display comprehensive specification progress overview.
 
 # Instructions
-Call when resuming work on a spec or checking overall completion status. Shows which phases are complete and task implementation progress. After viewing status, read tasks.md directly to see all tasks and their status markers ([ ] pending, [-] in-progress, [x] completed).`,
+Call when resuming work on a spec or checking overall completion status. Shows which phases are complete and task implementation progress. After viewing status, read tasks.md directly to see all tasks and their status markers ([ ] pending, [-] in-progress, [x] completed, [~] blocked).`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -200,16 +200,15 @@ async function getNextTaskInfo(
     const next = findNextPendingTask(parsed.tasks);
     if (!next) return {};
 
-    const defaultEngine = context.engineConfig?.default || 'deepseek';
+    const defaultEngine = context.engineConfig?.default || 'codex';
     const engine = next.engine || defaultEngine;
-    const deepseekModel = context.engineConfig?.deepseekModel || 'auto';
 
     return {
       nextTask: {
         id: next.id,
         name: next.description,
         engine,
-        dispatchHint: generateDispatchHint(engine, deepseekModel, specName, next.id)
+        dispatchHint: buildDispatchHint(engine, context, specName, next.id)
       }
     };
   } catch {
@@ -217,17 +216,21 @@ async function getNextTaskInfo(
   }
 }
 
-function generateDispatchHint(engine: string, deepseekModel: string, specName: string, taskId: string): string {
-  switch (engine) {
-    case 'deepseek':
-      return `deepseek ${deepseekModel !== 'auto' ? '--model ' + deepseekModel + ' ' : ''}-p "Implement task ${taskId} for spec ${specName}"`;
-    case 'gemini':
-      return `gemini -p "Review/implement task ${taskId} for spec ${specName}"`;
-    case 'codex':
-      return `codex -p "Implement task ${taskId} for spec ${specName}"`;
-    case 'claude':
-      return `Implement task ${taskId} directly (Claude is the current engine)`;
-    default:
-      return `Implement task ${taskId} for spec ${specName} using ${engine}`;
+function buildDispatchHint(engine: string, context: ToolContext, specName: string, taskId: string): string {
+  if (engine === 'claude') {
+    return `Implement task ${taskId} directly (Claude is the current engine).`;
   }
+  // Default: Codex via its MCP server, reusing the per-spec session thread.
+  const cx = context.engineConfig?.codex;
+  const sandbox = cx?.sandbox || 'workspace-write';
+  const approval = cx?.approvalPolicy || 'never';
+  const model = cx?.model ? `, model="${cx.model}"` : '';
+  return [
+    `Dispatch task ${taskId} of spec ${specName} to Codex (do NOT write the code yourself):`,
+    `1. Read .spec-workflow/specs/${specName}/.codex-thread.`,
+    `   - If missing: call mcp__codex__codex(prompt=..., sandbox="${sandbox}", approval-policy="${approval}"${model}), then save the returned threadId to that file.`,
+    `   - If present: call mcp__codex__codex-reply(threadId=<file>, prompt=...) to reuse the spec session.`,
+    `2. Tell Codex WHICH files to read/edit and to write a report to .spec-workflow/reports/codex-${taskId}-<timestamp>.md ending with a structured summary block.`,
+    `3. Run tests, then verify-task (green→log-implementation; red→codex-reply with the failure log, up to maxFixAttempts).`,
+  ].join('\n');
 }

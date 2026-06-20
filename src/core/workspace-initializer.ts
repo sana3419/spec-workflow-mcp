@@ -34,8 +34,7 @@ export class WorkspaceInitializer {
     const workflowRoot = PathUtils.getWorkflowRoot(this.projectPath);
     
     const directories = [
-      'approvals',
-      'archive', 
+      'archive',
       'specs',
       'steering',
       'templates',

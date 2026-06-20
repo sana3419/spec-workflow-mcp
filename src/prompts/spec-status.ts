@@ -5,7 +5,7 @@ import { ToolContext } from '../types.js';
 const prompt: Prompt = {
   name: 'spec-status',
   title: 'Specification Status Overview',
-  description: 'Get comprehensive status overview of specification documents, tasks, and approval workflows. Useful for project tracking and progress reporting.',
+  description: 'Get comprehensive status overview of specification documents, tasks, and user confirmation status. Useful for project tracking and progress reporting.',
   arguments: [
     {
       name: 'specName',
@@ -14,7 +14,7 @@ const prompt: Prompt = {
     },
     {
       name: 'detailed',
-      description: 'Show detailed status including task breakdown and approval history',
+      description: 'Show detailed status including task breakdown and confirmation status',
       required: false
     }
   ]
@@ -43,7 +43,7 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 ${specName ? 
   `1. Use the spec-status tool with specName "${specName}" to get status information
 2. If you need detailed task information, read the tasks.md file directly at .spec-workflow/specs/${specName}/tasks.md
-3. Check for any pending approvals using approvals tool with action:'status'` :
+3. Note which documents the user has confirmed/approved in the conversation` :
   `1. List directory .spec-workflow/specs/ to see all specifications
 2. Use the spec-status tool to get status for each specification
 3. Provide a consolidated overview of project progress`}
@@ -51,7 +51,7 @@ ${specName ?
 **Status Information Includes:**
 - **Document Status**: Which documents exist (requirements, design, tasks)
 - **Task Progress**: Completion status and remaining work
-- **Approval Status**: Pending, approved, or rejected approvals
+- **Confirmation Status**: Which documents the user has approved in the conversation
 - **File Information**: Last modified dates and file sizes
 - **Workflow Stage**: Current phase in the spec-driven development process
 
@@ -59,12 +59,12 @@ ${specName ?
 1. **Planning**: Requirements document created and approved
 2. **Design**: Design document created and approved  
 3. **Implementation**: Tasks defined and implementation in progress
-4. **Review**: Implementation complete, awaiting final approval
-5. **Complete**: All tasks complete and approved
+4. **Review**: Implementation complete, awaiting final user confirmation
+5. **Complete**: All tasks complete and confirmed by the user
 
 ${detailed ? `**Detailed Information Includes:**
 - Individual task breakdown with completion status
-- Approval request history and reviewer comments
+- Which documents the user has confirmed/approved in the conversation
 - File modification timestamps
 - Steering document references
 - Dependency tracking between specs` : ''}

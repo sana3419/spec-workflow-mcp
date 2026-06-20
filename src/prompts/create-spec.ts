@@ -59,7 +59,7 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 4. Include all required sections from the template
 5. Use clear, actionable language
 6. Create the document at: .spec-workflow/specs/${specName}/${documentType}.md
-7. After creating, use approvals tool with action:'request' to get user approval
+7. After creating the document, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 **File Paths:**
 - Template location: .spec-workflow/templates/${documentType}-template.md
@@ -79,7 +79,7 @@ ${documentType === 'tasks' ? `
 - Make prompts specific to the project context and requirements
 - Include _Leverage fields pointing to existing code to reuse
 - Include _Requirements fields showing which requirements each task implements
-- Include _Engine fields when tasks should use a specific engine (e.g., _Engine: deepseek_, _Engine: gemini_, _Engine: claude_). Default is deepseek if omitted.
+- Include _Engine fields when tasks should use a specific engine (e.g., _Engine: codex_, _Engine: claude_). Default is codex if omitted.
 - Tasks should be atomic (1-3 files each) and in logical order
 
 **Implementation Logging:**

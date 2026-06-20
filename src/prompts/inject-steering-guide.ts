@@ -40,8 +40,8 @@ ${nextSteps.map(step => `- ${step}`).join('\n')}
 3. Follow the sequence exactly: product.md → tech.md → structure.md
 4. Read templates from .spec-workflow/templates/ directory
 5. Create documents in .spec-workflow/steering/ directory
-6. Request approval after each document using the approvals tool
-7. Never proceed to the next document without successful approval cleanup
+6. Present each document to the user and ask them to review and approve it in the chat
+7. Never proceed to the next document until the user confirms approval in chat
 
 **Note:** Steering documents are NOT part of the standard spec workflow. They are project-level guidance documents that should only be created when explicitly requested by the user. These documents establish vision, architecture, and conventions for established codebases.
 

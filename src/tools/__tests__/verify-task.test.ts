@@ -26,7 +26,7 @@ describe('verify-task', () => {
 
     context = {
       projectPath: testDir,
-      engineConfig: { default: 'deepseek', deepseekModel: 'auto', maxFixAttempts: 3 }
+      engineConfig: { default: 'codex', maxFixAttempts: 3, codex: { sandbox: 'workspace-write', approvalPolicy: 'never' } }
     };
   });
 

@@ -259,14 +259,6 @@ export class PathUtils {
     return this.safeJoin(projectPath, '.spec-workflow', 'commands');
   }
 
-  static getApprovalsPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'approvals');
-  }
-
-  static getSpecApprovalPath(projectPath: string, specName: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'approvals', specName);
-  }
-
 
   // Ensure paths work across Windows, macOS, Linux
   static toPlatformPath(path: string): string {
@@ -363,7 +355,7 @@ export async function ensureDirectoryExists(dirPath: string): Promise<void> {
 export async function ensureWorkflowDirectory(projectPath: string): Promise<string> {
   const workflowRoot = PathUtils.getWorkflowRoot(projectPath);
   
-  // Create all necessary subdirectories (approvals created on-demand)
+  // Create all necessary subdirectories
   const directories = [
     workflowRoot,
     PathUtils.getSpecPath(projectPath, ''),

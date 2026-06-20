@@ -35,7 +35,7 @@ export async function specWorkflowGuideHandler(args: any, context: ToolContext):
     nextSteps: [
       'Follow sequence: Requirements → Design → Tasks → Implementation',
       'Load templates with get-template-context first',
-      'Request approval after each document',
+      'Present each document to the user and get their approval in chat',
       'Use MCP tools only',
       dashboardMessage
     ]
@@ -62,48 +62,39 @@ flowchart TD
     P1_Load --> P1_Template[Check user-templates first,<br/>then read template:<br/>requirements-template.md]
     P1_Template --> P1_Research[Web search if available]
     P1_Research --> P1_Create[Create file:<br/>.spec-workflow/specs/{name}/<br/>requirements.md]
-    P1_Create --> P1_Approve[approvals<br/>action: request<br/>filePath only]
-    P1_Approve --> P1_Status[approvals<br/>action: status<br/>poll status]
-    P1_Status --> P1_Check{Status?}
-    P1_Check -->|needs-revision| P1_Update[Update document using user comments as guidance]
+    P1_Create --> P1_Approve[Ask user to review &<br/>approve in chat]
+    P1_Approve --> P1_Check{Approved?}
+    P1_Check -->|changes| P1_Update[Update document using user comments as guidance]
     P1_Update --> P1_Create
-    P1_Check -->|approved| P1_Clean[approvals<br/>action: delete]
-    P1_Clean -->|failed| P1_Status
 
     %% Phase 2: Design
-    P1_Clean -->|success| P2_Template[Check user-templates first,<br/>then read template:<br/>design-template.md]
+    P1_Check -->|approved| P2_Template[Check user-templates first,<br/>then read template:<br/>design-template.md]
     P2_Template --> P2_Analyze[Analyze codebase patterns]
     P2_Analyze --> P2_Create[Create file:<br/>.spec-workflow/specs/{name}/<br/>design.md]
-    P2_Create --> P2_Approve[approvals<br/>action: request<br/>filePath only]
-    P2_Approve --> P2_Status[approvals<br/>action: status<br/>poll status]
-    P2_Status --> P2_Check{Status?}
-    P2_Check -->|needs-revision| P2_Update[Update document using user comments as guidance]
+    P2_Create --> P2_Approve[Ask user to review &<br/>approve in chat]
+    P2_Approve --> P2_Check{Approved?}
+    P2_Check -->|changes| P2_Update[Update document using user comments as guidance]
     P2_Update --> P2_Create
-    P2_Check -->|approved| P2_Clean[approvals<br/>action: delete]
-    P2_Clean -->|failed| P2_Status
 
     %% Phase 3: Tasks
-    P2_Clean -->|success| P3_Template[Check user-templates first,<br/>then read template:<br/>tasks-template.md]
+    P2_Check -->|approved| P3_Template[Check user-templates first,<br/>then read template:<br/>tasks-template.md]
     P3_Template --> P3_Break[Convert design to tasks]
     P3_Break --> P3_Create[Create file:<br/>.spec-workflow/specs/{name}/<br/>tasks.md]
-    P3_Create --> P3_Approve[approvals<br/>action: request<br/>filePath only]
-    P3_Approve --> P3_Status[approvals<br/>action: status<br/>poll status]
-    P3_Status --> P3_Check{Status?}
-    P3_Check -->|needs-revision| P3_Update[Update document using user comments as guidance]
+    P3_Create --> P3_Approve[Ask user to review &<br/>approve in chat]
+    P3_Approve --> P3_Check{Approved?}
+    P3_Check -->|changes| P3_Update[Update document using user comments as guidance]
     P3_Update --> P3_Create
-    P3_Check -->|approved| P3_Clean[approvals<br/>action: delete]
-    P3_Clean -->|failed| P3_Status
 
     %% Phase 4: Implementation
-    P3_Clean -->|success| P4_Ready[Spec complete.<br/>Ready to implement?]
+    P3_Check -->|approved| P4_Ready[Spec complete.<br/>Ready to implement?]
     P4_Ready -->|Yes| P4_Status[spec-status]
     P4_Status --> P4_Task[Edit tasks.md:<br/>Change [ ] to [-]<br/>for in-progress]
-    P4_Task --> P4_Code[Implement code]
+    P4_Task --> P4_Code[Dispatch to Codex<br/>via mcp__codex__codex<br/>or implement if _Engine: claude]
     P4_Code --> P4_Verify{verify-task<br/>green/red?}
     P4_Verify -->|green| P4_Log[log-implementation<br/>Record details]
-    P4_Verify -->|red| P4_Fix[Fix failures]
+    P4_Verify -->|red| P4_Fix[codex-reply with<br/>failure log, up to<br/>maxFixAttempts]
     P4_Fix --> P4_Code
-    P4_Log --> P4_Complete[Edit tasks.md:<br/>Change [-] to [x]<br/>for completed]
+    P4_Log --> P4_Complete[verify-task auto-marked<br/>task [x] completed]
     P4_Complete --> P4_More{More tasks?}
     P4_More -->|Yes| P4_Task
     P4_More -->|No| End([Implementation Complete])
@@ -129,20 +120,14 @@ flowchart TD
 - Read template: \`.spec-workflow/templates/requirements-template.md\` (if no custom template)
 - Create document: \`.spec-workflow/specs/{spec-name}/requirements.md\`
 
-**Tools**:
-- approvals: Manage approval workflow (actions: request, status, delete)
-
 **Process**:
 1. Check if \`.spec-workflow/steering/\` exists (if yes, read product.md, tech.md, structure.md)
 2. Check for custom template at \`.spec-workflow/user-templates/requirements-template.md\`
 3. If no custom template, read from \`.spec-workflow/templates/requirements-template.md\`
 4. Research market/user expectations (if web search available, current year: ${currentYear})
-5. Generate requirements as user stories with EARS criteria6. Create \`requirements.md\` at \`.spec-workflow/specs/{spec-name}/requirements.md\`
-7. Request approval using approvals tool with action:'request' (filePath only, never content)
-8. Poll status using approvals with action:'status' until approved/needs-revision (NEVER accept verbal approval)
-9. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-10. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-11. If delete fails: STOP - return to polling
+5. Generate requirements as user stories with EARS criteria
+6. Create \`requirements.md\` at \`.spec-workflow/specs/{spec-name}/requirements.md\`
+7. After creating requirements.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 ### Phase 2: Design
 **Purpose**: Create technical design addressing all requirements.
@@ -152,20 +137,14 @@ flowchart TD
 - Read template: \`.spec-workflow/templates/design-template.md\` (if no custom template)
 - Create document: \`.spec-workflow/specs/{spec-name}/design.md\`
 
-**Tools**:
-- approvals: Manage approval workflow (actions: request, status, delete)
-
 **Process**:
 1. Check for custom template at \`.spec-workflow/user-templates/design-template.md\`
 2. If no custom template, read from \`.spec-workflow/templates/design-template.md\`
 3. Analyze codebase for patterns to reuse
 4. Research technology choices (if web search available, current year: ${currentYear})
-5. Generate design with all template sections6. Create \`design.md\` at \`.spec-workflow/specs/{spec-name}/design.md\`
-7. Request approval using approvals tool with action:'request'
-8. Poll status using approvals with action:'status' until approved/needs-revision
-9. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-10. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-11. If delete fails: STOP - return to polling
+5. Generate design with all template sections
+6. Create \`design.md\` at \`.spec-workflow/specs/{spec-name}/design.md\`
+7. After creating design.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
 
 ### Phase 3: Tasks
 **Purpose**: Break design into atomic implementation tasks.
@@ -174,9 +153,6 @@ flowchart TD
 - Check for custom template: \`.spec-workflow/user-templates/tasks-template.md\`
 - Read template: \`.spec-workflow/templates/tasks-template.md\` (if no custom template)
 - Create document: \`.spec-workflow/specs/{spec-name}/tasks.md\`
-
-**Tools**:
-- approvals: Manage approval workflow (actions: request, status, delete)
 
 **Process**:
 1. Check for custom template at \`.spec-workflow/user-templates/tasks-template.md\`
@@ -189,17 +165,13 @@ flowchart TD
    - Restrictions: what not to do, constraints to follow
    - _Leverage: files/utilities to use
    - _Requirements: requirements that the task implements
-   - _Engine: target execution engine (deepseek, gemini, or claude; omit to use default)
+   - _Engine: target execution engine (codex or claude; omit to use default codex)
    - Success: specific completion criteria
    - Instructions related to setting the task in progress in tasks.md, verifying with verify-task, logging the implementation with log-implementation tool after completion.
    - Start the prompt with "Implement the task for spec {spec-name}, first run spec-workflow-guide to get the workflow guide then implement the task:"
 6. Create \`tasks.md\` at \`.spec-workflow/specs/{spec-name}/tasks.md\`
-7. Request approval using approvals tool with action:'request'
-8. Poll status using approvals with action:'status' until approved/needs-revision
-9. If needs-revision: update document using comments, create NEW approval, do NOT proceed
-10. Once approved: use approvals with action:'delete' (must succeed) before proceeding
-11. If delete fails: STOP - return to polling
-12. After successful cleanup: "Spec complete. Ready to implement?"
+7. After creating tasks.md, present it to the user (share the file path and a 1–2 sentence summary) and ask them to review and approve it in the chat. If the user approves, proceed to the next phase. If they request changes, update the document per their feedback and present it again. Proceed only after the user confirms.
+8. After the user confirms: "Spec complete. Ready to implement?"
 
 ### Phase 4: Implementation
 **Purpose**: Execute tasks systematically.
@@ -240,8 +212,9 @@ flowchart TD
      - Reuse existing code that already solves part of the task
    - **Read the _Prompt field** for guidance on role, approach, and success criteria
    - Follow _Leverage fields to use existing code/utilities
-   - Check _Engine field to determine which engine to use (deepseek, gemini, or claude)
-   - Implement the code according to the task description (dispatch to target engine if needed)
+   - Check _Engine field to determine which engine to use (codex [default] or claude)
+   - For codex tasks: dispatch via the Codex MCP server, reusing the per-spec session (see Codex Dispatch below). Never write the implementation code yourself.
+   - For claude tasks: implement directly
    - Test your implementation
    - **MANDATORY: Call verify-task** with signal='green' (pass) or 'red' (fail):
      - verify-task auto-marks task [x] on green signal
@@ -261,15 +234,37 @@ flowchart TD
      - This creates a searchable knowledge base for future AI agents to discover existing code
      - Prevents implementation details from being lost in chat history
    - verify-task(green) auto-marks [x] — no manual edit needed
-4. Continue until all tasks show \`[x]\`
+4. Continue until every task is \`[x]\` completed or \`[~]\` blocked
 
-### Multi-Engine Dispatch
-Tasks may include an \`_Engine:\` field specifying which AI engine to use:
-- \`deepseek\` (default): Use DeepSeek TUI for coding tasks (supports --model auto)
-- \`gemini\`: Use Gemini CLI for review/analysis tasks (free tier)
-- \`claude\`: Use Claude directly for complex reasoning tasks
-If no \`_Engine:\` field, use the default engine from config (deepseek).
-Use spec-status to see the suggested engine and dispatch command for the next task.
+### Codex Dispatch
+Tasks may include an \`_Engine:\` field specifying which engine to use:
+- \`codex\` (default): Dispatch coding to the Codex MCP server. Never write the code yourself.
+- \`claude\`: Implement directly with Claude (planning/reasoning tasks).
+If no \`_Engine:\` field, use the default engine from config (codex).
+
+**Per-spec session reuse** (efficiency + accuracy):
+- Each spec keeps ONE Codex session in \`.spec-workflow/specs/{spec-name}/.codex-thread\`.
+- First task of a spec → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\`; save the returned threadId to \`.codex-thread\`.
+- Later tasks in the same spec, and any red→fix retry → \`mcp__codex__codex-reply(threadId, prompt)\` so the worker keeps its context.
+- Only if codex-reply fails (stale thread) → start a new \`codex()\` and overwrite \`.codex-thread\`.
+- Tell Codex which files to read/edit and to write a report to \`.spec-workflow/reports/codex-<taskId>-<timestamp>.md\` ending with a structured summary block.
+
+Use spec-status to see the suggested engine and the exact dispatch hint for the next task.
+
+### Phase 4 Loop (authoritative)
+The implementation loop has two execution modes, controlled by \`[loop].autoLoop\` in config.toml:
+
+**Prompt-driven (autoLoop = false, default)** — you drive the loop yourself:
+- Repeat the per-task cycle (dispatch → test → verify-task → log-implementation) until every task is \`[x]\` or \`[~]\` blocked.
+- Inner fix loop: on a red verify-task, reuse the Codex session via codex-reply with the failure log, up to maxFixAttempts; then it is left blocked.
+
+**Auto-loop (autoLoop = true)** — a Stop hook drives Phase 4 to completion:
+- **Entry point**: the moment you begin implementation (after tasks.md is approved by the user in chat and the user confirms "implement", i.e. before working the first task), read \`[loop].autoLoop\` from \`.spec-workflow/config.toml\`. Only if it is \`true\`, write the active spec name into the marker: \`echo "<spec-name>" > .spec-workflow/.autoloop-active\` (just the bare slug, one line). The Stop hook only engages while this marker exists. The marker always reflects the single active spec — overwrite it if you switch specs.
+- Work tasks exactly as in prompt-driven mode. If you try to end your turn while pending/in-progress tasks remain, the Stop hook blocks the stop and re-injects the loop prompt, so keep going to the next task.
+- When every task is \`[x]\` or \`[~]\` blocked, REMOVE the marker (\`rm -f .spec-workflow/.autoloop-active\`) so the loop can end. (The hook also self-removes it once no tasks remain, as a safety net.)
+- Safety stops (handled by the hook): maxIterations cap and noProgressStop (no tasks.md/verify-results change for N iterations); both end the loop automatically. Activity is logged to \`.spec-workflow/loop-audit.log\`.
+- **Fully autonomous — do NOT pause to ask the user mid-loop.** The "what to build" discussion already happened in Phases 1–3; auto-loop only executes already-approved tasks. If a single task genuinely needs a human decision you cannot make (ambiguous, risky/destructive, missing info), do NOT guess and do NOT stop the loop — mark just that task \`[~]\` blocked with a \`_Blocked: reason\` note and move to the next task. The loop ends when only \`[x]\`/\`[~]\` remain; report the blocked tasks to the user then.
+- Activation requires the hook to be registered (\`init.sh --auto-loop\`); flipping \`autoLoop\` in config alone has no effect if the hook was never installed.
 
 ### Phase 5: Research Report (Optional)
 **Purpose**: Generate an academic-style research report in docx format after all tasks are completed.
@@ -282,32 +277,27 @@ Use spec-status to see the suggested engine and dispatch command for the next ta
    - Conclusions and future work
 2. Claude generates SVG technical diagrams (\`docs/report/svg/\`):
    - Architecture diagram, data flow diagram, component diagram
-3. Codex converts SVGs to polished images (\`docs/report/images/\`):
-   - Codex has creative freedom on visual style
-   - Output PNG/JPG for each SVG diagram
+3. Convert SVGs to PNG (\`docs/report/images/\`) with rsvg-convert:
+   - \`for f in docs/report/svg/*.svg; do rsvg-convert -w 1200 "$f" -o "docs/report/images/$(basename "$f" .svg).png"; done\`
 4. Generate docx via: \`python3 <spec-workflow-mcp>/tools/gen-report.py docs/report/report.md -o docs/report/report.docx --images docs/report/images/\`
 
 **Markdown format**: Use # for title, ## for sections (一、二、...), ### for subsections (（一）（二）...), #### for sub-subsections (1．2．...), ![caption](path) for images, | table | for tables, [N] for references.
 
-**Tools**: Claude (report writing + SVG), Codex CLI (image generation), gen-report.py (Markdown→docx)
+**Tools**: Claude (report writing + SVG), rsvg-convert (SVG→PNG), gen-report.py (Markdown→docx)
 
 ## Workflow Rules
 
 - Create documents directly at specified file paths
 - Read templates from \`.spec-workflow/templates/\` directory
 - Follow exact template structures
-- Get explicit user approval between phases (using approvals tool with action:'request')
+- Get explicit user approval between phases by presenting each document and asking the user to approve it in chat
 - Complete phases in sequence (no skipping)
 - One spec at a time
 - Use kebab-case for spec names
-- Approval requests: provide filePath only, never content
-- BLOCKING: Never proceed if approval delete fails
-- CRITICAL: Must have approved status AND successful cleanup before next phase
+- CRITICAL: Proceed to the next phase only after the user confirms approval in chat
 - CRITICAL: Call verify-task with green signal BEFORE log-implementation
-- If _Engine field exists, dispatch to the specified engine
+- If _Engine field exists, dispatch to the specified engine (codex via MCP server, or claude directly)
 - CRITICAL: Every task marked [x] MUST have a corresponding implementation log — call log-implementation BEFORE changing [-] to [x]
-- CRITICAL: Verbal approval is NEVER accepted - dashboard or VS Code extension only
-- NEVER proceed on user saying "approved" - check system status only
 - Steering docs are optional - only create when explicitly requested
 
 ## File Structure

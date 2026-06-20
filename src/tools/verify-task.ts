@@ -55,7 +55,7 @@ This tool does NOT execute tests. You must run tests yourself and report the res
       },
       engine: {
         type: 'string',
-        description: 'Engine used for this task (deepseek, gemini, codex, claude)'
+        description: 'Engine used for this task (codex, claude)'
       },
       usage: {
         type: 'object',
@@ -168,7 +168,7 @@ export async function verifyTaskHandler(
         specName,
         taskId,
         taskName: task.description,
-        engine: engine || task.engine || context.engineConfig?.default || 'claude',
+        engine: engine || task.engine || context.engineConfig?.default || 'codex',
         signal: 'green',
         timestamp: verifyData.lastTimestamp,
         usage: usage || null
@@ -200,7 +200,7 @@ export async function verifyTaskHandler(
 
         await appendUsageLog(projectPath, {
           specName, taskId, taskName: task.description,
-          engine: engine || task.engine || context.engineConfig?.default || 'claude',
+          engine: engine || task.engine || context.engineConfig?.default || 'codex',
           signal: 'blocked', timestamp: verifyData.lastTimestamp,
           usage: usage || null
         });
@@ -230,6 +230,7 @@ export async function verifyTaskHandler(
         },
         nextSteps: [
           `Fix the failures (attempt ${verifyData.fixAttempts}/${maxFixAttempts})`,
+          `For Codex tasks: reuse the spec session via mcp__codex__codex-reply(threadId from .spec-workflow/specs/${specName}/.codex-thread) and pass the failing test output, so the fix keeps the original implementation context`,
           'Re-run tests and call verify-task again'
         ]
       };

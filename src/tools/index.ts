@@ -2,7 +2,6 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { specWorkflowGuideTool, specWorkflowGuideHandler } from './spec-workflow-guide.js';
 import { specStatusTool, specStatusHandler } from './spec-status.js';
 import { steeringGuideTool, steeringGuideHandler } from './steering-guide.js';
-import { approvalsTool, approvalsHandler } from './approvals.js';
 import { logImplementationTool, logImplementationHandler } from './log-implementation.js';
 import { verifyTaskTool, verifyTaskHandler } from './verify-task.js';
 import { ToolContext, ToolResponse, MCPToolResponse, toMCPResponse } from '../types.js';
@@ -12,7 +11,6 @@ export function registerTools(): Tool[] {
     specWorkflowGuideTool,
     steeringGuideTool,
     specStatusTool,
-    approvalsTool,
     logImplementationTool,
     verifyTaskTool
   ];
@@ -32,9 +30,6 @@ export async function handleToolCall(name: string, args: any, context: ToolConte
         break;
       case 'spec-status':
         response = await specStatusHandler(args, context);
-        break;
-      case 'approvals':
-        response = await approvalsHandler(args, context);
         break;
       case 'log-implementation':
         response = await logImplementationHandler(args, context);

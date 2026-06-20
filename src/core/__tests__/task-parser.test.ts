@@ -60,13 +60,13 @@ describe('task-parser', () => {
 
     it('should parse _Engine: field into engine property', () => {
       const content = `- [ ] 1. Task with engine
-  - _Engine: gemini_
+  - _Engine: claude_
   - File: src/test.ts
 `;
       const result = parseTasksFromMarkdown(content);
       const task = result.tasks.find(t => t.id === '1');
       expect(task).toBeDefined();
-      expect(task!.engine).toBe('gemini');
+      expect(task!.engine).toBe('claude');
     });
 
     it('should not set engine when _Engine: is absent', () => {
@@ -79,17 +79,17 @@ describe('task-parser', () => {
       expect(task!.engine).toBeUndefined();
     });
 
-    it('should parse _Engine: deepseek_', () => {
+    it('should parse _Engine: codex_', () => {
       const content = `- [ ] 1. Codex task
-  - _Engine: deepseek_
+  - _Engine: codex_
 `;
       const result = parseTasksFromMarkdown(content);
-      expect(result.tasks[0].engine).toBe('deepseek');
+      expect(result.tasks[0].engine).toBe('codex');
     });
 
     it('should not parse _Engine: inside _Prompt:', () => {
       const content = `- [ ] 1. Task with prompt
-  - _Prompt: Role: Dev | Task: Use _Engine: gemini_ for review | Success: Done_
+  - _Prompt: Role: Dev | Task: Use _Engine: codex_ for review | Success: Done_
 `;
       const result = parseTasksFromMarkdown(content);
       const task = result.tasks.find(t => t.id === '1');

@@ -38,8 +38,8 @@ ${nextSteps.map(step => `- ${step}`).join('\n')}
 1. This guide has been injected into your context for immediate reference
 2. Follow the workflow sequence exactly: Requirements → Design → Tasks → Implementation
 3. Use the MCP tools mentioned in the guide to execute each phase
-4. Always request approval between phases using the approvals tool
-5. Never proceed to the next phase without successful approval cleanup
+4. Present each document to the user and ask them to review and approve it in the chat between phases
+5. Never proceed to the next phase until the user confirms approval in chat
 
 Please acknowledge that you've reviewed this workflow guide and are ready to help with spec-driven development.`
       }
