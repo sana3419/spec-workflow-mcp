@@ -1,6 +1,6 @@
 # /tdd — Test-Driven Development
 
-Engine: DeepSeek (via ai_cli_run)
+Engine: Codex (via `mcp__codex__codex` / `codex-reply`)
 
 Inspired by Superpowers framework TDD discipline.
 
@@ -9,11 +9,11 @@ Inspired by Superpowers framework TDD discipline.
 
 ## Execution
 
-**Must dispatch via ai_cli_run(model="oc-deepseek/deepseek-v4-pro"). Never write code yourself.**
+**Must dispatch via `mcp__codex__codex` (or `codex-reply` to reuse the spec session). Never write code yourself.**
 
 ### Single Task TDD
 
-Dispatch DeepSeek via ai_cli_run to execute strict Red-Green-Refactor:
+Decide session: read `.spec-workflow/specs/<spec>/.codex-thread` — reuse via `codex-reply(threadId, ...)`, else `codex(...)` and save the returned threadId. Dispatch Codex to execute strict Red-Green-Refactor:
 - RED: Write failing test first, run to confirm failure
 - GREEN: Write minimum code to pass test
 - REFACTOR: Clean up without changing behavior, confirm tests still pass
@@ -22,14 +22,16 @@ Dispatch DeepSeek via ai_cli_run to execute strict Red-Green-Refactor:
 
 ### Parallel Tasks (Subagent Worktree Mode)
 
-For parallelizable tasks, use Agent tool to launch subagents in git worktrees:
+For parallelizable tasks, use the subagent tool (Task) to launch subagents in git worktrees.
+Note: parallel worktrees are independent, so each subagent starts its OWN Codex
+session (`codex(...)`) rather than sharing the spec thread.
 
 1. Create worktree:
    ```bash
    git worktree add .worktrees/task-1 -b feat/task-1
    ```
 
-2. Launch subagent (via Agent tool) in worktree directory, instruct it to dispatch DeepSeek via ai_cli_run for TDD
+2. Launch a subagent (via the Task tool) in the worktree directory, instruct it to dispatch Codex via `mcp__codex__codex` for TDD
 
 3. After completion, merge:
    ```bash
@@ -42,4 +44,4 @@ For parallelizable tasks, use Agent tool to launch subagents in git worktrees:
 All tests pass → call verify-task signal=green
 Any test fails → call verify-task signal=red with failure details
 
-Fallback: if ai-cli-mcp unavailable, execute TDD yourself and inform user.
+Fallback: if the codex MCP server is unavailable, execute TDD yourself and inform user.

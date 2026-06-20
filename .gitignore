@@ -143,9 +143,7 @@ test-results/
 CLAUDE.md
 .claude
 .serena
-AGENTS.md
-opencodetmp.spec-workflow/session.json
-opencodetmp
+/AGENTS.md
 .cursor
 
 # Spec Workflow MCP
@@ -153,8 +151,3 @@ opencodetmp
 .claude-context
 .vscode/
 spec-workflow-mcp.code-workspace
-
-
-# Other
-social-post.md.deepseek
-package-lock.json

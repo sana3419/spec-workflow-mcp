@@ -1,18 +1,19 @@
 #!/bin/bash
-# spec-workflow-mcp 项目初始化脚本
-# 用法: bash init.sh [项目路径] [选项]
-#       bash init.sh                          → 初始化当前目录
-#       bash init.sh /path/to/project         → 初始化指定目录
-#       bash init.sh /path --with-graph       → 加 code-review-graph（省 token）
-#       bash init.sh /path --with-nexus       → 加 GitNexus（依赖分析）
-#       bash init.sh /path --with-understand  → 加 Understand-Anything（可视化）
-#       bash init.sh /path --with-all         → 全部安装
-#       bash init.sh /path --force            → 强制覆盖 CLAUDE.md/skills/agents
+# spec-workflow-mcp project initialization script
+# Usage: bash init.sh [project-path] [options]
+#        bash init.sh                          → initialize current directory
+#        bash init.sh /path/to/project         → initialize target directory
+#        bash init.sh /path --with-graph       → add code-review-graph (save tokens)
+#        bash init.sh /path --with-nexus       → add GitNexus (dependency analysis)
+#        bash init.sh /path --with-understand  → add Understand-Anything (visualization)
+#        bash init.sh /path --with-all         → install all three
+#        bash init.sh /path --force            → overwrite CLAUDE.md/skills/agents
+#        bash init.sh /path --auto-loop        → enable Phase 4 auto-loop (Stop hook driver)
 
 set -e
 
-# 解析参数
-WITH_GRAPH=""; WITH_NEXUS=""; WITH_UNDERSTAND=""; WITH_ALL=""; FORCE=""
+# Parse arguments
+WITH_GRAPH=""; WITH_NEXUS=""; WITH_UNDERSTAND=""; WITH_ALL=""; FORCE=""; AUTO_LOOP=""
 POSITIONAL=""
 for arg in "$@"; do
   case $arg in
@@ -21,7 +22,8 @@ for arg in "$@"; do
     --with-understand) WITH_UNDERSTAND=1 ;;
     --with-all)        WITH_ALL=1 ;;
     --force)           FORCE=1 ;;
-    -*)                echo "未知选项: $arg"; exit 1 ;;
+    --auto-loop)       AUTO_LOOP=1 ;;
+    -*)                echo "Unknown option: $arg"; exit 1 ;;
     *)                 POSITIONAL="$arg" ;;
   esac
 done
@@ -29,93 +31,116 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="${POSITIONAL:-.}"
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
+SPEC_WORKFLOW_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "================================================"
-echo "  spec-workflow-mcp 项目初始化"
+echo "  spec-workflow-mcp project initialization"
 echo "================================================"
-echo "  项目目录: $PROJECT_DIR"
+echo "  Project:  $PROJECT_DIR"
+echo "  Framework: $SPEC_WORKFLOW_HOME"
 echo ""
 
-# 1. 创建项目目录（如果不存在）
+# 1. Create project directory
 if [ ! -d "$PROJECT_DIR" ]; then
-  echo "[1/12] 创建项目目录..."
+  echo "[1/11] Creating project directory..."
   mkdir -p "$PROJECT_DIR"
 else
-  echo "[1/12] 项目目录已存在"
+  echo "[1/11] Project directory exists"
 fi
 
-# 2. 创建 .spec-workflow 目录结构
-echo "[2/12] 创建 .spec-workflow 目录..."
+# 2. Create .spec-workflow directory structure
+echo "[2/11] Creating .spec-workflow structure..."
 mkdir -p "$PROJECT_DIR/.spec-workflow/steering"
 mkdir -p "$PROJECT_DIR/.spec-workflow/specs"
-mkdir -p "$PROJECT_DIR/.spec-workflow/approvals"
+mkdir -p "$PROJECT_DIR/.spec-workflow/reports"
 
-# 3. 写入 config.toml
+# 3. Write config.toml
 CONFIG_FILE="$PROJECT_DIR/.spec-workflow/config.toml"
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "[3/12] 写入引擎配置 config.toml..."
+  echo "[3/11] Writing engine config (config.toml)..."
   cat > "$CONFIG_FILE" << 'TOML'
 [engine]
-default = "deepseek"
+default = "codex"
 maxFixAttempts = 5
+
+[engine.codex]
+sandbox = "workspace-write"   # read-only | workspace-write | danger-full-access
+approvalPolicy = "never"      # untrusted | on-failure | on-request | never
+# model = "..."              # optional — leave commented out to use Codex's latest default (recommended)
+
+[loop]
+autoLoop = false              # true = Stop hook drives Phase 4 to completion (master switch)
+maxIterations = 50            # hard cap on auto-loop iterations
+noProgressStop = 3            # stop after N iterations with no tasks.md change
 TOML
 else
-  echo "[3/12] config.toml 已存在，跳过"
+  echo "[3/11] config.toml exists, skipping"
 fi
 
-# 4. 复制 CLAUDE.md
+# 4. Copy CLAUDE.md
 CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
 TEMPLATE="$SCRIPT_DIR/PROJECT-CLAUDE-MD-TEMPLATE.md"
 if [ ! -f "$CLAUDE_MD" ] || [ "$FORCE" = "1" ]; then
   if [ -f "$TEMPLATE" ]; then
-    echo "[4/12] 复制 CLAUDE.md 模板..."
+    echo "[4/11] Copying CLAUDE.md template..."
     cp "$TEMPLATE" "$CLAUDE_MD"
   else
-    echo "[4/12] 警告: 模板文件不存在: $TEMPLATE"
+    echo "[4/11] WARNING: Template not found: $TEMPLATE"
   fi
 else
-  echo "[4/12] CLAUDE.md 已存在，跳过（使用 --force 覆盖）"
+  echo "[4/11] CLAUDE.md exists, skipping (use --force to overwrite)"
 fi
 
-# 5. 复制 skills
+# 4b. Copy AGENTS.md (Codex worker reads this natively)
+AGENTS_MD="$PROJECT_DIR/AGENTS.md"
+AGENTS_TEMPLATE="$SCRIPT_DIR/AGENTS.md"
+if [ -f "$AGENTS_TEMPLATE" ]; then
+  if [ ! -f "$AGENTS_MD" ] || [ "$FORCE" = "1" ]; then
+    echo "       Copying AGENTS.md (Codex worker instructions)..."
+    cp "$AGENTS_TEMPLATE" "$AGENTS_MD"
+  else
+    echo "       AGENTS.md exists, skipping (use --force to overwrite)"
+  fi
+fi
+
+# 5. Copy skills + agents
 SKILLS_DIR="$SCRIPT_DIR/skills"
 TARGET_SKILLS="$PROJECT_DIR/.claude/skills"
 if [ -d "$SKILLS_DIR" ]; then
-  echo "[5/12] 复制 skills + agents..."
+  echo "[5/11] Copying skills + agents..."
   mkdir -p "$TARGET_SKILLS"
   cp -r "$SKILLS_DIR"/* "$TARGET_SKILLS/"
-  # 复制 agents
   AGENTS_DIR="$SCRIPT_DIR/agents"
   if [ -d "$AGENTS_DIR" ]; then
     mkdir -p "$PROJECT_DIR/.claude/agents"
     cp -r "$AGENTS_DIR"/* "$PROJECT_DIR/.claude/agents/"
   fi
 else
-  echo "[5/12] 警告: skills 目录不存在: $SKILLS_DIR"
+  echo "[5/11] WARNING: Skills directory not found: $SKILLS_DIR"
 fi
 
-# 6. 部署 statusline
+# 6. Deploy statusline
 STATUSLINE_SRC="$SCRIPT_DIR/statusline.sh"
 STATUSLINE_DST="$HOME/.claude/statusline.sh"
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$STATUSLINE_SRC" ]; then
   if [ ! -f "$STATUSLINE_DST" ]; then
-    echo "[6/12] 部署 statusline.sh..."
+    echo "[6/11] Deploying statusline.sh..."
     mkdir -p "$HOME/.claude"
     cp "$STATUSLINE_SRC" "$STATUSLINE_DST"
     chmod +x "$STATUSLINE_DST"
   else
-    echo "[6/12] statusline.sh 已存在，跳过"
+    echo "[6/11] statusline.sh exists, skipping"
   fi
-  # 检查全局 settings.json 是否配置了 statusLine
+  # Configure statusLine in global settings.json
   if [ -f "$GLOBAL_SETTINGS" ]; then
-    if ! grep -q "statusLine" "$GLOBAL_SETTINGS" 2>/dev/null; then
-      echo "  配置 statusLine 到全局 settings.json..."
+    if ! jq -e '.statusLine' "$GLOBAL_SETTINGS" >/dev/null 2>&1; then
+      echo "  Configuring statusLine in global settings.json..."
       TMP=$(mktemp)
       jq --arg cmd "bash $STATUSLINE_DST" '. + {"statusLine":{"type":"command","command":$cmd}}' "$GLOBAL_SETTINGS" > "$TMP" && mv "$TMP" "$GLOBAL_SETTINGS"
     fi
   else
-    echo "  创建全局 settings.json..."
+    echo "  Creating global settings.json..."
     mkdir -p "$HOME/.claude"
     cat > "$GLOBAL_SETTINGS" << SLJSON
 {
@@ -127,13 +152,13 @@ if [ -f "$STATUSLINE_SRC" ]; then
 SLJSON
   fi
 else
-  echo "[6/12] 警告: statusline.sh 模板不存在"
+  echo "[6/11] WARNING: statusline.sh template not found"
 fi
 
-# 7. 创建项目级 .claude/settings.json（如果不存在）
+# 7. Create project .claude/settings.json
 SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
 if [ ! -f "$SETTINGS_FILE" ]; then
-  echo "[7/12] 创建项目 settings.json..."
+  echo "[7/11] Creating project settings.json..."
   mkdir -p "$PROJECT_DIR/.claude"
   cat > "$SETTINGS_FILE" << 'JSON'
 {
@@ -151,7 +176,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
       "NotebookEdit(*)",
       "Skill(*)",
       "mcp__spec-workflow__*",
-      "mcp__ai-cli__*",
+      "mcp__codex__*",
       "mcp__code-review-graph__*",
       "mcp__gitnexus__*"
     ]
@@ -159,181 +184,173 @@ if [ ! -f "$SETTINGS_FILE" ]; then
 }
 JSON
 else
-  echo "[7/12] 项目 settings.json 已存在，跳过"
+  echo "[7/11] Project settings.json exists, skipping"
 fi
 
-# 辅助函数：统一写入 .mcp.json（不用 claude mcp add，避免分散到 .claude.json）
+# 7b. Auto-loop: install + register the Phase 4 Stop hook (only with --auto-loop)
+if [ "$AUTO_LOOP" = "1" ]; then
+  echo "       Enabling Phase 4 auto-loop (Stop hook)..."
+  HOOK_SRC="$SCRIPT_DIR/hooks/spec-loop-stop.sh"
+  HOOK_DIR="$PROJECT_DIR/.claude/hooks"
+  HOOK_DST="$HOOK_DIR/spec-loop-stop.sh"
+  if [ -f "$HOOK_SRC" ]; then
+    mkdir -p "$HOOK_DIR"
+    cp "$HOOK_SRC" "$HOOK_DST" && chmod +x "$HOOK_DST"
+    # register Stop hook in project settings.json (idempotent)
+    if ! jq -e '.hooks.Stop' "$SETTINGS_FILE" >/dev/null 2>&1; then
+      TMP=$(mktemp)
+      jq --arg cmd "bash $HOOK_DST" \
+        '.hooks = (.hooks // {}) | .hooks.Stop = [{"hooks":[{"type":"command","command":$cmd}]}]' \
+        "$SETTINGS_FILE" > "$TMP" && mv "$TMP" "$SETTINGS_FILE" && echo "       Stop hook registered" || echo "       Stop hook registration failed"
+    else
+      echo "       Stop hook already registered, skipping"
+    fi
+    # flip master switch on in config.toml
+    if grep -q '^\[loop\]' "$CONFIG_FILE" 2>/dev/null; then
+      sed -i 's/^autoLoop = false/autoLoop = true/' "$CONFIG_FILE"
+    else
+      printf '\n[loop]\nautoLoop = true\nmaxIterations = 50\nnoProgressStop = 3\n' >> "$CONFIG_FILE"
+    fi
+    echo "       config.toml [loop].autoLoop = true"
+  else
+    echo "       WARNING: hook template not found: $HOOK_SRC"
+  fi
+fi
+
+# Helper: add MCP server to .mcp.json (idempotent via jq)
 add_mcp_server() {
   local name=$1 cmd=$2; shift 2; local args_json="$*"
   MCP_JSON="$PROJECT_DIR/.mcp.json"
   if [ ! -f "$MCP_JSON" ]; then
     echo '{"mcpServers":{}}' > "$MCP_JSON"
   fi
-  if grep -q "\"$name\"" "$MCP_JSON" 2>/dev/null; then
-    echo "  $name 已配置，跳过"
+  if jq -e --arg n "$name" '.mcpServers[$n]' "$MCP_JSON" >/dev/null 2>&1; then
+    echo "  $name already configured, skipping"
   else
     TMP=$(mktemp)
     jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
       '.mcpServers[$n] = {"type":"stdio","command":$c,"args":$a,"env":{}}' \
-      "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON" && echo "  $name 已配置" || echo "  $name 配置失败"
+      "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON" && echo "  $name configured" || echo "  $name configuration failed"
   fi
 }
 
-# 8. 配置引擎 MCP
-echo "[8/12] 配置引擎调度 MCP → .mcp.json..."
-# ai-cli-mcp 需要 OPENCODE_CLI_NAME=crush 来识别 Crush 作为 OpenCode 替代
+# 8. Configure Codex dispatch MCP (codex runs itself as an MCP server)
+echo "[8/11] Configuring Codex dispatch MCP -> .mcp.json..."
 MCP_JSON="$PROJECT_DIR/.mcp.json"
 if [ ! -f "$MCP_JSON" ]; then
   echo '{"mcpServers":{}}' > "$MCP_JSON"
 fi
-if ! grep -q '"ai-cli"' "$MCP_JSON" 2>/dev/null; then
+if ! jq -e '.mcpServers["codex"]' "$MCP_JSON" >/dev/null 2>&1; then
   TMP=$(mktemp)
-  jq '.mcpServers["ai-cli"] = {"type":"stdio","command":"npx","args":["-y","ai-cli-mcp@latest"],"env":{"OPENCODE_CLI_NAME":"crush"}}' \
-    "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON" && echo "  ai-cli 已配置" || echo "  ai-cli 配置失败"
+  jq '.mcpServers["codex"] = {"type":"stdio","command":"codex","args":["mcp-server"],"env":{}}' \
+    "$MCP_JSON" > "$TMP" && mv "$TMP" "$MCP_JSON" && echo "  codex configured" || echo "  codex configuration failed"
 else
-  echo "  ai-cli 已配置，跳过"
+  echo "  codex already configured, skipping"
 fi
 
-# 9. 配置 spec-workflow-mcp
-echo "[9/12] 配置 spec-workflow-mcp..."
+# 9. Configure spec-workflow-mcp for Claude Code (.mcp.json)
+echo "[9/11] Configuring spec-workflow-mcp..."
 SWM_DIST="$SCRIPT_DIR/../dist/index.js"
 SWM_DIST_ABS=""
 if [ -f "$SWM_DIST" ]; then
   SWM_DIST_ABS="$(cd "$(dirname "$SWM_DIST")" && pwd)/index.js"
 fi
 
-# 9a. Claude Code（写入 .mcp.json）
 if [ -n "$SWM_DIST_ABS" ]; then
   add_mcp_server "spec-workflow" "node" "[\"$SWM_DIST_ABS\",\"$PROJECT_DIR\"]"
 else
-  echo "  跳过（需先 npm run build）"
+  echo "  Skipping (run npm run build first)"
 fi
 
-# 9b. Gemini CLI
-GEMINI_SETTINGS="$HOME/.gemini/settings.json"
-if [ -n "$SWM_DIST_ABS" ]; then
-  echo "  配置 Gemini CLI MCP..."
-  mkdir -p "$HOME/.gemini"
-  if [ -f "$GEMINI_SETTINGS" ]; then
-    if ! grep -q "spec-workflow" "$GEMINI_SETTINGS" 2>/dev/null; then
-      TMP=$(mktemp)
-      jq --arg dist "$SWM_DIST_ABS" --arg proj "$PROJECT_DIR" \
-        '.mcpServers = (.mcpServers // {}) + {"spec-workflow":{"command":"node","args":[$dist,$proj]}}' \
-        "$GEMINI_SETTINGS" > "$TMP" 2>/dev/null && mv "$TMP" "$GEMINI_SETTINGS" && echo "  Gemini: 已配置" || echo "  Gemini: 配置失败"
-    else
-      echo "  Gemini: 已配置，跳过"
-    fi
-  else
-    python3 -c "import json; print(json.dumps({'mcpServers':{'spec-workflow':{'command':'node','args':['$SWM_DIST_ABS','$PROJECT_DIR']}}},indent=2))" > "$GEMINI_SETTINGS"
-    echo "  Gemini: 已配置"
-  fi
-fi
-
-# 9c. Crush (OpenCode successor)
-CRUSH_CONFIG_DIR="$HOME/.config/crush"
-CRUSH_CONFIG="$CRUSH_CONFIG_DIR/crush.json"
-if [ -n "$SWM_DIST_ABS" ]; then
-  echo "  配置 Crush MCP..."
-  mkdir -p "$CRUSH_CONFIG_DIR"
-  if [ -f "$CRUSH_CONFIG" ]; then
-    if ! grep -q "spec-workflow" "$CRUSH_CONFIG" 2>/dev/null; then
-      TMP=$(mktemp)
-      jq --arg dist "$SWM_DIST_ABS" --arg proj "$PROJECT_DIR" \
-        '.mcpServers = (.mcpServers // {}) + {"spec-workflow":{"type":"stdio","command":"node","args":[$dist,$proj]}}' \
-        "$CRUSH_CONFIG" > "$TMP" 2>/dev/null && mv "$TMP" "$CRUSH_CONFIG" && echo "  Crush: 已配置" || echo "  Crush: 配置失败"
-    else
-      echo "  Crush: 已配置，跳过"
-    fi
-  else
-    python3 -c "import json; print(json.dumps({'mcpServers':{'spec-workflow':{'type':'stdio','command':'node','args':['$SWM_DIST_ABS','$PROJECT_DIR']}}},indent=2))" > "$CRUSH_CONFIG"
-    echo "  Crush: 已配置"
-  fi
-fi
-
-# 10. 配置代码智能 MCP（可选，也写入 .mcp.json）
+# 10. Optional code intelligence MCP
 MCP_INSTALLED=""
 if [ "$WITH_GRAPH" = "1" ] || [ "$WITH_ALL" = "1" ]; then
-  echo "[10/12] 配置 code-review-graph（省 token 神器）..."
+  echo "[10/11] Configuring code-review-graph..."
   if ! command -v code-review-graph &>/dev/null; then
-    echo "  安装 code-review-graph（Python）..."
+    echo "  Installing code-review-graph (Python)..."
     pip install code-review-graph 2>/dev/null | tail -1
   fi
-  add_mcp_server "code-review-graph" "code-review-graph" '["serve"]'
-  echo "  构建知识图谱..."
+  add_mcp_server "code-review-graph" "code-review-graph" '["mcp"]'
+  echo "  Building knowledge graph (required before the MCP tools return data)..."
   (cd "$PROJECT_DIR" && code-review-graph build 2>/dev/null | tail -1)
   MCP_INSTALLED="1"
 fi
 
 if [ "$WITH_NEXUS" = "1" ] || [ "$WITH_ALL" = "1" ]; then
-  echo "[10/12] 配置 GitNexus（代码依赖分析）..."
+  echo "[10/11] Configuring GitNexus..."
   if ! command -v gitnexus &>/dev/null; then
-    echo "  安装 gitnexus..."
+    echo "  Installing gitnexus..."
     npm i -g gitnexus 2>/dev/null | tail -1
   fi
   add_mcp_server "gitnexus" "gitnexus" '["mcp"]'
+  echo "  Indexing repo (gitnexus mcp only serves indexed repos)..."
+  (cd "$PROJECT_DIR" && gitnexus analyze 2>/dev/null | tail -1)
   MCP_INSTALLED="1"
 fi
 
 if [ "$WITH_UNDERSTAND" = "1" ]; then
-  echo "[10/12] Understand-Anything 需要通过 Claude plugin 安装："
-  echo "  在 Claude Code 中运行: /plugin install understand-anything"
+  echo "[10/11] NOTE: Understand-Anything is NOT auto-configured by this script."
+  echo "  It is a Claude Code plugin — install it manually from inside Claude Code:"
+  echo "    /plugin install understand-anything"
   MCP_INSTALLED="1"
 fi
 
 if [ -z "$MCP_INSTALLED" ]; then
-  echo "[10/12] 跳过代码智能 MCP（可选: --with-graph / --with-nexus / --with-understand / --with-all）"
+  echo "[10/11] Skipping optional code intelligence MCP (use --with-graph / --with-nexus / --with-understand / --with-all)"
 fi
 
-# 11. 清理旧 codex plugin（如果存在）
-echo "[11/12] 清理旧配置..."
-if [ -f "$HOME/.claude/settings.json" ]; then
-  if grep -q "enabledPlugins\|extraKnownMarketplaces\|codex@openai-codex" "$HOME/.claude/settings.json" 2>/dev/null; then
-    TMP=$(mktemp)
-    jq 'del(.enabledPlugins, .extraKnownMarketplaces)' "$HOME/.claude/settings.json" > "$TMP" 2>/dev/null && mv "$TMP" "$HOME/.claude/settings.json" && echo "  已清理旧 codex plugin 配置" || echo "  清理失败"
-  else
-    echo "  无需清理"
-  fi
-fi
-
-# 12. 检查依赖工具
-echo "[12/12] 检查工具链..."
-MISSING=""
+# 11. Check dependencies (required vs optional)
+echo "[11/11] Checking tool dependencies..."
+REQUIRED_MISSING=""
 if ! command -v claude &>/dev/null; then
-  MISSING="$MISSING  - claude (Claude Code CLI)\n"
-fi
-if ! command -v crush &>/dev/null; then
-  MISSING="$MISSING  - crush (Crush CLI: brew install charmbracelet/tap/crush 或 curl -fsSL https://raw.githubusercontent.com/charmbracelet/crush/main/install | bash)\n"
+  REQUIRED_MISSING="$REQUIRED_MISSING  - claude (Claude Code CLI: npm i -g @anthropic-ai/claude-code)\n"
 fi
 if ! command -v codex &>/dev/null; then
-  MISSING="$MISSING  - codex (OpenAI Codex CLI: npm i -g @openai/codex)\n"
-fi
-if ! command -v gemini &>/dev/null; then
-  MISSING="$MISSING  - gemini (Gemini CLI: npm i -g @google/gemini-cli)\n"
+  REQUIRED_MISSING="$REQUIRED_MISSING  - codex (OpenAI Codex CLI: npm i -g @openai/codex; then run 'codex login')\n"
 fi
 if ! command -v jq &>/dev/null; then
-  MISSING="$MISSING  - jq (JSON 处理: apt install jq)\n"
+  REQUIRED_MISSING="$REQUIRED_MISSING  - jq (JSON processor: apt install jq)\n"
 fi
 
-if [ -n "$MISSING" ]; then
-  echo "  警告: 以下工具未安装（不影响初始化，但运行时需要）:"
-  echo -e "$MISSING"
+if [ -n "$REQUIRED_MISSING" ]; then
+  echo ""
+  echo "  ERROR: Required tools missing (must install before using):"
+  echo -e "$REQUIRED_MISSING"
 else
-  echo "  claude / crush / gemini / codex 均已安装"
+  echo "  All required tools installed"
 fi
 
 echo ""
 echo "================================================"
-echo "  初始化完成!"
+echo "  Initialization complete!"
 echo "================================================"
 echo ""
-echo "  生成的文件:"
+echo "  Generated files:"
 echo "    $PROJECT_DIR/CLAUDE.md"
+echo "    $PROJECT_DIR/AGENTS.md"
 echo "    $PROJECT_DIR/.spec-workflow/config.toml"
 echo "    $PROJECT_DIR/.claude/skills/{review,qa,design-review,tdd}/"
 echo "    $PROJECT_DIR/.claude/settings.json"
 echo ""
-echo "  下一步:"
-echo "    1. cd $PROJECT_DIR"
-echo "    2. 打开 claude code"
-echo "    3. 告诉 Claude 你的需求，它会自动走 spec-workflow 流程"
+if [ "$AUTO_LOOP" = "1" ]; then
+  echo "    $PROJECT_DIR/.claude/hooks/spec-loop-stop.sh   (Phase 4 auto-loop ON)"
+fi
+echo ""
+echo "  Next steps:"
+echo "    1. Ensure Codex is ready: codex login   (first time only)"
+echo "    2. cd $PROJECT_DIR"
+echo "    3. claude"
+echo "    4. Tell Claude what you want to build"
+echo ""
+if [ "$AUTO_LOOP" = "1" ]; then
+  echo "  Auto-loop is ENABLED (config.toml [loop].autoLoop = true)."
+  echo "  Pause it any time by setting autoLoop = false — no need to remove the hook."
+else
+  echo "  Phase 4 runs in prompt-driven mode (no Stop hook installed)."
+  echo "  To enable the autonomous Stop-hook loop, re-run:  bash init.sh $PROJECT_DIR --auto-loop"
+  echo "  (Editing [loop].autoLoop alone has no effect until the hook is registered.)"
+fi
+echo ""
+echo "  Recommended: add to your shell profile:"
+echo "    export SPEC_WORKFLOW_HOME=$SPEC_WORKFLOW_HOME"
 echo ""

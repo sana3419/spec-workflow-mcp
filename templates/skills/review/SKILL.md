@@ -9,7 +9,7 @@ Engine: Claude (subagents + MCP verification)
 
 ### Phase 1: Subagent Review (parallel)
 
-Launch all 4 review subagents in parallel via Agent tool:
+Launch all 4 review subagents in parallel via the subagent tool (Task):
 - `security-reviewer` — injection, auth flaws, hardcoded secrets
 - `logic-reviewer` — edge cases, race conditions, resource leaks
 - `performance-reviewer` — N+1 queries, memory leaks, blocking ops
@@ -19,21 +19,24 @@ Each subagent writes report to `.spec-workflow/reports/agent-<type>-<YYYYMMDD-HH
 
 ### Phase 2: MCP Verification (main context)
 
-After subagents complete, run MCP-based verification in main context:
+After subagents complete, run MCP-based verification in main context. Use the REAL tool names below.
 
-1. **code-review-graph** (if available): Build/query knowledge graph for structural issues
+1. **code-review-graph** (if available): build/update the graph, then pull structured review context
    ```
-   mcp__code-review-graph__build_graph()
-   mcp__code-review-graph__query_graph(query="find unused exports, circular dependencies, dead code")
-   ```
-
-2. **gitnexus** (if available): Analyze dependency impact
-   ```
-   mcp__gitnexus__analyze_dependencies()
-   mcp__gitnexus__find_impact(files=<changed files>)
+   mcp__code-review-graph__build_or_update_graph_tool()                      # build/update graph first
+   mcp__code-review-graph__get_review_context_tool(changed_files=<changed files>)
+   mcp__code-review-graph__get_impact_radius_tool(changed_files=<changed files>)
+   # targeted structural query (pattern + target both required):
+   # mcp__code-review-graph__query_graph_tool(pattern="<regex>", target="function|class|file")
    ```
 
-3. If MCP tools are unavailable, skip this phase (subagent results are sufficient).
+2. **gitnexus** (if available): dependency impact of changed symbols/files
+   ```
+   mcp__gitnexus__impact(target="<changed file or symbol>", direction="both")
+   mcp__gitnexus__query(query="<natural-language dependency question>")
+   ```
+
+3. If MCP tools are unavailable (or the graph/index was never built), skip this phase (subagent results are sufficient).
 
 ### Phase 3: Consolidate
 
