@@ -1,5 +1,5 @@
 {
-  "name": "@pimzino/spec-workflow-mcp",
+  "name": "spec-workflow-mcp",
   "version": "2.2.7",
   "description": "MCP server for spec-driven development workflow with real-time web dashboard",
   "main": "dist/index.js",

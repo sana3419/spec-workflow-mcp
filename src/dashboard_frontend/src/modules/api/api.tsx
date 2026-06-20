@@ -5,9 +5,9 @@ import { ImplementationLogEntry } from '../../types';
 export type SpecSummary = {
   name: string;
   displayName: string;
-  status?: string;
+  status?: 'completed' | 'in-progress';
   lastModified?: string;
-  taskProgress?: { total: number; completed: number };
+  taskProgress?: { total: number; completed: number; pending?: number };
   phases?: any;
 };
 

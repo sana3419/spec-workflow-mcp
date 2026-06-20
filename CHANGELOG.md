@@ -281,7 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Missing ws Package Dependency** - Fixed `ERR_MODULE_NOT_FOUND` error when running the package via npx:
   - Added `ws` package (^8.18.0) to dependencies (was missing, only @types/ws was in devDependencies)
   - The ws package is required at runtime by `dashboard/multi-server.ts` for WebSocket functionality
-  - Users installing via `npx @pimzino/spec-workflow-mcp@latest` will now have all required dependencies
+  - Users installing via `npx spec-workflow-mcp@latest` will now have all required dependencies
 
 ## [2.1.6] - 2025-12-19
 
@@ -886,9 +886,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added support for relative project paths and the use of tilde (~) in project paths. Below path formats are now supported:
-    - npx -y @pimzino/spec-workflow-mcp ~/my-project
-    - npx -y @pimzino/spec-workflow-mcp ./relative-path
-    - npx -y @pimzino/spec-workflow-mcp /absolute/path
+    - npx -y spec-workflow-mcp ~/my-project
+    - npx -y spec-workflow-mcp ./relative-path
+    - npx -y spec-workflow-mcp /absolute/path
 
 ## [0.0.12] - 2025-08-11
 

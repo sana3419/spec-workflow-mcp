@@ -22,7 +22,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/Pimzino/spec-workflow-mcp.git
+git clone https://github.com/YOUR-USERNAME/spec-workflow-mcp.git
 cd spec-workflow-mcp
 ```
 

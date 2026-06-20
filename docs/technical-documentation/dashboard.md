@@ -56,14 +56,14 @@ sequenceDiagram
 ### Standalone Mode
 ```bash
 # Dashboard only (no MCP server)
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+npx -y spec-workflow-mcp@latest --dashboard
 
 # With custom port
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard --port 8080
+npx -y spec-workflow-mcp@latest --dashboard --port 8080
 
 # From specific project directory
 cd /path/to/project
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+npx -y spec-workflow-mcp@latest --dashboard
 ```
 
 ### With MCP Server
@@ -71,10 +71,10 @@ The dashboard runs separately from MCP servers. Start the dashboard first, then 
 
 ```bash
 # Terminal 1: Start dashboard (once)
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+npx -y spec-workflow-mcp@latest --dashboard
 
 # Terminal 2+: Start MCP servers for your projects
-npx -y @pimzino/spec-workflow-mcp@latest /project/path
+npx -y spec-workflow-mcp@latest /project/path
 ```
 
 ### Development Mode

@@ -7,16 +7,16 @@
 ### 基本用法
 
 ```bash
-npx -y @pimzino/spec-workflow-mcp@latest [project-path] [options]
+npx -y spec-workflow-mcp@latest [project-path] [options]
 ```
 
 ### 可用选项
 
 | 选项 | 描述 | 示例 |
 |--------|-------------|---------|
-| `--help` | 显示详细使用信息 | `npx -y @pimzino/spec-workflow-mcp@latest --help` |
-| `--dashboard` | 运行纯仪表板模式（默认端口：5000） | `npx -y @pimzino/spec-workflow-mcp@latest --dashboard` |
-| `--port <number>` | 指定自定义仪表板端口（1024-65535） | `npx -y @pimzino/spec-workflow-mcp@latest --dashboard --port 8080` |
+| `--help` | 显示详细使用信息 | `npx -y spec-workflow-mcp@latest --help` |
+| `--dashboard` | 运行纯仪表板模式（默认端口：5000） | `npx -y spec-workflow-mcp@latest --dashboard` |
+| `--port <number>` | 指定自定义仪表板端口（1024-65535） | `npx -y spec-workflow-mcp@latest --dashboard --port 8080` |
 
 ### 重要说明
 
@@ -31,19 +31,19 @@ npx -y @pimzino/spec-workflow-mcp@latest [project-path] [options]
 1. **启动仪表板**（首先执行此操作，仅一次）：
 ```bash
 # 使用默认端口 5000
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+npx -y spec-workflow-mcp@latest --dashboard
 ```
 
 2. **启动 MCP 服务器**（每个项目一个，在单独的终端中）：
 ```bash
 # 项目 1
-npx -y @pimzino/spec-workflow-mcp@latest ~/projects/app1
+npx -y spec-workflow-mcp@latest ~/projects/app1
 
 # 项目 2
-npx -y @pimzino/spec-workflow-mcp@latest ~/projects/app2
+npx -y spec-workflow-mcp@latest ~/projects/app2
 
 # 项目 3
-npx -y @pimzino/spec-workflow-mcp@latest ~/projects/app3
+npx -y spec-workflow-mcp@latest ~/projects/app3
 ```
 
 所有项目将出现在 http://localhost:5000 的仪表板中
@@ -54,7 +54,7 @@ npx -y @pimzino/spec-workflow-mcp@latest ~/projects/app3
 
 ```bash
 # 在端口 8080 上启动仪表板
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard --port 8080
+npx -y spec-workflow-mcp@latest --dashboard --port 8080
 ```
 
 ## 环境变量
@@ -78,13 +78,13 @@ npx -y @pimzino/spec-workflow-mcp@latest --dashboard --port 8080
 
 ```bash
 # 绝对路径
-SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y @pimzino/spec-workflow-mcp@latest /workspace
+SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y spec-workflow-mcp@latest /workspace
 
 # 相对路径（相对于当前工作目录解析）
-SPEC_WORKFLOW_HOME=./.spec-workflow-mcp npx -y @pimzino/spec-workflow-mcp@latest .
+SPEC_WORKFLOW_HOME=./.spec-workflow-mcp npx -y spec-workflow-mcp@latest .
 
 # 对于仪表板模式
-SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y spec-workflow-mcp@latest --dashboard
 ```
 
 **沙盒环境（例如，Codex CLI）：**
@@ -92,7 +92,7 @@ SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y @pimzino/spec-workflow-m
 在使用 `sandbox_mode=workspace-write` 的 Codex CLI 等沙盒环境中运行时，将 `SPEC_WORKFLOW_HOME` 设置为工作区内的可写位置：
 
 ```bash
-SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y @pimzino/spec-workflow-mcp@latest /workspace
+SPEC_WORKFLOW_HOME=/workspace/.spec-workflow-mcp npx -y spec-workflow-mcp@latest /workspace
 ```
 
 ## 仪表板会话管理
@@ -239,10 +239,10 @@ lang = "en"
 3. 使用配置：
 ```bash
 # 自动使用 .spec-workflow/config.toml
-npx -y @pimzino/spec-workflow-mcp@latest
+npx -y spec-workflow-mcp@latest
 
 # 或明确指定
-npx -y @pimzino/spec-workflow-mcp@latest --config .spec-workflow/config.toml
+npx -y spec-workflow-mcp@latest --config .spec-workflow/config.toml
 ```
 
 ## 配置优先级
@@ -263,7 +263,7 @@ port = 3000
 
 ```bash
 # 命令行参数覆盖配置文件
-npx -y @pimzino/spec-workflow-mcp@latest --config config.toml --port 4000
+npx -y spec-workflow-mcp@latest --config config.toml --port 4000
 # 结果：port = 4000（CLI 优先）
 ```
 
@@ -284,7 +284,7 @@ verboseLogging = true
 
 用法：
 ```bash
-npx -y @pimzino/spec-workflow-mcp@latest --config dev-config.toml
+npx -y spec-workflow-mcp@latest --config dev-config.toml
 ```
 
 ### 生产配置
@@ -302,7 +302,7 @@ verboseLogging = false
 
 用法：
 ```bash
-npx -y @pimzino/spec-workflow-mcp@latest --config prod-config.toml
+npx -y spec-workflow-mcp@latest --config prod-config.toml
 ```
 
 ## 端口配置
@@ -365,7 +365,7 @@ project-b/
 ~/configs/spec-workflow-base.toml
 
 # 项目特定的覆盖
-npx -y @pimzino/spec-workflow-mcp@latest \
+npx -y spec-workflow-mcp@latest \
   --config ~/configs/spec-workflow-base.toml \
   --port 3000 \
   /path/to/project-a

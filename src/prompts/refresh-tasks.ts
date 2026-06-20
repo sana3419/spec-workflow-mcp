@@ -203,7 +203,7 @@ This ensures the application remains functional throughout the transition.
 4. Perform Pass 2: Identify gaps in task coverage
 5. Determine if changes are needed
 6. If changes needed, build updated task list with proper validation
-7. Use create-spec-doc tool to save the updated tasks.md
+7. Write the updated tasks.md directly to .spec-workflow/specs/{specName}/tasks.md using the Write/Edit tool
 8. Report what changes were made and why
 
 ## Example Analysis Output

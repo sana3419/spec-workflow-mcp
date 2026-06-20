@@ -140,6 +140,10 @@ export class SpecParser {
       // Implementation phase is always considered "exists" since it's ongoing manual work
       spec.phases.implementation.exists = true;
 
+      // Derive overall status from task progress (consumed by the dashboard for completed styling)
+      const tp = spec.taskProgress;
+      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
+
       return spec;
     } catch {
       return null;
@@ -222,6 +226,10 @@ export class SpecParser {
 
       // Implementation phase is always considered "exists" since it's ongoing manual work
       spec.phases.implementation.exists = true;
+
+      // Derive overall status from task progress (consumed by the dashboard for completed styling)
+      const tp = spec.taskProgress;
+      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
 
       return spec;
     } catch {

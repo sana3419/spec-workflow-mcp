@@ -1,6 +1,6 @@
 # Interfaces Guide
 
-> ⚠️ **Upstream reference — partially outdated for this fork.** This document describes the original Pimzino spec-workflow-mcp. This fork differs: it dispatches coding to **OpenAI Codex** (not a multi-engine/DeepSeek/Gemini setup); document approval happens **in conversation** (there is **no** dashboard approval page, no VS Code approval extension, and no `approvals` MCP tool); the MCP server exposes **5 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`). For current behavior see the project **README** and the generated **CLAUDE.md**.
+> ⚠️ **Upstream reference — partially outdated for this fork.** This document describes the original spec-workflow-mcp. This fork differs: it dispatches coding to **OpenAI Codex** (not a multi-engine/DeepSeek/Gemini setup); document approval happens **in conversation** (there is **no** dashboard approval page, no VS Code approval extension, and no `approvals` MCP tool); the MCP server exposes **5 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`). For current behavior see the project **README** and the generated **CLAUDE.md**.
 
 This guide covers the two primary interfaces for Spec Workflow MCP: the Web Dashboard and the VSCode Extension.
 
@@ -24,20 +24,20 @@ The web dashboard is a real-time web application that provides visual access to 
 #### Standalone Dashboard
 ```bash
 # Uses ephemeral port
-npx -y @pimzino/spec-workflow-mcp@latest /path/to/project --dashboard
+npx -y spec-workflow-mcp@latest /path/to/project --dashboard
 
 # Custom port
-npx -y @pimzino/spec-workflow-mcp@latest /path/to/project --dashboard --port 3000
+npx -y spec-workflow-mcp@latest /path/to/project --dashboard --port 3000
 ```
 
 #### With MCP Server
 ```bash
 # Run MCP server and dashboard separately (recommended)
 # Terminal 1: Start dashboard
-npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+npx -y spec-workflow-mcp@latest --dashboard
 
 # Terminal 2: Start MCP server
-npx -y @pimzino/spec-workflow-mcp@latest /path/to/project
+npx -y spec-workflow-mcp@latest /path/to/project
 ```
 
 ### Dashboard Features
@@ -211,7 +211,7 @@ Install from VSCode Marketplace:
 
 Or via command line:
 ```bash
-code --install-extension Pimzino.spec-workflow-mcp
+code --install-extension spec-workflow-mcp
 ```
 
 ### Extension Features
@@ -505,10 +505,10 @@ Inherits VSCode accessibility:
 Configure in multiple terminals:
 ```bash
 # Terminal 1: MCP Server
-npx -y @pimzino/spec-workflow-mcp@latest /project
+npx -y spec-workflow-mcp@latest /project
 
 # Terminal 2: Dashboard
-npx -y @pimzino/spec-workflow-mcp@latest /project --dashboard --port 3000
+npx -y spec-workflow-mcp@latest /project --dashboard --port 3000
 ```
 
 ### Extension Multi-Root Workspaces

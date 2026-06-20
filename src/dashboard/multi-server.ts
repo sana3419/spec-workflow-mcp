@@ -114,29 +114,14 @@ export class MultiProjectDashboardServer {
     console.error(`   - Allowed Origins: ${this.securityConfig.allowedOrigins.join(', ')}`);
     console.error('');
 
-    // Fetch package version once at startup
+    // Read package version once at startup from the local package.json
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      try {
-        const response = await fetch('https://registry.npmjs.org/@pimzino/spec-workflow-mcp/latest', { signal: controller.signal });
-        if (response.ok) {
-          const packageInfo = await response.json() as { version?: string };
-          this.packageVersion = packageInfo.version || 'unknown';
-        }
-      } finally {
-        clearTimeout(timeout);
-      }
+      const packageJsonPath = join(__dirname, '..', '..', 'package.json');
+      const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(packageJsonContent) as { version?: string };
+      this.packageVersion = packageJson.version || 'unknown';
     } catch {
-      // Fallback to local package.json version if npm request fails
-      try {
-        const packageJsonPath = join(__dirname, '..', '..', 'package.json');
-        const packageJsonContent = await readFile(packageJsonPath, 'utf-8');
-        const packageJson = JSON.parse(packageJsonContent) as { version?: string };
-        this.packageVersion = packageJson.version || 'unknown';
-      } catch {
-        // Keep default 'unknown' if both npm and local package.json fail
-      }
+      // Keep default 'unknown' if local package.json cannot be read
     }
 
     // Initialize security components
@@ -203,13 +188,13 @@ export class MultiProjectDashboardServer {
         if (projectId) {
           const project = self.projectManager.getProject(projectId);
           if (project) {
-            project.parser.getAllSpecs()
-              .then((specs) => {
+            Promise.all([project.parser.getAllSpecs(), project.parser.getAllArchivedSpecs()])
+              .then(([specs, archivedSpecs]) => {
                 socket.send(
                   JSON.stringify({
                     type: 'initial',
                     projectId,
-                    data: { specs },
+                    data: { specs, archivedSpecs },
                   })
                 );
               })
@@ -248,13 +233,13 @@ export class MultiProjectDashboardServer {
               // Send initial data for new subscription
               const project = self.projectManager.getProject(msg.projectId);
               if (project) {
-                project.parser.getAllSpecs()
-                  .then((specs) => {
+                Promise.all([project.parser.getAllSpecs(), project.parser.getAllArchivedSpecs()])
+                  .then(([specs, archivedSpecs]) => {
                     socket.send(
                       JSON.stringify({
                         type: 'initial',
                         projectId: msg.projectId,
-                        data: { specs },
+                        data: { specs, archivedSpecs },
                       })
                     );
                   })

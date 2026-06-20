@@ -1,6 +1,6 @@
 # 故障排除指南
 
-> ⚠️ **上游参考文档 —— 对本 fork 已部分过时。** 本文描述的是原版 Pimzino spec-workflow-mcp。本 fork 有差异:编码任务派发给 **OpenAI Codex**(非多引擎/DeepSeek/Gemini);文档审批改为**在对话中确认**(**没有**网页审批页、没有 VS Code 审批扩展、也没有 `approvals` MCP 工具);MCP server 暴露 **5 个工具**(`spec-workflow-guide`、`steering-guide`、`spec-status`、`verify-task`、`log-implementation`)。当前真实行为请看项目 **README** 与生成的 **CLAUDE.md**。
+> ⚠️ **上游参考文档 —— 对本 fork 已部分过时。** 本文描述的是原版 spec-workflow-mcp。本 fork 有差异:编码任务派发给 **OpenAI Codex**(非多引擎/DeepSeek/Gemini);文档审批改为**在对话中确认**(**没有**网页审批页、没有 VS Code 审批扩展、也没有 `approvals` MCP 工具);MCP server 暴露 **5 个工具**(`spec-workflow-guide`、`steering-guide`、`spec-status`、`verify-task`、`log-implementation`)。当前真实行为请看项目 **README** 与生成的 **CLAUDE.md**。
 
 本指南帮助您解决 Spec Workflow MCP 的常见问题。
 
@@ -9,7 +9,7 @@
 ### 检查安装
 ```bash
 # 验证 npm 包是否可访问
-npx -y @pimzino/spec-workflow-mcp@latest --help
+npx -y spec-workflow-mcp@latest --help
 
 # 检查是否在正确的目录中运行
 pwd  # 或在 Windows 上使用 'cd'
@@ -21,10 +21,10 @@ ls -la .spec-workflow  # 或在 Windows 上使用 'dir .spec-workflow'
 ### 检查服务
 ```bash
 # 测试 MCP 服务器
-npx -y @pimzino/spec-workflow-mcp@latest /path/to/project
+npx -y spec-workflow-mcp@latest /path/to/project
 
 # 测试仪表板
-npx -y @pimzino/spec-workflow-mcp@latest /path/to/project --dashboard
+npx -y spec-workflow-mcp@latest /path/to/project --dashboard
 
 # 检查端口可用性
 netstat -an | grep 3000  # macOS/Linux
@@ -37,7 +37,7 @@ netstat -an | findstr :3000  # Windows
 
 ### 找不到 NPM 包
 
-**错误**：`npm ERR! 404 Not Found - @pimzino/spec-workflow-mcp@latest`
+**错误**：`npm ERR! 404 Not Found - spec-workflow-mcp@latest`
 
 **解决方案**：
 1. 检查互联网连接
@@ -47,11 +47,11 @@ netstat -an | findstr :3000  # Windows
    ```
 3. 尝试不带版本标签：
    ```bash
-   npx @pimzino/spec-workflow-mcp /path/to/project
+   npx spec-workflow-mcp /path/to/project
    ```
 4. 先全局安装：
    ```bash
-   npm install -g @pimzino/spec-workflow-mcp
+   npm install -g spec-workflow-mcp
    spec-workflow-mcp /path/to/project
    ```
 
@@ -71,7 +71,7 @@ netstat -an | findstr :3000  # Windows
    ```
 3. 使用带 -y 标志的 npx：
    ```bash
-   npx -y @pimzino/spec-workflow-mcp@latest
+   npx -y spec-workflow-mcp@latest
    ```
 
 ## MCP 服务器问题
@@ -96,7 +96,7 @@ netstat -an | findstr :3000  # Windows
    ```
 4. 尝试使用绝对路径：
    ```bash
-   npx -y @pimzino/spec-workflow-mcp@latest $(pwd)
+   npx -y spec-workflow-mcp@latest $(pwd)
    ```
 
 ### MCP 无法连接到 AI 工具
@@ -111,7 +111,7 @@ netstat -an | findstr :3000  # Windows
      "mcpServers": {
        "spec-workflow": {
          "command": "npx",
-         "args": ["-y", "@pimzino/spec-workflow-mcp@latest", "/absolute/path/to/project"]
+         "args": ["-y", "spec-workflow-mcp@latest", "/absolute/path/to/project"]
        }
      }
    }
@@ -121,7 +121,7 @@ netstat -an | findstr :3000  # Windows
    ```bash
    claude mcp list  # 检查 spec-workflow 是否列出
    claude mcp remove spec-workflow  # 如果存在则删除
-   claude mcp add spec-workflow npx @pimzino/spec-workflow-mcp@latest -- /path/to/project
+   claude mcp add spec-workflow npx spec-workflow-mcp@latest -- /path/to/project
    ```
 
 3. **路径问题**：确保路径是绝对路径且存在：
@@ -147,7 +147,7 @@ netstat -an | findstr :3000  # Windows
 **解决方案**：
 1. 验证仪表板是否已启动：
    ```bash
-   npx -y @pimzino/spec-workflow-mcp@latest /path --dashboard
+   npx -y spec-workflow-mcp@latest /path --dashboard
    ```
 2. 在浏览器中检查 URL（注意端口）：
    ```
@@ -164,7 +164,7 @@ netstat -an | findstr :3000  # Windows
 **解决方案**：
 1. 使用不同的端口：
    ```bash
-   npx -y @pimzino/spec-workflow-mcp@latest /path --dashboard --port 3456
+   npx -y spec-workflow-mcp@latest /path --dashboard --port 3456
    ```
 2. 查找并终止使用该端口的进程：
    ```bash
@@ -178,7 +178,7 @@ netstat -an | findstr :3000  # Windows
    ```
 3. 使用临时端口（省略 --port 标志）：
    ```bash
-   npx -y @pimzino/spec-workflow-mcp@latest /path --dashboard
+   npx -y spec-workflow-mcp@latest /path --dashboard
    ```
 
 ### WebSocket 连接失败
@@ -218,9 +218,9 @@ netstat -an | findstr :3000  # Windows
    ```bash
    # 分别运行两者
    # 终端 1: 启动仪表板
-   npx -y @pimzino/spec-workflow-mcp@latest --dashboard
+   npx -y spec-workflow-mcp@latest --dashboard
    # 终端 2: 启动 MCP 服务器
-   npx -y @pimzino/spec-workflow-mcp@latest /path
+   npx -y spec-workflow-mcp@latest /path
    ```
 2. 检查审批目录是否存在：
    ```bash
@@ -302,8 +302,8 @@ netstat -an | findstr :3000  # Windows
 3. 查看扩展日志以获取特定错误
 4. 尝试重新安装扩展：
    ```bash
-   code --uninstall-extension Pimzino.spec-workflow-mcp
-   code --install-extension Pimzino.spec-workflow-mcp
+   code --uninstall-extension spec-workflow-mcp
+   code --install-extension spec-workflow-mcp
    ```
 
 ## 配置问题
@@ -341,10 +341,10 @@ netstat -an | findstr :3000  # Windows
 1. 检查参数顺序：
    ```bash
    # 正确
-   npx -y @pimzino/spec-workflow-mcp@latest /path --dashboard --port 3000
+   npx -y spec-workflow-mcp@latest /path --dashboard --port 3000
 
    # 错误
-   npx -y @pimzino/spec-workflow-mcp@latest --dashboard /path --port 3000
+   npx -y spec-workflow-mcp@latest --dashboard /path --port 3000
    ```
 2. 确保标志值有效：
    - 端口：1024-65535
@@ -400,8 +400,8 @@ netstat -an | findstr :3000  # Windows
    ```
 2. 使用本地安装：
    ```bash
-   npm install @pimzino/spec-workflow-mcp
-   node node_modules/@pimzino/spec-workflow-mcp/dist/index.js /path
+   npm install spec-workflow-mcp
+   node node_modules/spec-workflow-mcp/dist/index.js /path
    ```
 
 ### 防火墙阻止连接
@@ -422,10 +422,10 @@ netstat -an | findstr :3000  # Windows
 **解决方案**：
 ```bash
 # 使用正斜杠
-npx -y @pimzino/spec-workflow-mcp@latest C:/Users/name/project
+npx -y spec-workflow-mcp@latest C:/Users/name/project
 
 # 或转义的反斜杠
-npx -y @pimzino/spec-workflow-mcp@latest "C:\\Users\\name\\project"
+npx -y spec-workflow-mcp@latest "C:\\Users\\name\\project"
 ```
 
 #### PowerShell 执行策略
@@ -493,7 +493,7 @@ sudo yum groupinstall "Development Tools"
 
 ### 支持渠道
 
-1. **GitHub Issues**：[创建问题](https://github.com/Pimzino/spec-workflow-mcp/issues)
+1. **GitHub Issues**：[创建问题](https://github.com/YOUR-USERNAME/spec-workflow-mcp/issues)
 2. **文档**：检查 `/docs` 中的其他指南
 3. **社区**：讨论和问答
 
@@ -507,7 +507,7 @@ export DEBUG=spec-workflow:*  # macOS/Linux
 set DEBUG=spec-workflow:*  # Windows
 
 # 使用调试输出运行
-npx -y @pimzino/spec-workflow-mcp@latest /path --debug
+npx -y spec-workflow-mcp@latest /path --debug
 ```
 
 ## 预防提示

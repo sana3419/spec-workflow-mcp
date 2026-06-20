@@ -1,6 +1,6 @@
 # Tools Reference
 
-> ⚠️ **Upstream reference — partially outdated for this fork.** This document describes the original Pimzino spec-workflow-mcp. This fork differs: it dispatches coding to **OpenAI Codex** (not a multi-engine/DeepSeek/Gemini setup); document approval happens **in conversation** (there is **no** dashboard approval page, no VS Code approval extension, and no `approvals` MCP tool); the MCP server exposes **5 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`). For current behavior see the project **README** and the generated **CLAUDE.md**.
+> ⚠️ **Upstream reference — partially outdated for this fork.** This document describes the original spec-workflow-mcp. This fork differs: it dispatches coding to **OpenAI Codex** (not a multi-engine/DeepSeek/Gemini setup); document approval happens **in conversation** (there is **no** dashboard approval page, no VS Code approval extension, and no `approvals` MCP tool); the MCP server exposes **5 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`). For current behavior see the project **README** and the generated **CLAUDE.md**.
 
 Complete documentation for all MCP tools provided by Spec Workflow MCP.
 

@@ -87,6 +87,7 @@ export interface VerifyResult {
 export interface SpecData {
   name: string;
   description?: string;
+  status?: 'completed' | 'in-progress';
   createdAt: string;
   lastModified: string;
   phases: {

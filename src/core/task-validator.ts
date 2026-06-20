@@ -99,7 +99,7 @@ export function validateTasksMarkdown(content: string): ValidationResult {
     const taskText = checkboxMatch[2];
 
     // 2. Validate task ID: must have numeric ID like "1.", "1.1", "2.3"
-    const taskIdMatch = taskText.match(/^(\d+(?:\.\d+)*)\s*\.?\s+(.+)/);
+    const taskIdMatch = taskText.match(/^(\d+(?:\.\d+)*)\s*\\?\.?\s+(.+)/);
 
     if (!taskIdMatch) {
       errors.push({

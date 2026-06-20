@@ -34,7 +34,7 @@ export async function specWorkflowGuideHandler(args: any, context: ToolContext):
     },
     nextSteps: [
       'Follow sequence: Requirements → Design → Tasks → Implementation',
-      'Load templates with get-template-context first',
+      'Read templates from .spec-workflow/templates/ with the Read tool first',
       'Present each document to the user and get their approval in chat',
       'Use MCP tools only',
       dashboardMessage
