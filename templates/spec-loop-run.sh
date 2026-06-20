@@ -48,6 +48,14 @@ NOPROG_MAX="$(read_loop_key noProgressStop)"; case "$NOPROG_MAX" in ''|*[!0-9]*)
 
 remaining() { grep -cE '^[[:space:]]*- \[[ -]\]' "$TASKS" 2>/dev/null; }
 
+# Preflight: confirm a headless claude actually runs (and is logged in) before looping, so we
+# fail fast with guidance instead of silently burning iterations on noProgressStop.
+if ! claude -p "Reply with exactly: OK" >/dev/null 2>&1; then
+  echo "Preflight FAILED: headless 'claude -p' did not run. Is the claude CLI logged in? (try: claude -p 'hi')"
+  echo "$(date -u +%FT%TZ) [$SPEC] ABORT preflight failed (headless claude not runnable)" >> "$AUDIT" 2>/dev/null
+  exit 1
+fi
+
 rm -f "$STOPF" >/dev/null 2>&1
 echo $$ > "$PIDF"
 echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX pid=$$)" >> "$AUDIT" 2>/dev/null
@@ -70,7 +78,7 @@ while true; do
   echo "" >> "$LOG"; echo "===== iter $iter @ $(date -u +%FT%TZ) (remaining=$R) =====" >> "$LOG"
 
   claude -p "Autonomous Phase 4 loop — ONE iteration — for spec '$SPEC' in this project. Call the spec-workflow-guide tool first if you have not this session. Pick the next pending/in-progress task in $TASKS, implement it (Claude implements by default; offload to Codex only if the task is tagged _Engine: codex), run its tests, call verify-task (green/red), then log-implementation. Do EXACTLY ONE task this turn, then stop. If a task genuinely needs a human decision, mark it [~] blocked with a reason and stop. If no pending tasks remain, reply DONE and change nothing." \
-    --dangerously-skip-permissions >> "$LOG" 2>&1
+    >> "$LOG" 2>&1
 done
 
 rm -f "$PIDF" "$STOPF" >/dev/null 2>&1
