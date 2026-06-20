@@ -7,7 +7,6 @@
     "steering": "Steering",
     "specs": "Specs",
     "tasks": "Tasks",
-    "approvals": "Approvals",
     "settings": "Settings",
     "logs": "Implementation Logs"
   },
@@ -40,11 +39,6 @@
       "summary_one": "{{count}} task across {{specs}} spec",
       "summary_other": "{{count}} tasks across {{specs}} specs",
       "noActiveSpecs": "No active specs"
-    },
-    "approvals": {
-      "title": "Approvals",
-      "awaiting": "Awaiting review",
-      "allClear": "All clear"
     }
   },
   "comingSoon": {
@@ -70,9 +64,16 @@
     }
   },
   "specViewer": {
-    "header": { "title": "Spec Documents" },
-    "tooltips": { "viewRendered": "View rendered document", "viewSource": "View source markdown" },
-    "empty": { "docNotCreated": "This {{doc}} document hasn't been created yet." }
+    "header": {
+      "title": "Spec Documents"
+    },
+    "tooltips": {
+      "viewRendered": "View rendered document",
+      "viewSource": "View source markdown"
+    },
+    "empty": {
+      "docNotCreated": "This {{doc}} document hasn't been created yet."
+    }
   },
   "language": {
     "select": "Select language"
@@ -168,9 +169,15 @@
       "task": "Task",
       "groupBadge": "Task Group"
     },
-    "files": { "label": "Files:" },
-    "implementation": { "label": "Implementation:" },
-    "labels": { "spec": "Spec:" },
+    "files": {
+      "label": "Files:"
+    },
+    "implementation": {
+      "label": "Implementation:"
+    },
+    "labels": {
+      "spec": "Spec:"
+    },
     "noSpecsFound": {
       "title": "No specs found",
       "noMatch": "No specs match \"{{query}}\"",
@@ -296,168 +303,6 @@
       "description": "Steering documents provide project context and guidance. Click on any document above to create or view it."
     }
   },
-  "approvals": {
-    "status": {
-      "pending": "pending",
-      "needsRevision": "needs revision",
-      "approved": "approved",
-      "rejected": "rejected"
-    },
-    "annotator": {
-      "instructions": {
-        "title": "How to annotate:",
-        "mobile": "Select text → double tap selection → comment dialog appears. Tap highlighted text to edit comments.",
-        "step1": "• Select any text to add a comment - a dialog will appear automatically",
-        "step2": "• Click on existing highlights (colored text) to view or edit comments",
-        "step3": "• Use the \"Add General Comment\" button for document-wide feedback"
-      },
-      "editCommentTitle": "Edit Comment",
-      "addCommentTitle": "Add Comment",
-      "subtitle": "Comment on the highlighted text below",
-      "highlightedText": "Highlighted Text:",
-      "chooseHighlightColor": "Choose Highlight Color:",
-      "pickColorTooltip": "Pick highlight color",
-      "yourComment": "Your Comment:",
-      "commentPlaceholder": "Enter your comment here...",
-      "hints": {
-        "desktop": "Press Ctrl/Cmd + Enter to save, or Escape to cancel",
-        "mobile": "Tap Save to confirm"
-      },
-      "updateCommentButton": "Update Comment",
-      "addCommentButton": "Add Comment",
-      "updateShort": "Update",
-      "saveShort": "Save",
-      "tooltips": {
-        "viewEditComment": "Click to view/edit comment",
-        "editComment": "Edit comment",
-        "deleteComment": "Delete comment"
-      },
-      "badge": {
-        "textSelection": "Text Selection",
-        "generalComment": "General Comment"
-      },
-      "colorHighlight": "{{color}} highlight",
-      "addGeneralComment": {
-        "title": "Add General Comment",
-        "placeholder": "Enter a general comment...",
-        "submit": "Add Comment",
-        "button": "Add General Comment"
-      },
-      "addCommentShort": "Add Comment",
-      "empty": {
-        "title": "No comments yet",
-        "description": "Select text or add a general comment"
-      },
-      "switchHelp": "Switch to Annotate mode to add comments by selecting text or add general feedback.",
-      "viewMode": {
-        "preview": "Preview",
-        "annotate": "Annotate",
-        "sideBySide": "Side by Side"
-      },
-      "sideBySide": {
-        "title": "Side by Side View",
-        "buttonLabel": "Side by Side",
-        "tooltip": "View source and preview side by side",
-        "sourceLabel": "Source (Annotate)",
-        "previewLabel": "Preview",
-        "syncEnabled": "Scroll sync is enabled",
-        "syncDisabled": "Scroll sync is disabled",
-        "syncOn": "Sync On",
-        "syncOff": "Sync Off",
-        "instructions": "Select text in the source panel (left) to add comments. The preview panel (right) shows the rendered document."
-      },
-      "delete": {
-        "title": "Delete Comment",
-        "message": "Are you sure you want to remove this comment? This action cannot be undone."
-      }
-    }
-  },
-  "approvalsPage": {
-    "header": {
-      "title": "Approvals",
-      "subtitle": "Review and manage pending approval requests"
-    },
-    "pendingCount_one": "{{count}} pending",
-    "pendingCount_other": "{{count}} pending",
-    "messages": {
-      "approvedViaDashboard": "Approved via dashboard"
-    },
-    "actions": {
-      "openReview": "Review & Annotate",
-      "closeReview": "Close Review",
-      "reviewShort": "Review",
-      "quickApprove": "Quick Approve",
-      "approve": "Approve",
-      "quickReject": "Quick Reject",
-      "reject": "Reject",
-      "requestRevisions": "Request Revisions",
-      "revisions": "Revisions",
-      "useBatchActions": "Use batch actions for multiple items"
-    },
-    "tooltips": {
-      "goToAnnotations": "Go to annotations",
-      "goToComments": "Go to comments"
-    },
-    "filter": {
-      "label": "Filter by:",
-      "options": {
-        "all": "All Documents",
-        "steering": "Steering Documents"
-      }
-    },
-    "empty": {
-      "title": "No Pending Approvals",
-      "description": "All approvals have been processed. New approval requests will appear here."
-    },
-    "reject": {
-      "title": "Reject Approval",
-      "placeholder": "Please provide feedback explaining why this is being rejected...",
-      "submit": "Reject"
-    },
-    "batchReject": {
-      "title": "Reject {{count}} Items",
-      "placeholder": "Enter a rejection reason that will apply to all selected items (e.g., 'Needs Principal Engineer review')...",
-      "submit": "Reject All"
-    },
-    "approvalWarning": {
-      "title": "Cannot Approve",
-      "message": "Cannot approve when comments exist. Use \"Request Revisions\" to send feedback."
-    },
-    "revision": {
-      "noCommentsTitle": "No Comments Added",
-      "noCommentsMessage": "Please add at least one comment before requesting revisions."
-    },
-    "selection": {
-      "enterMode": "Select Items",
-      "exitMode": "Cancel Selection",
-      "select": "Select",
-      "selectAll": "Select All",
-      "selectedCount_one": "{{count}} selected",
-      "selectedCount_other": "{{count}} selected",
-      "selectItem": "Select {{title}}",
-      "approveSelected": "Approve Selected",
-      "rejectSelected": "Reject Selected"
-    },
-    "batchConfirm": {
-      "title": "Confirm Batch Action",
-      "message": "You are about to {{action}} {{count}} items. This action cannot be undone. Are you sure you want to continue?",
-      "confirm": "Yes, proceed"
-    },
-    "batchResult": {
-      "title": "{{succeeded}} of {{total}} items processed",
-      "failedCount_one": "{{count}} item failed",
-      "failedCount_other": "{{count}} items failed",
-      "undo": "Undo"
-    },
-    "notifications": {
-      "approved": "\"{{title}}\" has been approved",
-      "approveFailed": "Failed to approve \"{{title}}\"",
-      "rejected": "\"{{title}}\" has been rejected",
-      "rejectFailed": "Failed to reject \"{{title}}\"",
-      "revisionRequested": "Revisions requested for \"{{title}}\"",
-      "revisionFailed": "Failed to request revisions for \"{{title}}\""
-    }
-  },
   "logsPage": {
     "header": {
       "title": "Implementation Logs"
@@ -553,7 +398,7 @@
     "jobDescription": "Delete records older than {{days}} days on schedule: {{schedule}}",
     "section": {
       "automatedCleanup": "Automated Cleanup",
-      "automatedCleanupDesc": "Automatically delete old approval records, specifications, and archived specifications based on a schedule. Configure cleanup jobs to run on a recurring basis across all connected projects."
+      "automatedCleanupDesc": "Automatically delete old specifications and archived specifications based on a schedule. Configure cleanup jobs to run on a recurring basis across all connected projects."
     }
   },
   "changelog": {

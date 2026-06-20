@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import chokidar from 'chokidar';
 import { SpecParser } from './parser.js';
 import { SpecWatcher } from './watcher.js';
-import { ApprovalStorage } from './approval-storage.js';
 import { SpecArchiveService } from '../core/archive-service.js';
 import { ProjectRegistry, ProjectRegistryEntry, ProjectInstance } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
@@ -18,7 +17,6 @@ export interface ProjectContext {
   instances: ProjectInstance[];  // Active MCP server instances for this project
   parser: SpecParser;
   watcher: SpecWatcher;
-  approvalStorage: ApprovalStorage;
   archiveService: SpecArchiveService;
 }
 
@@ -145,15 +143,10 @@ export class ProjectManager extends EventEmitter {
 
       const parser = new SpecParser(translatedWorkflowRootPath);
       const watcher = new SpecWatcher(translatedWorkflowRootPath, parser);
-      const approvalStorage = new ApprovalStorage(translatedWorkflowRootPath, {
-        originalPath: entry.workflowRootPath,
-        fileResolutionPath: translatedWorkspacePath
-      });
       const archiveService = new SpecArchiveService(translatedWorkflowRootPath);
 
       // Start watchers
       await watcher.start();
-      await approvalStorage.start();
 
       // Forward events with projectId
       watcher.on('change', (event) => {
@@ -168,10 +161,6 @@ export class ProjectManager extends EventEmitter {
         this.emit('steering-change', { projectId: entry.projectId, ...event });
       });
 
-      approvalStorage.on('approval-change', () => {
-        this.emit('approval-change', { projectId: entry.projectId });
-      });
-
       const context: ProjectContext = {
         projectId: entry.projectId,
         projectPath: translatedWorkflowRootPath,
@@ -182,7 +171,6 @@ export class ProjectManager extends EventEmitter {
         instances: entry.instances || [],       // Track MCP server instances
         parser,
         watcher,
-        approvalStorage,
         archiveService
       };
 
@@ -206,11 +194,9 @@ export class ProjectManager extends EventEmitter {
     try {
       // Stop watchers
       await context.watcher.stop();
-      await context.approvalStorage.stop();
 
       // Remove all listeners
       context.watcher.removeAllListeners();
-      context.approvalStorage.removeAllListeners();
 
       this.projects.delete(projectId);
       console.error(`Project removed: ${context.projectName} (${projectId})`);

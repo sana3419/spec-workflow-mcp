@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState,
 
 type InitialPayload = {
   specs: any[];
-  approvals: any[];
 };
 
 type WsContextType = {
@@ -91,7 +90,7 @@ export function WebSocketProvider({ children, projectId }: WebSocketProviderProp
 
         // Handle initial message
         if (msg.type === 'initial' && msg.projectId === targetProjectId) {
-          setInitial({ specs: msg.data?.specs || [], approvals: msg.data?.approvals || [] });
+          setInitial({ specs: msg.data?.specs || [] });
         }
         // Handle projects-update (global message)
         else if (msg.type === 'projects-update') {

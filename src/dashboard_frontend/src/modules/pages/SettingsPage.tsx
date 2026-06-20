@@ -9,7 +9,7 @@ import { JobExecutionHistory } from './JobExecutionHistory';
 interface JobUIState {
   id: string;
   name: string;
-  type: 'cleanup-approvals' | 'cleanup-specs' | 'cleanup-archived-specs';
+  type: 'cleanup-specs' | 'cleanup-archived-specs';
   enabled: boolean;
   daysOld: number;
   schedule: string;
@@ -171,7 +171,6 @@ function Content() {
 
   const getJobTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
-      'cleanup-approvals': 'Cleanup Approvals',
       'cleanup-specs': 'Cleanup Specs',
       'cleanup-archived-specs': 'Cleanup Archived Specs'
     };
@@ -260,7 +259,7 @@ function Content() {
         {expandedSections.has('automatedCleanup') && (
           <div className="border-t border-[var(--border-default)] p-6 space-y-6">
             <p className="text-sm text-[var(--text-secondary)]">
-              {t('settings.section.automatedCleanupDesc', 'Automatically delete old approval records, specifications, and archived specifications based on a schedule. Configure cleanup jobs to run on a recurring basis across all connected projects.')}
+              {t('settings.section.automatedCleanupDesc', 'Automatically delete old specifications and archived specifications based on a schedule. Configure cleanup jobs to run on a recurring basis across all connected projects.')}
             </p>
 
             {/* Add Job Button */}

@@ -24,9 +24,8 @@ const NotificationStateContext = createContext<NotificationStateContextType | un
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   console.log('[NotificationProvider] ========== COMPONENT MOUNTED WITH DIAGNOSTIC CODE ==========');
-  const { approvals, specs, getSpecTasksProgress } = useApi();
+  const { specs, getSpecTasksProgress } = useApi();
   const { subscribe, unsubscribe } = useWs();
-  const prevApprovalsRef = useRef<typeof approvals>([]);
   const prevTaskDataRef = useRef<Map<string, any>>(new Map());
   const isInitialLoadRef = useRef(true);
   const [notifications, setNotifications] = useState<Array<{ id: string; message: string; type: 'info' | 'success' | 'warning' | 'error'; timestamp: number }>>([]);
@@ -179,33 +178,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       console.error('[NotificationProvider] Failed to handle task update:', error);
     }
   }, [getSpecTasksProgress, showNotification]);
-
-  // Detect new approvals
-  useEffect(() => {
-    if (isInitialLoadRef.current) {
-      // Skip notification on initial load
-      prevApprovalsRef.current = approvals;
-      isInitialLoadRef.current = false;
-      return;
-    }
-
-    // Find new approvals by comparing IDs (not just array length)
-    const prevIds = new Set(prevApprovalsRef.current.map(a => a.id));
-    const newApprovals = approvals.filter(a => !prevIds.has(a.id));
-    
-    if (newApprovals.length > 0) {
-      // Play sound once for all new approvals
-      playNotificationSound();
-
-      // Show notifications for each new approval (without playing sound for each)
-      newApprovals.forEach(approval => {
-        const message = `New approval request: ${approval.title}`;
-        showNotification(message, 'info', false); // Pass false to skip sound for each toast
-      });
-    }
-
-    prevApprovalsRef.current = approvals;
-  }, [approvals, playNotificationSound, showNotification]);
 
   // Initialize task data on mount only
   useEffect(() => {

@@ -4,36 +4,13 @@
 
 export interface JobTemplate {
   name: string;
-  type: 'cleanup-approvals' | 'cleanup-specs' | 'cleanup-archived-specs';
+  type: 'cleanup-specs' | 'cleanup-archived-specs';
   daysOld: number;
   schedule: string;
   description: string;
 }
 
 export const JOB_TEMPLATES: Record<string, JobTemplate> = {
-  // Approval cleanup templates
-  'cleanup-approvals-monthly': {
-    name: 'Monthly Approval Cleanup',
-    type: 'cleanup-approvals',
-    daysOld: 90,
-    schedule: '0 2 1 * *', // First day of month at 2 AM
-    description: 'Delete approval records older than 90 days, runs monthly'
-  },
-  'cleanup-approvals-weekly': {
-    name: 'Weekly Approval Cleanup',
-    type: 'cleanup-approvals',
-    daysOld: 30,
-    schedule: '0 2 ? * SUN', // Every Sunday at 2 AM
-    description: 'Delete approval records older than 30 days, runs weekly'
-  },
-  'cleanup-approvals-daily': {
-    name: 'Daily Approval Cleanup',
-    type: 'cleanup-approvals',
-    daysOld: 7,
-    schedule: '0 2 * * *', // Every day at 2 AM
-    description: 'Delete approval records older than 7 days, runs daily'
-  },
-
   // Spec cleanup templates
   'cleanup-specs-quarterly': {
     name: 'Quarterly Spec Cleanup',
@@ -85,7 +62,7 @@ export const JOB_TEMPLATES: Record<string, JobTemplate> = {
  * Get templates by job type
  */
 export function getTemplatesByType(
-  type: 'cleanup-approvals' | 'cleanup-specs' | 'cleanup-archived-specs'
+  type: 'cleanup-specs' | 'cleanup-archived-specs'
 ): JobTemplate[] {
   return Object.values(JOB_TEMPLATES).filter(template => template.type === type);
 }

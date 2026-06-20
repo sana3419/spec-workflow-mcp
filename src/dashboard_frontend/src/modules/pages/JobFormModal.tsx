@@ -26,11 +26,6 @@ const CRON_PRESETS = [
 // Job type definitions
 const JOB_TYPES = [
   {
-    value: 'cleanup-approvals' as const,
-    label: 'Cleanup Approvals',
-    description: 'Delete approval records older than specified days'
-  },
-  {
     value: 'cleanup-specs' as const,
     label: 'Cleanup Specs',
     description: 'Delete active specifications older than specified days'
@@ -49,7 +44,7 @@ export function JobFormModal({ isOpen, onClose, onSubmit, initialJob, isLoading 
   const [formData, setFormData] = useState({
     id: '',
     name: '',
-    type: 'cleanup-approvals' as const,
+    type: 'cleanup-specs' as const,
     enabled: true,
     daysOld: 30,
     schedule: '0 2 * * *',
@@ -77,7 +72,7 @@ export function JobFormModal({ isOpen, onClose, onSubmit, initialJob, isLoading 
       setFormData({
         id: `job-${Date.now()}`,
         name: '',
-        type: 'cleanup-approvals',
+        type: 'cleanup-specs',
         enabled: true,
         daysOld: 30,
         schedule: '0 2 * * *',
@@ -221,7 +216,7 @@ export function JobFormModal({ isOpen, onClose, onSubmit, initialJob, isLoading 
               {showTemplateSelector && (
                 <div className="p-3 bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/30 rounded-md space-y-2">
                   <p className="text-sm font-medium text-[var(--accent-primary)] mb-4">
-                    Quick Templates for {formData.type === 'cleanup-approvals' ? 'Approvals' : formData.type === 'cleanup-specs' ? 'Specs' : 'Archived Specs'}:
+                    Quick Templates for {formData.type === 'cleanup-specs' ? 'Specs' : 'Archived Specs'}:
                   </p>
                   <div className="space-y-2">
                     {availableTemplates.map((template) => (

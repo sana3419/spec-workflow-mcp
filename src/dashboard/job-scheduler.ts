@@ -165,14 +165,7 @@ export class JobScheduler {
         const projectContext = this.projectManager.getProject(project.projectId);
         if (!projectContext) continue;
 
-        if (job.type === 'cleanup-approvals') {
-          const { processed, deleted } = await this.cleanupApprovals(
-            projectContext.approvalStorage,
-            job.config.daysOld
-          );
-          itemsProcessed += processed;
-          itemsDeleted += deleted;
-        } else if (job.type === 'cleanup-specs') {
+        if (job.type === 'cleanup-specs') {
           const { processed, deleted } = await this.cleanupSpecs(
             projectContext.parser,
             projectContext.projectPath,
@@ -207,34 +200,6 @@ export class JobScheduler {
       itemsDeleted,
       error
     };
-  }
-
-  /**
-   * Clean up old approval records
-   */
-  private async cleanupApprovals(
-    approvalStorage: any,
-    daysOld: number
-  ): Promise<{ processed: number; deleted: number }> {
-    const approvals = await approvalStorage.getAllApprovals();
-    const now = new Date();
-    const cutoffTime = now.getTime() - daysOld * 24 * 60 * 60 * 1000;
-
-    let deleted = 0;
-
-    for (const approval of approvals) {
-      const createdTime = new Date(approval.createdAt).getTime();
-      if (createdTime < cutoffTime) {
-        try {
-          await approvalStorage.deleteApproval(approval.id);
-          deleted++;
-        } catch (e) {
-          console.error(`Failed to delete approval ${approval.id}:`, e);
-        }
-      }
-    }
-
-    return { processed: approvals.length, deleted };
   }
 
   /**

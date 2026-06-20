@@ -6,7 +6,7 @@ import { useWs } from '../ws/WebSocketProvider';
 function Content() {
   const { t } = useTranslation();
   const { initial } = useWs();
-  const { specs, approvals, reloadAll } = useApi();
+  const { specs, reloadAll } = useApi();
   const { info } = useApi();
 
   useEffect(() => {
@@ -43,7 +43,7 @@ function Content() {
 
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Specs Card */}
         <div className="bg-[var(--surface-panel)] border border-[var(--border-default)] rounded-lg p-4">
           <div className="flex items-center gap-3 mb-3">
@@ -78,28 +78,6 @@ function Content() {
               className="bg-[var(--interactive-primary)] h-2 rounded-md transition-all duration-300"
               style={{ width: `${taskCompletionRate}%` }}
             />
-          </div>
-        </div>
-
-        {/* Approvals Card */}
-        <div className="bg-[var(--surface-panel)] border border-[var(--border-default)] rounded-lg p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-md bg-[var(--surface-inset)] flex items-center justify-center">
-              <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {approvals.length > 0 ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                )}
-              </svg>
-            </div>
-            <div className="text-sm font-medium text-[var(--text-secondary)]">{t('stats.approvals.title')}</div>
-          </div>
-          <div className={`text-2xl font-semibold mb-1 font-mono tabular-nums ${approvals.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--text-primary)]'}`}>
-            {approvals.length}
-          </div>
-          <div className="text-sm text-[var(--text-muted)]">
-            {approvals.length > 0 ? t('stats.approvals.awaiting') : t('stats.approvals.allClear')}
           </div>
         </div>
       </div>
