@@ -70,6 +70,11 @@ approvalPolicy = "never"      # untrusted | on-failure | on-request | never
 autoLoop = false              # master on/off for the background loop runner (.spec-workflow/spec-loop-run.sh)
 maxIterations = 50            # hard cap on loop iterations
 noProgressStop = 3            # stop after N iterations with no tasks.md/verify-results change
+# testCommand: the harness runs this to OWN the green/red verdict (exit code), instead of trusting
+# the implementing agent's self-report. {tests} is replaced by each task's _Tests: scope.
+# STRONGLY recommended — without it the loop falls back to DEPRECATED agent self-certification.
+# testCommand = "npm test -- {tests}"
+# coverageMin = 0             # optional L1 coverage floor (0-100), enforced only if set
 TOML
 else
   echo "[3/11] config.toml exists, skipping"
@@ -191,6 +196,15 @@ RUNNER_SRC="$SCRIPT_DIR/spec-loop-run.sh"
 RUNNER_DST="$PROJECT_DIR/.spec-workflow/spec-loop-run.sh"
 if [ -f "$RUNNER_SRC" ]; then
   cp "$RUNNER_SRC" "$RUNNER_DST" && chmod +x "$RUNNER_DST"
+  # Inject the absolute package command so the cp'd script can invoke the `pick`/`verify`
+  # subcommands — the project has no dist/ of its own, and the package name may be unpublished.
+  LOOP_DIST="$SCRIPT_DIR/../dist/index.js"
+  if [ -f "$LOOP_DIST" ]; then
+    LOOP_DIST_ABS="$(cd "$(dirname "$LOOP_DIST")" && pwd)/index.js"
+    sed -i "s|@@SWMCP_CMD@@|node \"$LOOP_DIST_ABS\"|g" "$RUNNER_DST"
+  else
+    echo "       NOTE: dist/ not built — run 'npm run build'; loop's harness verdict needs it"
+  fi
   echo "       Background loop runner installed: .spec-workflow/spec-loop-run.sh"
 fi
 # --auto-loop pre-enables the loop in config (off by default; toggle [loop].autoLoop any time).

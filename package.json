@@ -30,6 +30,7 @@
     "test:e2e": "playwright test",
     "test:e2e:worktree": "playwright test -c playwright.worktree.config.ts",
     "test:e2e:ui": "playwright test --ui",
+    "test:loop": "bash scripts/test-loop-l1.sh",
     "prepublishOnly": "npm run build",
     "validate:mdx": "tsx scripts/validate-mdx.ts"
   },

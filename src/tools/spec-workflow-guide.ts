@@ -165,6 +165,7 @@ flowchart TD
    - Restrictions: what not to do, constraints to follow
    - _Leverage: files/utilities to use
    - _Requirements: requirements that the task implements
+   - _Tests: the test file/glob that proves this task (acceptance selector). The background loop runs exactly these tests and the exit code is the verdict — set it at spec time, keep it self-contained, do not let the implementer change it
    - _Engine: who implements (claude or codex; omit to use default claude). Add _Engine: codex only to offload that task to Codex
    - Success: specific completion criteria
    - Instructions related to setting the task in progress in tasks.md, verifying with verify-task, logging the implementation with log-implementation tool after completion.

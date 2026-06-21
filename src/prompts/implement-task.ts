@@ -106,6 +106,9 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
    - Either way: test the implementation thoroughly before verifying.
 
 6. **Verify Implementation (MANDATORY - before logging):**
+   - NOTE: this is the MANUAL path. A verify-task signal you send here is self-reported
+     (verifiedBy: "agent") and is NOT independent. The background loop instead has the harness run
+     the task's _Tests scope and record the verdict from the exit code (verifiedBy: "harness-exec").
    - Run all relevant tests for the task
    - Call verify-task with specName, taskId, and signal='green' if tests pass, 'red' if tests fail
    - If red: fix failures and re-verify (max attempts configured, default 5)

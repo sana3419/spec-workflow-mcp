@@ -82,6 +82,15 @@ export interface VerifyResult {
   lastTestResults: Array<{ name: string; passed: boolean; error?: string }>;
   lastFixNote: string;
   lastTimestamp: string;
+  // Provenance of the verdict: 'harness-exec' = loop script ran the scoped tests and used the
+  // exit code; 'agent' = self-reported by the implementing agent (NOT independent); 'none' = no
+  // scoped tests existed. Present once a verdict has been recorded via verify-core.
+  verifiedBy?: 'harness-exec' | 'agent' | 'none';
+  exitCode?: number;        // Test-process exit code when verifiedBy === 'harness-exec'
+  testScope?: string;       // The _Tests selector that produced this verdict
+  // 'off' = this task was verified while the L1 tamper gate was DEGRADED (non-git project): the
+  // "modified pre-existing scoped test" check could not run. Durable audit flag, not just a log line.
+  tamperGate?: 'off';
 }
 
 export interface SpecData {

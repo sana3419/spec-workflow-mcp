@@ -28,6 +28,11 @@ export interface SpecWorkflowConfig {
     autoLoop?: boolean;      // master on/off for the background loop runner
     maxIterations?: number;  // Hard cap on loop iterations (primary safety stop)
     noProgressStop?: number; // Stop after N consecutive iterations with no tasks.md change
+    // L0 harness verdict: command template with a {tests} slot the loop runs to derive green/red
+    // from the exit code (e.g. "npm test -- {tests}"). When unset, the loop falls back to the
+    // DEPRECATED agent-self-report path. Per-task scope comes from each task's _Tests: tag.
+    testCommand?: string;
+    coverageMin?: number;    // Optional L1 coverage non-regression floor (0-100); enforced only if set
   };
 
   // Security features
@@ -153,6 +158,12 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     if (lp.noProgressStop !== undefined && (typeof lp.noProgressStop !== 'number' || lp.noProgressStop < 1)) {
       return { valid: false, error: `Invalid loop.noProgressStop: must be a positive number.` };
     }
+    if (lp.testCommand !== undefined && typeof lp.testCommand !== 'string') {
+      return { valid: false, error: `Invalid loop.testCommand: must be a string (e.g. "npm test -- {tests}").` };
+    }
+    if (lp.coverageMin !== undefined && (typeof lp.coverageMin !== 'number' || lp.coverageMin < 0 || lp.coverageMin > 100)) {
+      return { valid: false, error: `Invalid loop.coverageMin: must be a number between 0 and 100.` };
+    }
   }
 
   // Validate security features
@@ -248,6 +259,8 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
         autoLoop: parsedConfig.loop.autoLoop ?? false,
         maxIterations: parsedConfig.loop.maxIterations || 50,
         noProgressStop: parsedConfig.loop.noProgressStop || 3,
+        ...(parsedConfig.loop.testCommand !== undefined && { testCommand: parsedConfig.loop.testCommand }),
+        ...(parsedConfig.loop.coverageMin !== undefined && { coverageMin: parsedConfig.loop.coverageMin }),
       };
     }
 

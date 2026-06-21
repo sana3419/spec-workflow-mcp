@@ -123,6 +123,7 @@ export interface ParsedTask {
   promptStructured?: PromptSection[];  // Structured prompt sections (if prompt contains pipe separators)
   blockedReason?: string;              // Reason the task is blocked (from _Blocked: reason_)
   engine?: string;                     // Execution engine (e.g., 'codex', 'claude')
+  tests?: string;                      // Scoped test selector for the harness verdict (from _Tests: glob_)
 
   // For backward compatibility
   completed: boolean;                  // true if status === 'completed'
@@ -211,6 +212,7 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
     let prompt: string | undefined;
     let blockedReason: string | undefined;
     let engine: string | undefined;
+    let tests: string | undefined;
 
     for (let lineIdx = lineNumber + 1; lineIdx < endLine; lineIdx++) {
       const contentLine = lines[lineIdx].trim();
@@ -275,6 +277,13 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
         if (engineMatch) {
           engine = engineMatch[1].trim();
         }
+      } else if (contentLine.includes('_Tests:') && !contentLine.includes('_Prompt:')) {
+        // Scoped test selector for the harness verdict. Capture up to the trailing underscore so
+        // globs/paths containing underscores (e.g. tests/task_7.test.js) survive intact.
+        const testsMatch = contentLine.match(/_Tests:\s*(.+?)_\s*$/);
+        if (testsMatch) {
+          tests = testsMatch[1].trim();
+        }
       } else if (contentLine.match(/Files?:/)) {
         const fileMatch = contentLine.match(/Files?:\s*(.+)$/);
         if (fileMatch) {
@@ -297,12 +306,13 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
     }
     
     // Determine if this is a header task (has no implementation details)
-    const hasDetails = requirements.length > 0 || 
-                      leverage.length > 0 || 
-                      files.length > 0 || 
-                      purposes.length > 0 || 
+    const hasDetails = requirements.length > 0 ||
+                      leverage.length > 0 ||
+                      files.length > 0 ||
+                      purposes.length > 0 ||
                       implementationDetails.length > 0 ||
-                      !!prompt;
+                      !!prompt ||
+                      !!tests;
     
     // Parse structured prompt if applicable
     let promptStructured: PromptSection[] | undefined;
@@ -330,7 +340,8 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
       ...(prompt && { prompt }),
       ...(promptStructured && { promptStructured }),
       ...(blockedReason && { blockedReason }),
-      ...(engine && { engine })
+      ...(engine && { engine }),
+      ...(tests && { tests })
     };
     tasks.push(task);
     

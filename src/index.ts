@@ -200,6 +200,14 @@ async function main() {
   try {
     const args = process.argv.slice(2);
 
+    // Harness CLI subcommands (pick/verify) used by the background loop runner.
+    // These run and exit before any server/dashboard logic.
+    const { runSubcommand } = await import('./cli.js');
+    const subResult = await runSubcommand(args);
+    if (subResult !== null) {
+      process.exit(subResult);
+    }
+
     // Check for help flag
     if (args.includes('--help') || args.includes('-h')) {
       showHelp();
