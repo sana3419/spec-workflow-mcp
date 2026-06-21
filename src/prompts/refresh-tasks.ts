@@ -164,6 +164,7 @@ Each task must follow this format:
   - Purpose: Enable user account management
   - _Leverage: src/components/BaseForm.tsx, src/utils/validation.ts_
   - _Requirements: 1.1, 1.2_
+  - _Tests: tests/auth/UserAuth.test.ts_
 
 Migration tasks should follow this format:
 - [ ] 2.4 Migrate MongoDB schemas to PostgreSQL tables
@@ -174,12 +175,13 @@ Migration tasks should follow this format:
   - Purpose: Transition database layer to new architecture
   - _Leverage: Completed MongoDB schemas in tasks 2.1-2.3_
   - _Requirements: Design section 3.2_
+  - _Tests: tests/database/mongo-to-postgres.test.ts_
 
 ## Critical Rules
-- ALWAYS preserve completed [x] tasks exactly as written
-- ALWAYS preserve in-progress [-] tasks exactly as written
+- ALWAYS preserve completed [x] and in-progress [-] tasks exactly as written
 - ALWAYS add migration tasks when architecture changes affect completed work
 - ALWAYS reference specific requirements (e.g., _Requirements: 1.1, 2.3_)
+- ALWAYS give every new/migration task a _Tests selector (self-contained acceptance test the loop runs); preserve any existing _Tests/_Engine on retained tasks
 - ENSURE tasks build incrementally with proper dependencies
 - MAKE tasks atomic, specific, and actionable
 - PRESERVE the original tasks.md structure and format

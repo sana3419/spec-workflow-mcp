@@ -234,8 +234,9 @@ flowchart TD
      - Example: "Created API GET /api/todos/:id endpoint and TodoDetail React component with WebSocket real-time updates"
      - This creates a searchable knowledge base for future AI agents to discover existing code
      - Prevents implementation details from being lost in chat history
-   - verify-task(green) auto-marks [x] — no manual edit needed
 4. Continue until every task is \`[x]\` completed or \`[~]\` blocked
+
+(The verify-task step above is the **interactive/manual** path — your green/red signal is self-reported. In the **background runner**, the harness instead runs each task's \`_Tests\` and records the verdict from the exit code, and the loop's CLI marks \`[x]\`/\`[~]\`; the per-task agent does NOT call verify-task or edit task markers. See Phase 4 Loop below.)
 
 ### Codex Dispatch (optional helper)
 Claude is the primary engine — it plans, implements, reviews, and verifies. Codex is an
@@ -258,7 +259,7 @@ Work tasks one at a time: implement → test → verify-task → log-implementat
 
 Two ways to run it:
 - **Interactive (default)**: you drive it in this session — do a task, continue to the next.
-- **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Start it in the background:
+- **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Here the **harness owns verification**: the per-task agent only implements + writes the task's \`_Tests\`; the script runs those tests, records the verdict from the exit code, and marks \`[x]\`/\`[~]\` — the agent does NOT call verify-task or edit markers. Start it in the background:
   \`nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &\`
   Watch \`.spec-workflow/loop-run.log\`; stop with \`touch .spec-workflow/.loop-stop\` (or kill the PID in \`.spec-workflow/.loop-run.pid\`). Guardrails: \`maxIterations\` + \`noProgressStop\` (config \`[loop]\`); audit in \`.spec-workflow/loop-audit.log\`.
 

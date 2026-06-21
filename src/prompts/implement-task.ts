@@ -22,17 +22,20 @@ const prompt: Prompt = {
 
 async function handler(args: Record<string, any>, context: ToolContext): Promise<PromptMessage[]> {
   const { specName, taskId } = args;
-  
+
   if (!specName) {
     throw new Error('specName is a required argument');
   }
+
+  const taskLabel = taskId ? `task ${taskId}` : 'the next pending task';
+  const taskIdRef = taskId ? `"${taskId}"` : 'the task ID you just completed';
 
   const messages: PromptMessage[] = [
     {
       role: 'user',
       content: {
         type: 'text',
-        text: `Implement ${taskId ? `task ${taskId}` : 'the next pending task'} for the "${specName}" feature.
+        text: `Implement ${taskLabel} for the "${specName}" feature.
 
 **Context:**
 - Project: ${context.projectPath}
@@ -42,98 +45,44 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
 **Implementation Workflow:**
 
-1. **Check Current Status:**
-   - Use the spec-status tool with specName "${specName}" to see overall progress
-   - Read .spec-workflow/specs/${specName}/tasks.md to see all tasks
-   - Identify ${taskId ? `task ${taskId}` : 'the next pending task marked with [ ]'}
+1. **Check status & pick the task:**
+   - Run spec-status with specName "${specName}", and read .spec-workflow/specs/${specName}/tasks.md.
+   - Identify ${taskId ? `task ${taskId}` : 'the next task marked [ ]'}.
 
-2. **Start the Task:**
-   - Edit .spec-workflow/specs/${specName}/tasks.md directly
-   - Change the task marker from [ ] to [-] for the task you're starting
-   - Only one task should be in-progress at a time
+2. **Start the task:**
+   - Edit .spec-workflow/specs/${specName}/tasks.md and change the task's marker from [ ] to [-].
+   - Only one task may be in-progress at a time.
 
-3. **Read Task Guidance:**
-   - Look for the _Prompt field in the task - it contains structured guidance:
-     - Role: The specialized developer role to assume
-     - Task: Clear description with context references
-     - Restrictions: What not to do and constraints
-     - Success: Specific completion criteria
-   - Note the _Leverage fields for files/utilities to use
-   - Check _Requirements fields for which requirements this implements
-   - Check _Engine field for who implements this task (claude [default] or codex)
+3. **Read task guidance from the task's fields:**
+   - _Prompt — structured guidance: Role, Task (with context refs), Restrictions, Success criteria.
+   - _Leverage — files/utilities to reuse. _Requirements — requirements this implements.
+   - _Engine — who implements: claude (default) or codex.
 
-4. **Discover Existing Implementations (CRITICAL):**
-   - BEFORE writing any code, search implementation logs to understand existing artifacts
-   - Implementation logs are stored as markdown files in: .spec-workflow/specs/${specName}/Implementation Logs/
+4. **Discover existing implementations before writing code:**
+   - Implementation logs live in .spec-workflow/specs/${specName}/Implementation Logs/ (markdown).
+   - Search them first (e.g. \`grep -r "endpoint\\|component\\|integration" ".spec-workflow/specs/${specName}/Implementation Logs/"\`) or read the files directly.
+   - If existing code already does what the task needs, reuse it — do not duplicate endpoints, components, or utilities.
 
-   **Option 1: Use grep/ripgrep for fast searches**
-   \`\`\`bash
-   # Search for API endpoints
-   grep -r "GET\|POST\|PUT\|DELETE" ".spec-workflow/specs/${specName}/Implementation Logs/"
+5. **Implement by \`_Engine\` (default \`claude\`):**
+   - **claude (default):** implement it yourself — follow the _Prompt guidance, use _Leverage files, write clean code matching existing patterns.
+   - **codex (opt-in):** offload coding to Codex via its MCP server, reusing the per-spec session. Read .spec-workflow/specs/${specName}/.codex-thread: if missing → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\` and save the returned \`structuredContent.threadId\` to that file; if present → \`mcp__codex__codex-reply(threadId, prompt)\`. Tell Codex the _Prompt guidance, which files to read/_Leverage and edit, and to write a report to .spec-workflow/reports/codex-${taskId || '<taskId>'}-<timestamp>.md ending with a structured summary block. (sandbox/approval-policy/model come from config [engine.codex]; spec-status prints the exact hint.)
 
-   # Search for specific components
-   grep -r "ComponentName" ".spec-workflow/specs/${specName}/Implementation Logs/"
+6. **Verify (before logging):**
+   - Run all relevant tests for the task.
+   - Call verify-task with specName, taskId, and signal='green' if tests pass, 'red' if they fail.
+   - If red: fix and re-verify (max attempts configured, default 5). If still blocked: the task needs manual intervention.
+   - On green, verify-task marks the task [x] for you — do not edit the marker yourself. Proceed to logging only after green.
 
-   # Search for integration patterns
-   grep -r "integration\|dataFlow" ".spec-workflow/specs/${specName}/Implementation Logs/"
-   \`\`\`
-
-   **Option 2: Read markdown files directly**
-   - Use the Read tool to examine implementation log files
-   - Search for relevant sections (## API Endpoints, ## Components, ## Functions, etc.)
-   - Review artifacts from related tasks to understand established patterns
-
-   **Discovery best practices:**
-   - First: Search for "API" or "endpoint" to find existing API patterns
-   - Second: Search for "component" or specific component names to see existing UI structures
-   - Third: Search for "integration" or "dataFlow" to understand how frontend/backend connect
-   - Why this matters:
-     - ❌ Don't create duplicate API endpoints - check for similar paths
-     - ❌ Don't reimplement components/functions - verify utilities already don't exist
-     - ❌ Don't ignore established patterns - understand middleware/integration setup
-     - ✅ Reuse existing code - leverage already-implemented functions and components
-     - ✅ Follow patterns - maintain consistency with established architecture
-   - If initial search doesn't find expected results, refine your grep patterns
-   - Document any existing related implementations before proceeding
-   - If you find existing code that does what the task asks, leverage it instead of recreating
-
-5. **Implement the Task** — by \`_Engine\` (default \`claude\`):
-   - **\`_Engine: claude\` (default)** — implement it yourself: follow the _Prompt guidance, use _Leverage files, create/modify the specified files, write clean code following existing patterns.
-   - **\`_Engine: codex\` (opt-in)** — offload the coding to Codex via its MCP server (good for large/repetitive/parallel tasks or to save your context), reusing the per-spec session:
-     - Read \`.spec-workflow/specs/${specName}/.codex-thread\`: if missing → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\` and save the returned \`structuredContent.threadId\` to that file; if present → \`mcp__codex__codex-reply(threadId, prompt)\`.
-     - Tell Codex the _Prompt guidance, which files to read/_Leverage and edit, and to write a report to \`.spec-workflow/reports/codex-${taskId || '<taskId>'}-<timestamp>.md\` ending with a structured summary block.
-     - (\`sandbox\`/\`approval-policy\`/\`model\` come from config \`[engine.codex]\`; \`spec-status\` prints the exact hint.)
-   - Either way: test the implementation thoroughly before verifying.
-
-6. **Verify Implementation (MANDATORY - before logging):**
-   - NOTE: this is the MANUAL path. A verify-task signal you send here is self-reported
-     (verifiedBy: "agent") and is NOT independent. The background loop instead has the harness run
-     the task's _Tests scope and record the verdict from the exit code (verifiedBy: "harness-exec").
-   - Run all relevant tests for the task
-   - Call verify-task with specName, taskId, and signal='green' if tests pass, 'red' if tests fail
-   - If red: fix failures and re-verify (max attempts configured, default 5)
-   - If blocked after max attempts: task needs manual intervention
-   - verify-task auto-marks task [x] on green — no manual edit needed
-   - Only proceed to logging after green signal
-
-7. **Log Implementation (MANDATORY - must complete after verify-task green):**
-   - ⚠️ **STOP: Do NOT mark the task [x] until this step succeeds.**
-   - A task without an implementation log is NOT complete. Skipping this step is the #1 workflow violation.
-   - Call log-implementation with ALL of the following:
-     - specName: "${specName}"
-     - taskId: ${taskId ? `"${taskId}"` : 'the task ID you just completed'}
-     - summary: Clear description of what was implemented (1-2 sentences)
-     - filesModified: List of files you edited
-     - filesCreated: List of files you created
-     - statistics: {linesAdded: number, linesRemoved: number}
-     - artifacts: {apiEndpoints: [...], components: [...], functions: [...], classes: [...], integrations: [...]}
-   - You MUST include artifacts (required field) to enable other agents to find your work:
-     - **apiEndpoints**: List all API endpoints created/modified with method, path, purpose, request/response formats, and location
-     - **components**: List all UI components created with name, type, purpose, props, and location
-     - **functions**: List all utility functions with signature and location
-     - **classes**: List all classes with methods and location
-     - **integrations**: Document how frontend connects to backend with data flow description
-   - Example artifacts for an API endpoint:
+7. **Log the implementation (MANDATORY — before the task counts as done):**
+   - A task without an implementation log is NOT complete; this is the most-skipped step. Do it after verify-task green.
+   - Call log-implementation with: specName "${specName}", taskId ${taskIdRef}, summary (1-2 sentences), filesModified, filesCreated, statistics {linesAdded, linesRemoved}, and artifacts (required).
+   - artifacts must document, so other agents can find your work:
+     - apiEndpoints: method, path, purpose, request/response formats, location
+     - components: name, type, purpose, props, location
+     - functions: signature, location
+     - classes: methods, location
+     - integrations: how frontend connects to backend, with data-flow description
+   - Example:
      \`\`\`json
      "apiEndpoints": [{
        "method": "GET",
@@ -144,41 +93,15 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
        "location": "src/server.ts:245"
      }]
      \`\`\`
-   - Why: Future AI agents will query logs before implementing, preventing duplicate code and ensuring architecture consistency
-   - This creates a searchable knowledge base — without it, implementation knowledge is lost when the conversation ends
+   - This builds a searchable knowledge base future agents query before implementing — without it the knowledge is lost when the conversation ends.
 
-8. **Confirm Completion:**
-   - verify-task(green) already marked the task [x] — no manual edit needed
-   - Confirm log-implementation returned success
-   - Verify all success criteria from the _Prompt are met
+8. **Confirm completion:**
+   - Confirm log-implementation returned success, and that all _Prompt success criteria are met. (verify-task already marked the task [x].)
 
-**Important Guidelines:**
-- Always mark a task as in-progress before starting work
-- Follow the _Prompt field guidance for role, approach, and success criteria
-- Use existing patterns and utilities mentioned in _Leverage fields
-- Test your implementation before marking the task complete
-- **ALWAYS call log-implementation BEFORE marking a task [x]** — this is the most-skipped step and it is mandatory
-- If a task has subtasks (e.g., 4.1, 4.2), complete them in order
-- If you encounter blockers, document them and move to another task
-
-**Tools to Use:**
-- Read/Write/Edit: Implement the code yourself — this is the default path (Claude is the primary engine)
-- spec-status: Check overall progress + the exact dispatch hint
-- mcp__codex__codex / mcp__codex__codex-reply: Offload coding to Codex ONLY for _Engine: codex tasks
-- Bash (grep/ripgrep): CRITICAL - Search existing implementations before coding (step 4)
-- Read: Examine markdown implementation log files directly (step 4)
-- verify-task: Record green/red, auto-marks [x] on green (step 6)
-- log-implementation: MANDATORY - Record implementation details with artifacts BEFORE marking task complete (step 7)
-- Edit: Update task marker [ ]→[-] only (verify-task auto-marks [x])
-- Bash: Run tests and verify implementation
-
-**View Implementation Logs:**
-- All logged implementations appear in the "Logs" tab of the dashboard
-- Filter by spec, task ID, or search by summary
-- View detailed statistics including files changed and lines modified
-- Or search directly using grep on markdown files in .spec-workflow/specs/{specName}/Implementation Logs/
-
-Please proceed with implementing ${taskId ? `task ${taskId}` : 'the next task'} following this workflow.`
+**Guidelines:**
+- Follow the _Prompt guidance and reuse _Leverage utilities.
+- If a task has subtasks (e.g. 4.1, 4.2), complete them in order.
+- If you hit a blocker, document it and move to another task.`
       }
     }
   ];

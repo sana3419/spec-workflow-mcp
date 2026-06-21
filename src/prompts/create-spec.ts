@@ -82,12 +82,7 @@ ${documentType === 'tasks' ? `
 - Include a _Tests field: the test file/glob that proves THIS task (e.g. _Tests: tests/task3-auth.test.js_). This is the task's ACCEPTANCE SELECTOR — the background loop runs exactly these tests and the exit code decides green/red. Define it here, at spec time, as part of the contract; the implementing agent writes the test's content but must not change this selector. Each task's _Tests scope must be **self-contained** (runnable alone, not dependent on other tasks' fixtures). Tasks with no _Tests cannot be independently verified by the loop.
 - Claude implements tasks by default. Add an _Engine: codex_ field only to offload a specific task to Codex (e.g. large/repetitive/parallel work). Omit it (or _Engine: claude_) for the default Claude-implements path.
 - Tasks should be atomic (1-3 files each) and in logical order
-
-**Implementation Logging:**
-- When implementing tasks, developers will use the log-implementation tool to record what was done
-- Implementation logs appear in the dashboard's "Logs" tab for easy reference
-- These logs prevent implementation details from being lost in chat history
-- Good task descriptions help developers write better implementation summaries
+- Write clear task descriptions — they drive the implementation summaries logged later
 ` : ''}
 
 Please read the ${documentType} template and create the comprehensive document at the specified path.`
