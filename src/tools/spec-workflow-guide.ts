@@ -85,16 +85,17 @@ flowchart TD
     P3_Check -->|changes| P3_Update[Update document using user comments as guidance]
     P3_Update --> P3_Create
 
-    %% Phase 4: Implementation
+    %% Phase 4: Implementation — two paths (interactive = agent self-reports; background loop = harness verifies)
     P3_Check -->|approved| P4_Ready[Spec complete.<br/>Ready to implement?]
-    P4_Ready -->|Yes| P4_Status[spec-status]
+    P4_Ready -->|background loop| P4_Loop[spec-loop-run.sh:<br/>harness runs each task's _Tests,<br/>verdict from exit code, CLI marks [x]/[~].<br/>Agent does NOT call verify-task]
+    P4_Ready -->|interactive| P4_Status[spec-status]
     P4_Status --> P4_Task[Edit tasks.md:<br/>Change [ ] to [-]<br/>for in-progress]
     P4_Task --> P4_Code[Dispatch to Codex<br/>via mcp__codex__codex<br/>or implement if _Engine: claude]
-    P4_Code --> P4_Verify{verify-task<br/>green/red?}
+    P4_Code --> P4_Verify{verify-task<br/>green/red?<br/>interactive: self-reported}
     P4_Verify -->|green| P4_Log[log-implementation<br/>Record details]
     P4_Verify -->|red| P4_Fix[codex-reply with<br/>failure log, up to<br/>maxFixAttempts]
     P4_Fix --> P4_Code
-    P4_Log --> P4_Complete[verify-task auto-marked<br/>task [x] completed]
+    P4_Log --> P4_Complete[verify-task marked<br/>task [x] — interactive path]
     P4_Complete --> P4_More{More tasks?}
     P4_More -->|Yes| P4_Task
     P4_More -->|No| End([Implementation Complete])

@@ -132,10 +132,8 @@ export async function specStatusHandler(args: any, context: ToolContext): Promis
       case 'implementation':
         if (spec.taskProgress && spec.taskProgress.pending > 0) {
           nextSteps.push(`Read tasks: .spec-workflow/specs/${specName}/tasks.md`);
-          nextSteps.push('Edit tasks.md: Change [ ] to [-] for task you start');
-          nextSteps.push('Implement the task code (check _Engine field for dispatch target)');
-          nextSteps.push('Run tests, then call verify-task with green/red signal');
-          nextSteps.push('After green: call log-implementation to record artifacts');
+          nextSteps.push('Interactive path: change [ ] to [-], implement (check _Engine), run tests, call verify-task green/red (self-reported), then log-implementation');
+          nextSteps.push('Background loop (spec-loop-run.sh): the harness runs each task\'s _Tests and marks [x]/[~] — do NOT call verify-task or edit markers yourself');
         } else {
           nextSteps.push(`Read tasks: .spec-workflow/specs/${specName}/tasks.md`);
           nextSteps.push('Begin implementation by marking first task [-]');
@@ -232,6 +230,6 @@ function buildDispatchHint(engine: string, context: ToolContext, specName: strin
     `   - If missing: call mcp__codex__codex(prompt=..., sandbox="${sandbox}", approval-policy="${approval}"${model}), then save the returned threadId to that file.`,
     `   - If present: call mcp__codex__codex-reply(threadId=<file>, prompt=...) to reuse the spec session.`,
     `2. Tell Codex WHICH files to read/edit and to write a report to .spec-workflow/reports/codex-${taskId}-<timestamp>.md ending with a structured summary block.`,
-    `3. Run tests, then verify-task (green→log-implementation; red→codex-reply with the failure log, up to maxFixAttempts).`,
+    `3. Run tests, then verify-task (green→log-implementation; red→codex-reply with the failure log, up to maxFixAttempts). [interactive path; in the background loop the harness verifies via _Tests and you do NOT call verify-task]`,
   ].join('\n');
 }
