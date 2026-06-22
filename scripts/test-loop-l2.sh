@@ -71,7 +71,9 @@ SH
 case "$*" in
   *"adversarial verifier"*)
     echo "codex" >> .judgelog
-    if [ "${JUDGE_NOVERDICT:-}" = "1" ]; then echo "no opinion"; else echo "VERDICT: ${JUDGE_VERDICT:-pass}"; fi
+    if [ "${JUDGE_EMPTY:-}" = "1" ]; then exit 0; fi                                  # truly no output
+    if [ "${JUDGE_NOVERDICT:-}" = "1" ]; then echo "I cannot decide"; exit 0; fi      # output, no VERDICT line
+    echo "VERDICT: ${JUDGE_VERDICT:-pass}"
     exit 0;;
 esac
 exit 0
@@ -115,9 +117,14 @@ run_scenario D 2 1 true "$T1_PANEL" "JUDGE_VERDICT=pass SEC_VERDICT=fail"
 JLOG | grep -q "codex" && JLOG | grep -q "claude:security-reviewer" && JLOG | grep -q "claude:logic-reviewer" && AUD | grep -q "JUDGE fail" && TKS | grep -q '\[~\] 1' \
   && ok "D panel: any-fail (security) -> fail despite primary pass; all 3 lenses ran" || no "D"; rm -rf "$SC_DIR"
 
-run_scenario E 1 2 true "$T1" "JUDGE_NOVERDICT=1"
-AUD | grep -q "JUDGE skipped" && TKS | grep -q '\[x\] 1' && JJSON | grep -q '"verdict": "skipped"' \
-  && ok "E judge no-verdict -> skipped, green NOT lost" || no "E"; rm -rf "$SC_DIR"
+run_scenario E 1 2 true "$T1" "JUDGE_EMPTY=1"
+AUD | grep -q "JUDGE skipped (no output" && TKS | grep -q '\[x\] 1' && JJSON | grep -q '"verdict": "skipped"' \
+  && ok "E judge produced NO output -> skipped, green NOT lost" || no "E"; rm -rf "$SC_DIR"
+
+# G: judge produced output but NO parseable VERDICT -> must NOT silently release; treated as fail.
+run_scenario G 2 1 true "$T1" "JUDGE_NOVERDICT=1"
+AUD | grep -q "JUDGE fail" && ! AUD | grep -q "JUDGE skipped" && TKS | grep -q '\[~\] 1' && JJSON | grep -q '"verdict": "fail"' \
+  && ok "G judge output w/o VERDICT -> FAIL (not released), task reopened/blocked" || no "G"; rm -rf "$SC_DIR"
 
 run_scenario F 1 2 false "$T1" ""
 ! AUD | grep -q "JUDGE" && TKS | grep -q '\[x\] 1' && ! JJSON | grep -q '"judge"' \

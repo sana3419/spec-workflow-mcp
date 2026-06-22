@@ -113,6 +113,18 @@ AUD | grep -q "TAMPER-GATE OFF" \
   && grep -q '"tamperGate": "off"' "$SC_DIR/.spec-workflow/specs/s/verify-results/task-1.json" \
   && ok "F non-git: tamper undetectable BUT durably flagged (tamperGate:off + marker)" || no "F"; rm -rf "$SC_DIR"
 
+# G: the _Verify: panel selector is part of the spec contract — an implementer editing it (to drop
+# its own panel) is a tasks.md change during the agent step, caught by the same tamper gate as _Tests.
+G_TASKS='- [ ] 1. t1
+  - _Tests: tests/task1.test.js_
+  - _Verify: panel_
+  - _Prompt: x_'
+run_scenario G 1 "$G_TASKS" '
+echo "module.exports={add:(a,b)=>a+b}" > src/lib.js
+sed -i "s/_Verify: panel_/_Verify: single_/" .spec-workflow/specs/s/tasks.md'
+AUD | grep -q "TAMPER: agent modified tasks.md" && TKS | grep -q '\[~\] 1' \
+  && ok "G agent edits _Verify line -> blocked (panel cannot be self-dropped)" || no "G"; rm -rf "$SC_DIR"
+
 echo ""
 echo "L1 result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

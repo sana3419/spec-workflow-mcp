@@ -43,6 +43,8 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
 ${taskId ? `- Task ID: ${taskId}` : ''}
 ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
+> **This is the MANUAL / interactive path.** Verification here is **self-reported by you** (verifiedBy: "agent") and is **NOT independent** — it carries none of the harness (L0) execution, tamper (L1), or cross-family-judge (L2) guarantees. It exists so a human can drive one task at a time. For independent verification, run the background loop (\`.spec-workflow/spec-loop-run.sh\`), where the harness runs the tests and a cross-family judge checks adequacy.
+
 **Implementation Workflow:**
 
 1. **Check status & pick the task:**
@@ -67,11 +69,11 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
    - **claude (default):** implement it yourself — follow the _Prompt guidance, use _Leverage files, write clean code matching existing patterns.
    - **codex (opt-in):** offload coding to Codex via its MCP server, reusing the per-spec session. Read .spec-workflow/specs/${specName}/.codex-thread: if missing → \`mcp__codex__codex(prompt, sandbox, approval-policy[, model])\` and save the returned \`structuredContent.threadId\` to that file; if present → \`mcp__codex__codex-reply(threadId, prompt)\`. Tell Codex the _Prompt guidance, which files to read/_Leverage and edit, and to write a report to .spec-workflow/reports/codex-${taskId || '<taskId>'}-<timestamp>.md ending with a structured summary block. (sandbox/approval-policy/model come from config [engine.codex]; spec-status prints the exact hint.)
 
-6. **Verify (before logging):**
+6. **Verify (before logging) — self-reported, manual mode only:**
    - Run all relevant tests for the task.
-   - Call verify-task with specName, taskId, and signal='green' if tests pass, 'red' if they fail.
+   - Call verify-task with specName, taskId, and signal='green' if tests pass, 'red' if they fail. This only RECORDS your own self-reported signal (verifiedBy: "agent") — it does not run the tests or independently check them.
    - If red: fix and re-verify (max attempts configured, default 5). If still blocked: the task needs manual intervention.
-   - On green, verify-task marks the task [x] for you — do not edit the marker yourself. Proceed to logging only after green.
+   - On green it marks the task [x] as a manual convenience (so you don't hand-edit the marker). Proceed to logging only after green.
 
 7. **Log the implementation (MANDATORY — before the task counts as done):**
    - A task without an implementation log is NOT complete; this is the most-skipped step. Do it after verify-task green.
@@ -96,7 +98,7 @@ ${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
    - This builds a searchable knowledge base future agents query before implementing — without it the knowledge is lost when the conversation ends.
 
 8. **Confirm completion:**
-   - Confirm log-implementation returned success, and that all _Prompt success criteria are met. (verify-task already marked the task [x].)
+   - Confirm log-implementation returned success, and that all _Prompt success criteria are met. (verify-task already set the marker [x] in manual mode.)
 
 **Guidelines:**
 - Follow the _Prompt guidance and reuse _Leverage utilities.

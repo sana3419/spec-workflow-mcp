@@ -80,10 +80,18 @@ run_judge() {
   if [ "$opp" = "codex" ]; then out="$(timeout 300 codex exec -s read-only --skip-git-repo-check -C "$PWD" "$rubric" </dev/null 2>/dev/null)"; else out="$(timeout 300 claude -p "$rubric" </dev/null 2>/dev/null)"; fi
   v="$(parse_verdict "$out")"
   if [ -z "$v" ]; then
-    $SWMCP judge-record "$SPEC" --task "$tid" --verdict skipped --engine "$opp" --reasons "judge produced no VERDICT line" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
-    echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE skipped (no verdict from $opp)" >> "$AUDIT"; return
+    if [ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
+      # The judge produced NOTHING (timeout / engine error / unavailable). We cannot judge, so we
+      # SKIP — green is kept (the judge can only downgrade; an infra failure must not block good work).
+      $SWMCP judge-record "$SPEC" --task "$tid" --verdict skipped --engine "$opp" --reasons "judge produced no output" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
+      echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE skipped (no output from $opp)" >> "$AUDIT"; return
+    fi
+    # The judge SAID something but we could not parse a VERDICT. Do NOT silently release: a verdict we
+    # cannot read is treated as FAIL (conservative — an unreadable objection must not become a pass).
+    verdict="fail"; reasons="[$opp] unparseable judge output (no VERDICT line)"
+  elif [ "$v" = "fail" ]; then
+    verdict="fail"; reasons="[$opp] $(parse_reasons "$out")"
   fi
-  [ "$v" = "fail" ] && { verdict="fail"; reasons="[$opp] $(parse_reasons "$out")"; }
   if [ "$mode" = "panel" ]; then
     local lens lout lv
     for lens in security-reviewer logic-reviewer; do
