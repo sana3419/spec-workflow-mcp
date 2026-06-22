@@ -8,6 +8,7 @@
   - _Leverage: src/types/base.ts_
   - _Requirements: 1.1_
   - _Tests: tests/task1-interfaces.test.js_   # acceptance selector: the loop runs exactly these tests; exit code = green/red. Self-contained; set at spec time, not changed by the implementer
+  # - _Verify: panel_   # optional, for security-critical tasks: adequacy judge uses a cross-family + security/logic panel instead of a single judge
   - _Engine: codex_   # optional — omit to let Claude implement (default); add to offload this task to Codex
   - _Prompt: Role: TypeScript Developer specializing in type systems and interfaces | Task: Create comprehensive TypeScript interfaces for the feature data structures following requirements 1.1, extending existing base interfaces from src/types/base.ts | Restrictions: Do not modify existing base interfaces, maintain backward compatibility, follow project naming conventions | Success: All interfaces compile without errors, proper inheritance from base types, full type coverage for feature requirements_
 

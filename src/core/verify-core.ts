@@ -137,6 +137,86 @@ function fail(message: string, maxFixAttempts: number): RecordVerificationResult
   return { ok: false, message, outcome: 'red', blocked: false, fixAttempts: 0, maxFixAttempts };
 }
 
+export interface RecordJudgeArgs {
+  projectPath: string;
+  specName: string;
+  taskId: string;
+  engine: string;                          // judging engine (opposite family of the implementer)
+  verdict: 'pass' | 'fail' | 'skipped';
+  reasons?: string;
+  judgeMaxAttempts?: number;               // reopen rounds before blocking (default 2)
+}
+
+export interface RecordJudgeResult {
+  ok: boolean;
+  message: string;
+  outcome: 'pass' | 'reopened' | 'blocked' | 'skipped' | 'error';
+  attempts: number;
+}
+
+/**
+ * L2 adequacy judge verdict. Runs AFTER a harness-green verdict and can only DOWNGRADE it:
+ * - pass    → task stays [x], stamp judge.
+ * - fail    → reopen the task to [ ] (so the loop re-picks it) and bump a PERSISTENT attempts
+ *             counter; at judgeMaxAttempts → block [~]. Never touches a red/blocked task.
+ * - skipped → record provenance only (e.g. opposite engine unavailable); task untouched.
+ */
+export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJudgeResult> {
+  const { projectPath, specName, taskId, engine, verdict, reasons } = args;
+  const judgeMaxAttempts = args.judgeMaxAttempts ?? 2;
+
+  if (!/^\d+(\.\d+)*$/.test(taskId)) {
+    return { ok: false, message: `Invalid taskId format: '${taskId}'`, outcome: 'error', attempts: 0 };
+  }
+
+  const translatedPath = PathUtils.translatePath(projectPath);
+  const specPath = PathUtils.getSpecPath(translatedPath, specName);
+  const tasksFile = join(specPath, 'tasks.md');
+
+  let tasksContent: string;
+  try {
+    tasksContent = await fs.readFile(tasksFile, 'utf-8');
+  } catch {
+    return { ok: false, message: `Tasks file not found for spec '${specName}'`, outcome: 'error', attempts: 0 };
+  }
+
+  const verifyDir = join(specPath, 'verify-results');
+  await fs.mkdir(verifyDir, { recursive: true });
+  const verifyFile = join(verifyDir, `task-${taskId.replace(/\./g, '-')}.json`);
+
+  let verifyData: VerifyResult;
+  try {
+    verifyData = JSON.parse(await fs.readFile(verifyFile, 'utf-8'));
+  } catch {
+    verifyData = { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
+  }
+
+  // attempts persists across the reopen (NOT reset with the harness fixAttempts), else it never caps.
+  const prevAttempts = verifyData.judge?.attempts ?? 0;
+  const timestamp = new Date().toISOString();
+
+  if (verdict === 'pass' || verdict === 'skipped') {
+    verifyData.judge = { engine, verdict, reasons, attempts: prevAttempts, timestamp };
+    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    return { ok: true, message: `Task '${taskId}' judge ${verdict} (${engine})`, outcome: verdict, attempts: prevAttempts };
+  }
+
+  // fail
+  const attempts = prevAttempts + 1;
+  if (attempts >= judgeMaxAttempts) {
+    const reason = `adequacy not met after ${attempts} judge rounds — ${reasons || 'needs human'}`;
+    await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'blocked', reason), 'utf-8');
+    verifyData.judge = { engine, verdict: 'fail', reasons, attempts, timestamp };
+    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    return { ok: true, message: `Task '${taskId}' BLOCKED — ${reason}`, outcome: 'blocked', attempts };
+  }
+  // reopen to pending so the loop re-picks and strengthens the tests
+  await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'pending'), 'utf-8');
+  verifyData.judge = { engine, verdict: 'fail', reasons, attempts, timestamp };
+  await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+  return { ok: true, message: `Task '${taskId}' judge FAIL (${engine}) — reopened, attempt ${attempts}/${judgeMaxAttempts}`, outcome: 'reopened', attempts };
+}
+
 interface UsageEntry {
   specName: string; taskId: string; taskName: string; engine: string; signal: string; timestamp: string;
   usage: { inputTokens?: number; outputTokens?: number; costUsd?: number; durationMs?: number } | null;

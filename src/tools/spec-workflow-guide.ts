@@ -167,6 +167,7 @@ flowchart TD
    - _Leverage: files/utilities to use
    - _Requirements: requirements that the task implements
    - _Tests: the test file/glob that proves this task (acceptance selector). The background loop runs exactly these tests and the exit code is the verdict — set it at spec time, keep it self-contained, do not let the implementer change it
+   - _Verify: optional; set to "panel" on security-critical tasks so the loop's adequacy judge uses a multi-lens panel (cross-family judge + security/logic reviewers, any fail reopens) instead of a single cross-family judge
    - _Engine: who implements (claude or codex; omit to use default claude). Add _Engine: codex only to offload that task to Codex
    - Success: specific completion criteria
    - Instructions related to setting the task in progress in tasks.md, verifying with verify-task, logging the implementation with log-implementation tool after completion.
@@ -260,7 +261,7 @@ Work tasks one at a time: implement → test → verify-task → log-implementat
 
 Two ways to run it:
 - **Interactive (default)**: you drive it in this session — do a task, continue to the next.
-- **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Here the **harness owns verification**: the per-task agent only implements + writes the task's \`_Tests\`; the script runs those tests, records the verdict from the exit code, and marks \`[x]\`/\`[~]\` — the agent does NOT call verify-task or edit markers. Start it in the background:
+- **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Here the **harness owns verification**: the per-task agent only implements + writes the task's \`_Tests\`; the script runs those tests, records the verdict from the exit code, and marks \`[x]\`/\`[~]\` — the agent does NOT call verify-task or edit markers. If \`[loop].judge = true\`, each harness-green task then gets a **cross-family adequacy judge** (codex judges claude's work and vice versa; \`_Verify: panel\` adds the security/logic reviewers) that checks whether the tests are actually adequate — an inadequate verdict reopens the task to strengthen the tests (bounded by \`judgeMaxAttempts\`). Start it in the background:
   \`nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &\`
   Watch \`.spec-workflow/loop-run.log\`; stop with \`touch .spec-workflow/.loop-stop\` (or kill the PID in \`.spec-workflow/.loop-run.pid\`). Guardrails: \`maxIterations\` + \`noProgressStop\` (config \`[loop]\`); audit in \`.spec-workflow/loop-audit.log\`.
 

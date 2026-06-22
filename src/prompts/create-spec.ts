@@ -80,6 +80,7 @@ ${documentType === 'tasks' ? `
 - Include _Leverage fields pointing to existing code to reuse
 - Include _Requirements fields showing which requirements each task implements
 - Include a _Tests field: the test file/glob that proves THIS task (e.g. _Tests: tests/task3-auth.test.js_). This is the task's ACCEPTANCE SELECTOR — the background loop runs exactly these tests and the exit code decides green/red. Define it here, at spec time, as part of the contract; the implementing agent writes the test's content but must not change this selector. Each task's _Tests scope must be **self-contained** (runnable alone, not dependent on other tasks' fixtures). Tasks with no _Tests cannot be independently verified by the loop.
+- Optionally add _Verify: panel_ to security-critical tasks (auth, crypto, access control). With the loop's adequacy judge enabled, a panel task is judged by a cross-family judge PLUS the security and logic reviewers (any fail reopens the task) — stronger scrutiny that the tests actually cover adversarial cases. Default (no _Verify) = a single cross-family judge.
 - Claude implements tasks by default. Add an _Engine: codex_ field only to offload a specific task to Codex (e.g. large/repetitive/parallel work). Omit it (or _Engine: claude_) for the default Claude-implements path.
 - Tasks should be atomic (1-3 files each) and in logical order
 - Write clear task descriptions — they drive the implementation summaries logged later

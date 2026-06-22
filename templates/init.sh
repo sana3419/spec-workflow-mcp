@@ -75,6 +75,11 @@ noProgressStop = 3            # stop after N iterations with no tasks.md/verify-
 # STRONGLY recommended — without it the loop falls back to DEPRECATED agent self-certification.
 # testCommand = "npm test -- {tests}"
 # coverageMin = 0             # optional L1 coverage floor (0-100), enforced only if set
+# judge: after a task goes harness-green, a cross-family judge (codex judges claude's work, and vice
+# versa) checks whether the agent-authored tests are actually adequate (not assert(true) trivia).
+# Opt-in, recommended. Costs +1 opposite-engine agent per task; can only reopen a green, never a red.
+# judge = false
+# judgeMaxAttempts = 2        # judge-fail reopen rounds before the task is blocked [~]
 TOML
 else
   echo "[3/11] config.toml exists, skipping"

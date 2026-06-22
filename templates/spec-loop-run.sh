@@ -53,6 +53,54 @@ read_str() {
 # Pull a "key":"value" out of a JSON line (no jq dependency); empty for null/absent.
 json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\":\"\([^\"]*\)\".*/\1/p"; }
 
+# --- L2 cross-family adequacy judge helpers ---
+parse_verdict() { printf '%s\n' "$1" | grep -ioE 'VERDICT:[[:space:]]*(pass|fail)' | tail -1 | grep -ioE 'pass|fail' | tr '[:upper:]' '[:lower:]'; }
+parse_reasons() { printf '%s\n' "$1" | grep -iE 'REASONS:' | tail -1 | sed 's/.*[Rr][Ee][Aa][Ss][Oo][Nn][Ss]:[[:space:]]*//'; }
+judge_rubric() {
+  cat <<RUBRIC
+You are an INDEPENDENT adversarial verifier from a DIFFERENT model family than the implementer, reviewing task $1 of spec "$SPEC" in this repository (READ-ONLY). The harness ALREADY confirmed its scoped tests PASS — do NOT re-run or re-judge pass/fail.
+Read .spec-workflow/specs/$SPEC/requirements.md and .spec-workflow/specs/$SPEC/tasks.md (find task $1 and its _Requirements), the scoped test(s) [$2], and the implementation those tests cover.
+Decide ONLY whether the tests are ADEQUATE:
+1) they call the real implementation and assert meaningful behavior (NOT assert of a constant, tautologies, or everything mocked away);
+2) they cover the requirements above;
+3) task-type adversarial holes (for auth/security: default-deny, IDOR, secrets-not-logged, input validation).
+End with EXACTLY one line "VERDICT: pass" or "VERDICT: fail"; if fail, add one line "REASONS: <one line>".
+RUBRIC
+}
+# L2: judge a harness-green task. Cross-family (opposite of implementer engine); panel adds reviewer lenses.
+run_judge() {
+  local tid="$1" scope="$2" eng="$3" mode="$4"
+  local opp; [ "$eng" = "codex" ] && opp="claude" || opp="codex"
+  if [ "$opp" = "codex" ] && ! command -v codex >/dev/null 2>&1; then
+    $SWMCP judge-record "$SPEC" --task "$tid" --verdict skipped --engine codex --reasons "codex CLI unavailable" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE skipped (codex unavailable)" >> "$AUDIT"; return
+  fi
+  local rubric out v verdict="pass" reasons=""
+  rubric="$(judge_rubric "$tid" "$scope")"
+  if [ "$opp" = "codex" ]; then out="$(timeout 300 codex exec -s read-only --skip-git-repo-check -C "$PWD" "$rubric" </dev/null 2>/dev/null)"; else out="$(timeout 300 claude -p "$rubric" </dev/null 2>/dev/null)"; fi
+  v="$(parse_verdict "$out")"
+  if [ -z "$v" ]; then
+    $SWMCP judge-record "$SPEC" --task "$tid" --verdict skipped --engine "$opp" --reasons "judge produced no VERDICT line" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE skipped (no verdict from $opp)" >> "$AUDIT"; return
+  fi
+  [ "$v" = "fail" ] && { verdict="fail"; reasons="[$opp] $(parse_reasons "$out")"; }
+  if [ "$mode" = "panel" ]; then
+    local lens lout lv
+    for lens in security-reviewer logic-reviewer; do
+      lout="$(timeout 300 claude -p --agent "$lens" "$rubric" 2>/dev/null)"
+      lv="$(parse_verdict "$lout")"
+      [ "$lv" = "fail" ] && { verdict="fail"; reasons="$reasons [$lens] $(parse_reasons "$lout")"; }
+    done
+  fi
+  $SWMCP judge-record "$SPEC" --task "$tid" --verdict "$verdict" --engine "$opp" --reasons "$reasons" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
+  if [ "$verdict" = "fail" ]; then
+    printf '%s' "$reasons" > "$SW/.judgenote-$tid"
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE fail ($opp${mode:+/$mode}): $reasons" >> "$AUDIT"
+  else
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE pass ($opp${mode:+/$mode})" >> "$AUDIT"
+  fi
+}
+
 AUTO="$(read_key loop autoLoop)"
 if [ "$AUTO" != "true" ]; then
   echo "Auto-loop is OFF. Set [loop].autoLoop = true in $CONFIG (or ask Claude to) and re-run."
@@ -62,6 +110,8 @@ MAX="$(read_key loop maxIterations)";        case "$MAX" in ''|*[!0-9]*) MAX=50 
 NOPROG_MAX="$(read_key loop noProgressStop)"; case "$NOPROG_MAX" in ''|*[!0-9]*) NOPROG_MAX=3 ;; esac
 MAXFIX="$(read_key engine maxFixAttempts)";  case "$MAXFIX" in ''|*[!0-9]*) MAXFIX=5 ;; esac
 TEST_CMD="$(read_str loop testCommand)"
+JUDGE="$(read_key loop judge)"
+JUDGE_MAX="$(read_key loop judgeMaxAttempts)"; case "$JUDGE_MAX" in ''|*[!0-9]*) JUDGE_MAX=2 ;; esac
 
 # Detect an un-injected placeholder. The pattern is '*@@*' (not the literal placeholder) so the
 # init.sh sed-replace of the placeholder does not rewrite this guard.
@@ -111,6 +161,8 @@ while true; do
   PICK="$($SWMCP pick "$SPEC" --project "$PWD" 2>>"$LOG")"
   TASKID="$(json_str "$PICK" taskId)"
   SCOPE="$(json_str "$PICK" tests)"
+  ENGINE="$(json_str "$PICK" engine)"; [ -z "$ENGINE" ] && ENGINE="claude"
+  VERIFYMODE="$(json_str "$PICK" verify)"
   [ -z "$TASKID" ] && { echo "$(date -u +%FT%TZ) [$SPEC] pick returned no task; stopping" >> "$AUDIT"; break; }
 
   echo "" >> "$LOG"; echo "===== iter $iter @ $(date -u +%FT%TZ) task=$TASKID scope='${SCOPE:-none}' (remaining=$R) =====" >> "$LOG"
@@ -122,10 +174,11 @@ while true; do
 
   # 3) Implement (agent does NOT verify and does NOT touch task markers).
   FIXNOTE=""; [ -f "$SW/.fixnote-$TASKID" ] && FIXNOTE="$(cat "$SW/.fixnote-$TASKID")"
-  claude -p "Autonomous Phase 4 loop — ONE iteration — spec '$SPEC', task $TASKID, in this project. Call the spec-workflow-guide tool first if you have not this session. Implement EXACTLY task $TASKID (Claude implements by default; offload to Codex only if the task is tagged _Engine: codex) and WRITE its tests. The harness runs the tests and records the verdict — do NOT call verify-task, and do NOT edit task markers in tasks.md (no [x]/[-]/[~]). If you genuinely cannot complete it, output a single line starting 'BLOCKER:' with the reason and stop. Otherwise call log-implementation when done.${FIXNOTE:+ A previous attempt failed; fix these failures: $FIXNOTE}" \
+  JUDGENOTE=""; [ -f "$SW/.judgenote-$TASKID" ] && JUDGENOTE="$(cat "$SW/.judgenote-$TASKID")"
+  claude -p "Autonomous Phase 4 loop — ONE iteration — spec '$SPEC', task $TASKID, in this project. Call the spec-workflow-guide tool first if you have not this session. Implement EXACTLY task $TASKID (Claude implements by default; offload to Codex only if the task is tagged _Engine: codex) and WRITE its tests. The harness runs the tests and records the verdict — do NOT call verify-task, and do NOT edit task markers in tasks.md (no [x]/[-]/[~]). If you genuinely cannot complete it, output a single line starting 'BLOCKER:' with the reason and stop. Otherwise call log-implementation when done.${FIXNOTE:+ A previous attempt failed; fix these failures: $FIXNOTE}${JUDGENOTE:+ A previous attempt had its TESTS judged inadequate: $JUDGENOTE — strengthen the tests to assert real behavior and cover the requirements; do not just make them pass again.}" \
     > "$SW/.iter-out" 2>&1
   cat "$SW/.iter-out" >> "$LOG"
-  rm -f "$SW/.fixnote-$TASKID" >/dev/null 2>&1
+  rm -f "$SW/.fixnote-$TASKID" "$SW/.judgenote-$TASKID" >/dev/null 2>&1
 
   # 3b) Agent-reported blocker → record [~] (script writes state, not the agent).
   BLOCKER="$(grep -m1 '^BLOCKER:' "$SW/.iter-out" | sed 's/^BLOCKER:[[:space:]]*//')"
@@ -187,6 +240,9 @@ while true; do
         touch "$SW/.regression"
       fi
     fi
+
+    # 7) L2 cross-family adequacy judge (opt-in). Runs only on a harness-exec green; can only reopen it.
+    [ "$JUDGE" = "true" ] && run_judge "$TASKID" "$SCOPE" "$ENGINE" "$VERIFYMODE"
   else
     VERDICT="$($SWMCP verify "$SPEC" --task "$TASKID" --signal red --exit-code "$EC" --scope "$SCOPE" --note "$TAIL" --max-fix "$MAXFIX" $TG --project "$PWD" 2>>"$LOG")"
     echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID RED (harness exit $EC)" >> "$AUDIT"

@@ -124,6 +124,7 @@ export interface ParsedTask {
   blockedReason?: string;              // Reason the task is blocked (from _Blocked: reason_)
   engine?: string;                     // Execution engine (e.g., 'codex', 'claude')
   tests?: string;                      // Scoped test selector for the harness verdict (from _Tests: glob_)
+  verify?: string;                     // L2 judge mode (from _Verify: panel_); default single cross-family judge
 
   // For backward compatibility
   completed: boolean;                  // true if status === 'completed'
@@ -213,6 +214,7 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
     let blockedReason: string | undefined;
     let engine: string | undefined;
     let tests: string | undefined;
+    let verify: string | undefined;
 
     for (let lineIdx = lineNumber + 1; lineIdx < endLine; lineIdx++) {
       const contentLine = lines[lineIdx].trim();
@@ -284,6 +286,11 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
         if (testsMatch) {
           tests = testsMatch[1].trim();
         }
+      } else if (contentLine.includes('_Verify:') && !contentLine.includes('_Prompt:')) {
+        const verifyMatch = contentLine.match(/_Verify:\s*([^_]+?)_/);
+        if (verifyMatch) {
+          verify = verifyMatch[1].trim();
+        }
       } else if (contentLine.match(/Files?:/)) {
         const fileMatch = contentLine.match(/Files?:\s*(.+)$/);
         if (fileMatch) {
@@ -312,7 +319,8 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
                       purposes.length > 0 ||
                       implementationDetails.length > 0 ||
                       !!prompt ||
-                      !!tests;
+                      !!tests ||
+                      !!verify;
     
     // Parse structured prompt if applicable
     let promptStructured: PromptSection[] | undefined;
@@ -341,7 +349,8 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
       ...(promptStructured && { promptStructured }),
       ...(blockedReason && { blockedReason }),
       ...(engine && { engine }),
-      ...(tests && { tests })
+      ...(tests && { tests }),
+      ...(verify && { verify })
     };
     tasks.push(task);
     

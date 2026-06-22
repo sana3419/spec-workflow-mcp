@@ -10,7 +10,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { PathUtils } from './core/path-utils.js';
 import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskStatus } from './core/task-parser.js';
-import { recordVerification, VerifySignal, VerifySource } from './core/verify-core.js';
+import { recordVerification, recordJudgeVerdict, VerifySignal, VerifySource } from './core/verify-core.js';
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -45,6 +45,7 @@ export async function runPickCli(args: string[]): Promise<number> {
     description: task.description,
     engine: task.engine || null,
     tests: task.tests || null,
+    verify: task.verify || null,
   }));
   return 0;
 }
@@ -114,11 +115,36 @@ export async function runScopesCli(args: string[]): Promise<number> {
   return 0;
 }
 
+/** judge-record: persist an L2 adequacy-judge verdict (loop runs the judge processes, records here). */
+export async function runJudgeRecordCli(args: string[]): Promise<number> {
+  const spec = args[0];
+  const taskId = flag(args, '--task');
+  const verdict = flag(args, '--verdict') as 'pass' | 'fail' | 'skipped' | undefined;
+  if (!spec || !taskId || !verdict || !['pass', 'fail', 'skipped'].includes(verdict)) {
+    console.error('usage: judge-record <spec> --task <id> --verdict <pass|fail|skipped> [--engine e] [--reasons text] [--max n] [--project p]');
+    return 2;
+  }
+  const maxRaw = flag(args, '--max');
+  const result = await recordJudgeVerdict({
+    projectPath: resolveProject(args),
+    specName: spec,
+    taskId,
+    engine: flag(args, '--engine') || 'unknown',
+    verdict,
+    reasons: flag(args, '--reasons'),
+    judgeMaxAttempts: maxRaw ? Number(maxRaw) : undefined,
+  });
+  console.log(JSON.stringify({ outcome: result.outcome, attempts: result.attempts }));
+  console.error(result.message);
+  return result.ok ? 0 : 1;
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
   if (cmd === 'pick') return runPickCli(rest);
   if (cmd === 'verify') return runVerifyCli(rest);
   if (cmd === 'scopes') return runScopesCli(rest);
+  if (cmd === 'judge-record') return runJudgeRecordCli(rest);
   return null;
 }
