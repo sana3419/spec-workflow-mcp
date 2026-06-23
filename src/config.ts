@@ -42,6 +42,9 @@ export interface SpecWorkflowConfig {
     integrationCommand?: string;
     integrationFixAttempts?: number; // bounded auto-fix rounds on integration failure (default 1)
     integrationJudge?: boolean;      // opt-in cross-module LLM review after a green integration
+    // L3 spec gate: before implementing, a cross-family auditor critiques the spec for hackable
+    // ambiguity; if it would let wrong-but-green outcomes through, the loop refuses to start. Opt-in.
+    specGate?: boolean;
   };
 
   // Security features
@@ -188,6 +191,9 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     if (lp.integrationJudge !== undefined && typeof lp.integrationJudge !== 'boolean') {
       return { valid: false, error: `Invalid loop.integrationJudge: must be a boolean.` };
     }
+    if (lp.specGate !== undefined && typeof lp.specGate !== 'boolean') {
+      return { valid: false, error: `Invalid loop.specGate: must be a boolean.` };
+    }
   }
 
   // Validate security features
@@ -290,6 +296,7 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
         ...(parsedConfig.loop.integrationCommand !== undefined && { integrationCommand: parsedConfig.loop.integrationCommand }),
         ...(parsedConfig.loop.integrationFixAttempts !== undefined && { integrationFixAttempts: parsedConfig.loop.integrationFixAttempts }),
         ...(parsedConfig.loop.integrationJudge !== undefined && { integrationJudge: parsedConfig.loop.integrationJudge }),
+        ...(parsedConfig.loop.specGate !== undefined && { specGate: parsedConfig.loop.specGate }),
       };
     }
 

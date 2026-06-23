@@ -10,6 +10,7 @@ import { specStatusPrompt } from './spec-status.js';
 import { injectSpecWorkflowGuidePrompt } from './inject-spec-workflow-guide.js';
 import { injectSteeringGuidePrompt } from './inject-steering-guide.js';
 import { refreshTasksPrompt } from './refresh-tasks.js';
+import { hardenSpecPrompt } from './harden-spec.js';
 
 // Registry of all prompts
 const promptDefinitions: PromptDefinition[] = [
@@ -19,7 +20,8 @@ const promptDefinitions: PromptDefinition[] = [
   specStatusPrompt,
   injectSpecWorkflowGuidePrompt,
   injectSteeringGuidePrompt,
-  refreshTasksPrompt
+  refreshTasksPrompt,
+  hardenSpecPrompt
 ];
 
 /**

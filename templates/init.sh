@@ -85,6 +85,10 @@ noProgressStop = 3            # stop after N iterations with no tasks.md/verify-
 # integrationCommand = "npm run build && npm run smoke"
 # integrationFixAttempts = 1  # bounded auto-fix rounds on integration failure
 # integrationJudge = false    # opt-in cross-module LLM review (codex↔claude) after a green build+boot
+# specGate: before implementing, a cross-family auditor (codex↔claude) critiques the spec for hackable
+# ambiguity / underspecification; if the spec would let wrong-but-green outcomes through, the loop
+# refuses to start and reports (it does NOT rewrite the spec — run /harden-spec or fix by hand). Opt-in.
+# specGate = false
 TOML
 else
   echo "[3/11] config.toml exists, skipping"

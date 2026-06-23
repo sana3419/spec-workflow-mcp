@@ -183,6 +183,52 @@ JSON
   fi
 }
 
+# --- L3 spec gate (Specification Self-Correction, pre-flight) ---
+spec_gate_rubric() {
+  cat <<RUBRIC
+You are an INDEPENDENT spec auditor (READ-ONLY) from a different model family, auditing spec "$SPEC" BEFORE any implementation. Read .spec-workflow/specs/$SPEC/requirements.md, design.md (if present), and tasks.md (including each task's _Tests selector and _Requirements).
+Find SPEC-LEVEL hackability / underspecification that would let an implementation be "green" while missing intent. If the spec itself is wrong, the tests will faithfully verify the wrong thing — this is the LAST line of defense. Hunt for:
+1) requirements that do NOT pin observable, measurable behavior (vague "should work / be secure / be fast");
+2) _Tests selectors whose acceptance a trivial or tautological test could satisfy;
+3) missing adversarial / edge / security requirements for the domain;
+4) contradictions or gaps between requirements, design, and tasks.
+Be strict, but only FAIL on holes that genuinely let wrong-but-green outcomes through.
+End with EXACTLY "VERDICT: pass" or "VERDICT: fail"; if fail, add one line "REASONS: <one line>".
+RUBRIC
+}
+# Pre-flight: a cross-family auditor checks the spec is sound enough to autonomously implement.
+# Returns 0 to proceed, 1 to abort. Propose-only — never edits the spec.
+run_spec_gate() {
+  local opp; [ "$ENGINE_DEFAULT" = "codex" ] && opp="claude" || opp="codex"
+  if [ "$opp" = "codex" ] && ! command -v codex >/dev/null 2>&1; then
+    echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE skipped (codex unavailable)" >> "$AUDIT"; return 0
+  fi
+  local rub out v reasons
+  rub="$(spec_gate_rubric)"
+  if [ "$opp" = "codex" ]; then out="$(timeout 300 codex exec -s read-only --skip-git-repo-check -C "$PWD" "$rub" </dev/null 2>/dev/null)"; else out="$(timeout 300 claude -p "$rub" </dev/null 2>/dev/null)"; fi
+  v="$(parse_verdict "$out")"
+  if [ "$v" = "fail" ]; then
+    reasons="$(parse_reasons "$out")"
+    cat > "$SW/spec-gate-result.json" <<JSON
+{ "spec": "$SPEC", "status": "fail", "engine": "$opp", "reasons": "$(jesc "$reasons")", "timestamp": "$(date -u +%FT%TZ)" }
+JSON
+    touch "$SW/.spec-gate-failed"
+    echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE fail ($opp): $reasons" >> "$AUDIT"
+    return 1
+  fi
+  rm -f "$SW/.spec-gate-failed" >/dev/null 2>&1
+  if [ -n "$v" ]; then
+    cat > "$SW/spec-gate-result.json" <<JSON
+{ "spec": "$SPEC", "status": "pass", "engine": "$opp", "reasons": "", "timestamp": "$(date -u +%FT%TZ)" }
+JSON
+    echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE pass ($opp)" >> "$AUDIT"
+  else
+    # No readable verdict — a soft pre-flight must not block all work on an infra/parse failure.
+    echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE advisory-pass ($opp produced no verdict)" >> "$AUDIT"
+  fi
+  return 0
+}
+
 AUTO="$(read_key loop autoLoop)"
 if [ "$AUTO" != "true" ]; then
   echo "Auto-loop is OFF. Set [loop].autoLoop = true in $CONFIG (or ask Claude to) and re-run."
@@ -197,6 +243,7 @@ JUDGE_MAX="$(read_key loop judgeMaxAttempts)"; case "$JUDGE_MAX" in ''|*[!0-9]*)
 INTEG_CMD="$(read_str loop integrationCommand)"
 INTEG_FIX="$(read_key loop integrationFixAttempts)"; case "$INTEG_FIX" in ''|*[!0-9]*) INTEG_FIX=1 ;; esac
 INTEG_JUDGE="$(read_key loop integrationJudge)"
+SPEC_GATE="$(read_key loop specGate)"
 ENGINE_DEFAULT="$(read_key engine default)"; [ -z "$ENGINE_DEFAULT" ] && ENGINE_DEFAULT="claude"
 
 # Detect an un-injected placeholder. The pattern is '*@@*' (not the literal placeholder) so the
@@ -228,6 +275,13 @@ if [ -z "$TEST_CMD" ]; then
 fi
 echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX git=$IS_GIT harness=$([ -n "$TEST_CMD" ] && echo on || echo off) pid=$$)" >> "$AUDIT"
 [ "$IS_GIT" = 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] WARN TAMPER-GATE OFF (not a git repo — pre-existing test tamper undetectable; verdicts flagged tamperGate:off)" >> "$AUDIT"; touch "$SW/.tamper-gate-off"; }
+
+# L3 pre-flight spec gate — refuse to autonomously implement a spec too hackable/underspecified to verify.
+if [ "$SPEC_GATE" = "true" ] && ! run_spec_gate; then
+  echo "$(date -u +%FT%TZ) [$SPEC] loop-run ABORTED by spec gate — run /harden-spec or fix the spec, then re-run" >> "$AUDIT"
+  rm -f "$PIDF" >/dev/null 2>&1
+  exit 1
+fi
 
 iter=0; lasthash=""; noprog=0; EXIT_REASON=""
 while true; do
