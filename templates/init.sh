@@ -80,6 +80,11 @@ noProgressStop = 3            # stop after N iterations with no tasks.md/verify-
 # Opt-in, recommended. Costs +1 opposite-engine agent per task; can only reopen a green, never a red.
 # judge = false
 # judgeMaxAttempts = 2        # judge-fail reopen rounds before the task is blocked [~]
+# integration terminal gate: once the spec is DONE, run the ASSEMBLED build + boot smoke (the real
+# tsc/build that per-task verification skips). On failure: bounded auto-fix, then report. Opt-in.
+# integrationCommand = "npm run build && npm run smoke"
+# integrationFixAttempts = 1  # bounded auto-fix rounds on integration failure
+# integrationJudge = false    # opt-in cross-module LLM review (codex↔claude) after a green build+boot
 TOML
 else
   echo "[3/11] config.toml exists, skipping"

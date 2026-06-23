@@ -109,6 +109,80 @@ run_judge() {
   fi
 }
 
+# --- L4 integration terminal gate ---
+jesc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\t' '  '; }
+integration_rubric() {
+  cat <<RUBRIC
+You are an INDEPENDENT cross-module reviewer (READ-ONLY) for spec "$SPEC" in this repository. Every task passed its own scoped tests AND the assembled build/boot command succeeded. Your job: find CROSS-MODULE contract holes a green build cannot catch — API to frontend field/shape mismatches, middleware/assembly ordering, env/secret/bootstrap requirements, integration points that compile but will not interoperate.
+Read .spec-workflow/specs/$SPEC/requirements.md, the Implementation Logs under .spec-workflow/specs/$SPEC/, and the build/boot output below:
+---
+$1
+---
+End with EXACTLY one line "VERDICT: pass" or "VERDICT: fail"; if fail, add one line "REASONS: <one line>".
+RUBRIC
+}
+# Run the assembled build+boot once. Bounded auto-fix on failure; optional cross-module judge on green.
+run_integration() {
+  local attempt=0 ec=1 ts log
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"; mkdir -p "$SW/reports"; log="$SW/reports/integration-$ts.log"
+  while :; do
+    bash -c "$INTEG_CMD" > "$log" 2>&1; ec=$?
+    [ "$ec" -eq 0 ] && break
+    [ "$attempt" -ge "$INTEG_FIX" ] && break
+    attempt=$((attempt+1))
+    echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION fail (exit $ec) — auto-fix $attempt/$INTEG_FIX" >> "$AUDIT"
+    claude -p "All tasks in spec '$SPEC' pass their own scoped tests, but the ASSEMBLED integration command failed: $INTEG_CMD. Failure output (tail): $(tail -c 1200 "$log" | tr '\n' ' '). Fix the cross-cutting integration issue (assembly, wiring, config, types, bootstrap) so the command passes. Do NOT weaken or delete any task's tests. Then stop." </dev/null >> "$LOG" 2>&1
+  done
+
+  local jverdict="none" jreasons=""
+  if [ "$ec" -eq 0 ] && [ "$INTEG_JUDGE" = "true" ]; then
+    local opp; [ "$ENGINE_DEFAULT" = "codex" ] && opp="claude" || opp="codex"
+    [ "$opp" = "codex" ] && ! command -v codex >/dev/null 2>&1 && opp="claude"
+    local rub jout jv
+    rub="$(integration_rubric "$(tail -c 2000 "$log")")"
+    if [ "$opp" = "codex" ]; then jout="$(timeout 300 codex exec -s read-only --skip-git-repo-check -C "$PWD" "$rub" </dev/null 2>/dev/null)"; else jout="$(timeout 300 claude -p "$rub" </dev/null 2>/dev/null)"; fi
+    jv="$(parse_verdict "$jout")"
+    if [ "$jv" = "fail" ]; then
+      jverdict="fail"; jreasons="[$opp] $(parse_reasons "$jout")"
+      if [ "$attempt" -lt "$INTEG_FIX" ]; then
+        attempt=$((attempt+1))
+        echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION judge fail ($opp) — auto-fix $attempt/$INTEG_FIX: $jreasons" >> "$AUDIT"
+        claude -p "Spec '$SPEC' builds and boots, but a cross-module reviewer found an integration contract hole: $jreasons. Fix it so the modules interoperate; do NOT weaken any task's tests. Then stop." </dev/null >> "$LOG" 2>&1
+        bash -c "$INTEG_CMD" >> "$log" 2>&1; ec=$?
+      fi
+    elif [ -n "$jv" ]; then
+      jverdict="pass"
+    else
+      # Build/boot is green ground truth; an unreadable/empty advisory judge does NOT override it.
+      jverdict="inconclusive"
+    fi
+  fi
+
+  local status="pass"; { [ "$ec" -ne 0 ] || [ "$jverdict" = "fail" ]; } && status="fail"
+  local blocked; blocked="$(grep -cE '^[[:space:]]*- \[~\]' "$TASKS" 2>/dev/null)"; case "$blocked" in ''|*[!0-9]*) blocked=0 ;; esac
+  cat > "$SW/integration-result.json" <<JSON
+{
+  "spec": "$SPEC",
+  "status": "$status",
+  "exitCode": $ec,
+  "command": "$(jesc "$INTEG_CMD")",
+  "attempts": $attempt,
+  "incompleteBlocked": $blocked,
+  "judgeVerdict": "$jverdict",
+  "judgeReasons": "$(jesc "$jreasons")",
+  "log": "$log",
+  "timestamp": "$(date -u +%FT%TZ)"
+}
+JSON
+  if [ "$status" = "pass" ]; then
+    rm -f "$SW/.integration-failed" >/dev/null 2>&1
+    echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION pass (exit 0$([ "$INTEG_JUDGE" = true ] && echo ", judge $jverdict"))" >> "$AUDIT"
+  else
+    touch "$SW/.integration-failed"
+    echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION fail (exit $ec, attempts $attempt$([ "$jverdict" = fail ] && echo ", judge fail: $jreasons"))" >> "$AUDIT"
+  fi
+}
+
 AUTO="$(read_key loop autoLoop)"
 if [ "$AUTO" != "true" ]; then
   echo "Auto-loop is OFF. Set [loop].autoLoop = true in $CONFIG (or ask Claude to) and re-run."
@@ -120,6 +194,10 @@ MAXFIX="$(read_key engine maxFixAttempts)";  case "$MAXFIX" in ''|*[!0-9]*) MAXF
 TEST_CMD="$(read_str loop testCommand)"
 JUDGE="$(read_key loop judge)"
 JUDGE_MAX="$(read_key loop judgeMaxAttempts)"; case "$JUDGE_MAX" in ''|*[!0-9]*) JUDGE_MAX=2 ;; esac
+INTEG_CMD="$(read_str loop integrationCommand)"
+INTEG_FIX="$(read_key loop integrationFixAttempts)"; case "$INTEG_FIX" in ''|*[!0-9]*) INTEG_FIX=1 ;; esac
+INTEG_JUDGE="$(read_key loop integrationJudge)"
+ENGINE_DEFAULT="$(read_key engine default)"; [ -z "$ENGINE_DEFAULT" ] && ENGINE_DEFAULT="claude"
 
 # Detect an un-injected placeholder. The pattern is '*@@*' (not the literal placeholder) so the
 # init.sh sed-replace of the placeholder does not rewrite this guard.
@@ -151,17 +229,17 @@ fi
 echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX git=$IS_GIT harness=$([ -n "$TEST_CMD" ] && echo on || echo off) pid=$$)" >> "$AUDIT"
 [ "$IS_GIT" = 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] WARN TAMPER-GATE OFF (not a git repo — pre-existing test tamper undetectable; verdicts flagged tamperGate:off)" >> "$AUDIT"; touch "$SW/.tamper-gate-off"; }
 
-iter=0; lasthash=""; noprog=0
+iter=0; lasthash=""; noprog=0; EXIT_REASON=""
 while true; do
-  [ -f "$STOPF" ] && { echo "$(date -u +%FT%TZ) [$SPEC] STOP (stop flag)" >> "$AUDIT"; break; }
+  [ -f "$STOPF" ] && { EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP (stop flag)" >> "$AUDIT"; break; }
 
   R="$(remaining)"; [ -z "$R" ] && R=0
-  [ "$R" -eq 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] DONE (all tasks [x]/[~])" >> "$AUDIT"; break; }
-  [ "$iter" -ge "$MAX" ] && { echo "$(date -u +%FT%TZ) [$SPEC] STOP maxIterations($MAX)" >> "$AUDIT"; break; }
+  [ "$R" -eq 0 ] && { EXIT_REASON=DONE; echo "$(date -u +%FT%TZ) [$SPEC] DONE (all tasks [x]/[~])" >> "$AUDIT"; break; }
+  [ "$iter" -ge "$MAX" ] && { EXIT_REASON=MAXITER; echo "$(date -u +%FT%TZ) [$SPEC] STOP maxIterations($MAX)" >> "$AUDIT"; break; }
 
   H="$(cat "$TASKS" "$SW/specs/$SPEC/verify-results/"*.json 2>/dev/null | cksum 2>/dev/null | awk '{print $1}')"
   if [ -n "$H" ] && [ "$H" = "$lasthash" ]; then noprog=$((noprog + 1)); else noprog=0; lasthash="$H"; fi
-  [ "$noprog" -ge "$NOPROG_MAX" ] && { echo "$(date -u +%FT%TZ) [$SPEC] STOP noProgress($NOPROG_MAX)" >> "$AUDIT"; break; }
+  [ "$noprog" -ge "$NOPROG_MAX" ] && { EXIT_REASON=NOPROGRESS; echo "$(date -u +%FT%TZ) [$SPEC] STOP noProgress($NOPROG_MAX)" >> "$AUDIT"; break; }
 
   iter=$((iter + 1))
 
@@ -171,7 +249,7 @@ while true; do
   SCOPE="$(json_str "$PICK" tests)"
   ENGINE="$(json_str "$PICK" engine)"; [ -z "$ENGINE" ] && ENGINE="claude"
   VERIFYMODE="$(json_str "$PICK" verify)"
-  [ -z "$TASKID" ] && { echo "$(date -u +%FT%TZ) [$SPEC] pick returned no task; stopping" >> "$AUDIT"; break; }
+  [ -z "$TASKID" ] && { EXIT_REASON=NOTASK; echo "$(date -u +%FT%TZ) [$SPEC] pick returned no task; stopping" >> "$AUDIT"; break; }
 
   echo "" >> "$LOG"; echo "===== iter $iter @ $(date -u +%FT%TZ) task=$TASKID scope='${SCOPE:-none}' (remaining=$R) =====" >> "$LOG"
   echo "$(date -u +%FT%TZ) [$SPEC] iter=$iter task=$TASKID remaining=$R" >> "$AUDIT"
@@ -258,6 +336,9 @@ while true; do
     printf '%s' "$TAIL" > "$SW/.fixnote-$TASKID"
   fi
 done
+
+# L4 integration terminal gate — only when the spec genuinely reached DONE and a command is configured.
+[ "$EXIT_REASON" = "DONE" ] && [ -n "$INTEG_CMD" ] && run_integration
 
 rm -f "$PIDF" "$STOPF" "$SW/.iter-out" "$SW/.testout" "$SW/.regout" >/dev/null 2>&1
 echo "$(date -u +%FT%TZ) [$SPEC] loop-run END (iterations=$iter)" >> "$AUDIT" 2>/dev/null

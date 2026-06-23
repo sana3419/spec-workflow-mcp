@@ -37,6 +37,11 @@ export interface SpecWorkflowConfig {
     // the agent-authored tests are adequate (not trivial). Opt-in; recommended. Can only reopen a green.
     judge?: boolean;
     judgeMaxAttempts?: number; // judge-fail reopen rounds before blocking (default 2)
+    // L4 integration terminal gate: once the spec is DONE, prove the ASSEMBLED system builds + boots
+    // (the real tsc/build L0 skips per-task). Opt-in. On failure: bounded auto-fix, then report.
+    integrationCommand?: string;
+    integrationFixAttempts?: number; // bounded auto-fix rounds on integration failure (default 1)
+    integrationJudge?: boolean;      // opt-in cross-module LLM review after a green integration
   };
 
   // Security features
@@ -174,6 +179,15 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     if (lp.judgeMaxAttempts !== undefined && (typeof lp.judgeMaxAttempts !== 'number' || lp.judgeMaxAttempts < 1)) {
       return { valid: false, error: `Invalid loop.judgeMaxAttempts: must be a positive number.` };
     }
+    if (lp.integrationCommand !== undefined && typeof lp.integrationCommand !== 'string') {
+      return { valid: false, error: `Invalid loop.integrationCommand: must be a string.` };
+    }
+    if (lp.integrationFixAttempts !== undefined && (typeof lp.integrationFixAttempts !== 'number' || lp.integrationFixAttempts < 0)) {
+      return { valid: false, error: `Invalid loop.integrationFixAttempts: must be a non-negative number.` };
+    }
+    if (lp.integrationJudge !== undefined && typeof lp.integrationJudge !== 'boolean') {
+      return { valid: false, error: `Invalid loop.integrationJudge: must be a boolean.` };
+    }
   }
 
   // Validate security features
@@ -273,6 +287,9 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
         ...(parsedConfig.loop.coverageMin !== undefined && { coverageMin: parsedConfig.loop.coverageMin }),
         ...(parsedConfig.loop.judge !== undefined && { judge: parsedConfig.loop.judge }),
         ...(parsedConfig.loop.judgeMaxAttempts !== undefined && { judgeMaxAttempts: parsedConfig.loop.judgeMaxAttempts }),
+        ...(parsedConfig.loop.integrationCommand !== undefined && { integrationCommand: parsedConfig.loop.integrationCommand }),
+        ...(parsedConfig.loop.integrationFixAttempts !== undefined && { integrationFixAttempts: parsedConfig.loop.integrationFixAttempts }),
+        ...(parsedConfig.loop.integrationJudge !== undefined && { integrationJudge: parsedConfig.loop.integrationJudge }),
       };
     }
 
