@@ -155,7 +155,8 @@ nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &
 - **看进展:** `tail -f .spec-workflow/loop-run.log`,或 `spec-status`,或开 dashboard —— 你的会话全程保持可交互。
 - **停止:** `touch .spec-workflow/.loop-stop`(或 `kill "$(cat .spec-workflow/.loop-run.pid)"`)。
 - **护栏:** `maxIterations`(默认 50)硬性封顶;`noProgressStop`(默认 3)在连续 N 轮 `tasks.md`/`verify-results` 无变化后停止。每轮迭代与停止原因记入 `.spec-workflow/loop-audit.log`。
-- **原理:** runner 每个任务起一个全新 headless `claude`(实现→测试→verify-task→log-implementation),共享状态都落在磁盘上——经典的 agentic loop 模式。
+- **原理:** runner 每个任务起一个全新 headless `claude` 去实现并写测试;之后由 **harness(不是 agent)** 跑这些测试、用 exit code 记录判据,共享状态都落在磁盘上——经典的 agentic loop 模式。
+- **验证阶梯:** 循环把"这个任务做完了"从 agent 嘴里拿走,靠一条分层、opt-in 的对抗验证链——spec 门(L3)→ harness 执行(L0)→ 防篡改/回归(L1)→ 跨家族 adequacy 判官(L2)→ 集成终判(L4)。这是 **fork 当前行为**;每层守什么、怎么开,见 **[docs/VERIFICATION-LADDER.zh.md](docs/VERIFICATION-LADDER.zh.md)**([English](docs/VERIFICATION-LADDER.md))。
 
 ## MCP 架构
 

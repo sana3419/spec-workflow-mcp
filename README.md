@@ -130,7 +130,8 @@ You can also just tell Claude **"run the loop in the background"** and it launch
 - **Watch progress:** `tail -f .spec-workflow/loop-run.log`, or `spec-status`, or the dashboard — all while your session stays interactive.
 - **Stop:** `touch .spec-workflow/.loop-stop` (or `kill "$(cat .spec-workflow/.loop-run.pid)"`).
 - **Guardrails:** `maxIterations` (default 50) hard-caps it; `noProgressStop` (default 3) stops after N iterations with no `tasks.md`/`verify-results` change. Every iteration + stop reason is logged to `.spec-workflow/loop-audit.log`.
-- **How it works:** the runner invokes a fresh headless `claude` per task (implement → test → verify-task → log-implementation), reading shared state from disk — classic "agentic loop" pattern.
+- **How it works:** the runner invokes a fresh headless `claude` per task to implement it and write its tests; the **harness** (not the agent) then runs those tests and records the verdict from the exit code, reading shared state from disk — classic "agentic loop" pattern.
+- **Verification ladder:** the loop takes "this task is done" out of the agent's mouth via a layered, opt-in adversarial chain — spec gate (L3) → harness execution (L0) → tamper/regression (L1) → cross-family adequacy judge (L2) → integration gate (L4). This is **fork-current** behaviour; see **[docs/VERIFICATION-LADDER.md](docs/VERIFICATION-LADDER.md)** ([中文](docs/VERIFICATION-LADDER.zh.md)) for what each layer catches and how to enable it.
 
 ## MCP Architecture
 
