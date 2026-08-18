@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.1.0] — 2026-08-18 (fork)
 
 ### Added
+- **Claude Code plugin packaging**: `.claude-plugin/plugin.json` + `marketplace.json`, root `.mcp.json` (`${CLAUDE_PLUGIN_ROOT}/dist/index.js`), `skills/` and `agents/` moved to the repo root, new `/spec-workflow:init` and `/spec-workflow:telegram` skills. `init.sh` remains for manual installs and is what the init skill calls.
 - **18 reviewer agents** (Tier 0 always: security, logic, performance, api, test-adequacy-judge, spec-drift-detector; Tier 1 triggered: concurrency, error-handling, data-migration, backward-compat, dependency-license, config-secrets, observability, i18n, accessibility, ux-copy, cost, architecture) in a house format with `tier/tags/triggers` frontmatter.
 - **`review-route` MCP tool + `spec-workflow-mcp route` CLI** (`src/core/review-router.ts`): deterministic selection from agent frontmatter + project profile + diff (path globs, added-line regexes, language), reasons per agent, `agents/add/skip/tags/full/maxAgents` overrides, `.spec-workflow/review.config.json`, docs-only fast path. `/review` skill rewritten around it; loop `_Verify: panel` lenses come from the same router.
 - Phone-friendly Phase 1–3 approvals when the session runs through the Telegram channel plugin (summary + `.md` attachment; only the human's message counts).

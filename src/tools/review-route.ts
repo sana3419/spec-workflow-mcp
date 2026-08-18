@@ -6,7 +6,7 @@ import { routeReview } from '../core/review-router.js';
 
 /** Package-shipped agents (fallback when the project has no .claude/agents). */
 export function templateAgentsDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', 'agents');
+  return join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'agents');
 }
 
 export const reviewRouteTool: Tool = {

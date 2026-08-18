@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "spec-workflow",
+  "description": "spec-workflow-mcp — spec-driven development with harness-owned verification and Telegram control",
+  "owner": { "name": "sana3419" },
+  "plugins": [
+    {
+      "name": "spec-workflow",
+      "description": "MCP server (6 tools) + /review /qa /tdd /design-review skills + 18 routed reviewer agents + /spec-workflow:init and /spec-workflow:telegram setup skills. Run `npm run build` in the checkout first (the MCP server runs from dist/).",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

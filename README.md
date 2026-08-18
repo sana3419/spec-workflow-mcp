@@ -24,38 +24,32 @@ Auth:
 
 ## Installation
 
-### Step 1: Clone and build
+### As a Claude Code plugin (recommended)
 
 ```bash
-git clone https://github.com/sana3419/spec-workflow-mcp.git
-cd spec-workflow-mcp
-npm install && npm run build
+git clone https://github.com/sana3419/spec-workflow-mcp.git && cd spec-workflow-mcp
+npm ci && npm run build            # the MCP server + loop runner run from dist/
 ```
-
-### Step 2: Install the Codex CLI
-
-```bash
-npm i -g @openai/codex
-codex login    # First run: sign in with your ChatGPT account (or configure an OpenAI API key)
+Then in Claude Code:
 ```
+/plugin marketplace add /absolute/path/to/spec-workflow-mcp
+/plugin install spec-workflow@spec-workflow
+```
+(or start a session with `claude --plugin-dir /absolute/path/to/spec-workflow-mcp`). The plugin ships the
+`spec-workflow` MCP server, the `/review /qa /tdd /design-review` skills, the 18 reviewer agents and two setup
+skills: **`/spec-workflow:init`** (bootstrap the current project — config.toml, loop runner, CLAUDE.md,
+settings.json) and **`/spec-workflow:telegram`** (loop_bot daemon).
 
-### Step 3: Initialize your project
+### Manual (no plugin)
 
 ```bash
+npm i -g @openai/codex && codex login          # only if you want Codex offload
 bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 ```
+Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all`, `--auto-loop`, `--force`.
+`init.sh` writes `.mcp.json` (spec-workflow + codex servers), copies skills/agents into `.claude/`, and installs the loop runner.
 
-Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all` (graph + nexus), `--auto-loop` (pre-enable the Phase 4 background loop), `--force` (overwrite existing).
-
-> Want codebase visualization? [Understand-Anything](https://github.com/Lum1104/Understand-Anything) is a separate Claude Code plugin (not managed by `init.sh`) — install it from inside Claude Code with `/plugin install understand-anything`.
-
-### Step 4: Start
-
-```bash
-cd /path/to/your-project && claude
-```
-
-First time: approve the MCP servers when prompted.
+Then `cd /path/to/your-project && claude` and approve the MCP servers when prompted.
 
 ## How It Works
 

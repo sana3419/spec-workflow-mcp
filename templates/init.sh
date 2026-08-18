@@ -127,13 +127,13 @@ if [ -f "$AGENTS_TEMPLATE" ]; then
 fi
 
 # 5. Copy skills + agents
-SKILLS_DIR="$SCRIPT_DIR/skills"
+SKILLS_DIR="$SCRIPT_DIR/../skills"
 TARGET_SKILLS="$PROJECT_DIR/.claude/skills"
 if [ -d "$SKILLS_DIR" ]; then
   echo "[5/11] Copying skills + agents..."
   mkdir -p "$TARGET_SKILLS"
   cp -r "$SKILLS_DIR"/* "$TARGET_SKILLS/"
-  AGENTS_DIR="$SCRIPT_DIR/agents"
+  AGENTS_DIR="$SCRIPT_DIR/../agents"
   if [ -d "$AGENTS_DIR" ]; then
     mkdir -p "$PROJECT_DIR/.claude/agents"
     cp -r "$AGENTS_DIR"/* "$PROJECT_DIR/.claude/agents/"
@@ -347,7 +347,7 @@ echo "  Generated files:"
 echo "    $PROJECT_DIR/CLAUDE.md"
 echo "    $PROJECT_DIR/AGENTS.md"
 echo "    $PROJECT_DIR/.spec-workflow/config.toml"
-echo "    $PROJECT_DIR/.claude/skills/{review,qa,design-review,tdd}/"
+echo "    $PROJECT_DIR/.claude/skills/{review,qa,design-review,tdd,init,telegram}/"
 echo "    $PROJECT_DIR/.claude/settings.json"
 echo "    $PROJECT_DIR/.spec-workflow/spec-loop-run.sh   (background Phase 4 loop runner)"
 echo ""

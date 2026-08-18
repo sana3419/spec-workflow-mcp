@@ -4,7 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { parseFrontmatter, globToRegExp, addedLines, routeReview, loadAgents } from '../review-router.js';
 
-const TEMPLATES = join(process.cwd(), 'templates', 'agents');
+const TEMPLATES = join(process.cwd(), 'agents');
 
 describe('review-router: frontmatter + glob', () => {
   it('parses nested triggers, quoted regex lists and scalars', () => {

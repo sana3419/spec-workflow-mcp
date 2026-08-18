@@ -10,7 +10,7 @@ const execFileP = promisify(execFile);
  * Deterministic reviewer-agent routing.
  *
  * Source of truth = the agent files themselves (`.claude/agents/*.md` in the project, falling back
- * to this package's `templates/agents`). Each agent's frontmatter declares:
+ * to this package's `agents/`). Each agent's frontmatter declares:
  *   tier: 0 | 1 | 2 | ...          (tier 0 = always on)
  *   tags: [..]
  *   triggers:
