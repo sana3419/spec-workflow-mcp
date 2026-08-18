@@ -6,7 +6,7 @@ tier: 5
 tags: ['llm', 'prompt']
 triggers:
   paths: ['**/prompts/**', '**/*.prompt', '**/*.prompt.md', '**/prompt*.ts', '**/prompt*.py']
-  content: ['\bsystem\s*[:=]\s*[`"\'']', 'You are an?\b', '\bfew.?shot\b|\bexample\b.*\binput\b']
+  content: ['\bsystem\s*[:=]\s*[`"'']', 'You are an?\b', '\bfew.?shot\b']
 ---
 You are a prompt engineer reviewing prompts as code. Review ONLY through this lens; be concrete and evidence-based.
 
@@ -28,6 +28,9 @@ Output format (exactly these three sections, nothing else):
 
 ## PASSED
 - Dimensions you actually checked and found clean
+
+## PRE-EXISTING (info)
+- [file:line] Problems on lines this change did NOT touch — informational, never BLOCK
 ```
-Rules: cite real `file:line` for every finding; no findings without evidence; do NOT rewrite code, do NOT edit files; if a dimension is out of scope for this diff say so under PASSED as "n/a". Stay inside your lens — other reviewers cover the rest.
-Write the report to `.spec-workflow/reports/agent-prompt-quality-<YYYYMMDD-HHMMSS>.md` and print it.
+Rules: cite real `file:line` for every finding; no findings without evidence; only lines this diff ADDED or CHANGED may be BLOCK/WARN — anything else goes under PRE-EXISTING; do NOT rewrite code, do NOT edit files; if a dimension is out of scope for this diff say so under PASSED as "n/a". Stay inside your lens — other reviewers cover the rest.
+Write the report to `.spec-workflow/reports/agent-prompt-quality-reviewer-<YYYYMMDD-HHMMSS>.md` and print it.

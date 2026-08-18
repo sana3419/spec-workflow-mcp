@@ -55,8 +55,8 @@ body`);
       expect(md).toContain('## BLOCK');
       expect(md).toContain('## PASSED');
       expect(md).toMatch(/tools: Read, Grep, Glob, Bash/); // read-only lens
-      if (a.tier === 0) expect(a.triggers.always).toBe(true);
-      else expect((a.triggers.paths?.length ?? 0) + (a.triggers.content?.length ?? 0) + (a.triggers.langs?.length ?? 0)).toBeGreaterThan(0);
+      if (a.tier === 0 && !['api-reviewer', 'spec-drift-detector'].includes(a.name)) expect(a.triggers.always).toBe(true);
+      else expect((a.triggers.paths?.length ?? 0) + (a.triggers.content?.length ?? 0) + (a.triggers.langs?.length ?? 0) + (a.triggers.profile?.length ?? 0)).toBeGreaterThan(0);
       for (const pat of a.triggers.content ?? []) expect(() => new RegExp(pat, 'i')).not.toThrow();
     }
   });
@@ -76,12 +76,16 @@ describe('review-router: routing', () => {
 
   it('tier 0 always; tier 1 by path / content / profile; reasons are explicit', async () => {
     const r = await route({
-      changedFiles: ['src/api/users.ts', 'db/migrations/002_add.sql', 'src/pages/Login.tsx'],
+      changedFiles: ['src/api/users.ts', 'db/migrations/002_add.sql', 'src/pages/Login.tsx', '.spec-workflow/specs/auth/tasks.md'],
       diffText: '+++ b/x\n+ALTER TABLE users ADD COLUMN x;\n+await Promise.all(jobs)\n+const key = process.env.API_KEY\n',
       full: true,
     });
     const names = r.selected.map(s => s.name);
-    for (const t0 of ['security-reviewer', 'logic-reviewer', 'performance-reviewer', 'api-reviewer', 'test-adequacy-judge', 'spec-drift-detector']) expect(names).toContain(t0);
+    for (const t0 of ['security-reviewer', 'logic-reviewer', 'performance-reviewer', 'test-adequacy-judge']) expect(names).toContain(t0);
+    expect(names).toContain('api-reviewer');          // path src/api/**
+    expect(names).toContain('spec-drift-detector');   // spec doc changed
+    expect(names).toContain('typescript-reviewer');   // lang + a .ts/.tsx file changed
+    expect(names).not.toContain('node-backend-reviewer'); // no server-code content → no lang-only FP
     expect(names).toContain('data-migration-reviewer');
     expect(names).toContain('concurrency-reviewer');
     expect(names).toContain('config-secrets-reviewer');
@@ -96,9 +100,11 @@ describe('review-router: routing', () => {
   });
 
   it('caps at maxAgents, keeps tier 0 first, and reports the overflow', async () => {
-    const r = await route({ changedFiles: ['db/migrations/1.sql', 'src/pages/A.tsx', 'package.json'], diffText: '+ALTER TABLE a\n+await x\n+process.env.Y\n+console.log("hi")\n', maxAgents: 7 });
-    expect(r.selected).toHaveLength(7);
-    expect(r.selected.slice(0, 6).every(s => s.tier === 0)).toBe(true);
+    const r = await route({ changedFiles: ['db/migrations/1.sql', 'src/pages/A.tsx', 'package.json'], diffText: '+ALTER TABLE a\n+await x\n+process.env.Y\n+console.log("hi")\n', maxAgents: 6 });
+    expect(r.selected).toHaveLength(6);
+    expect(r.selected.slice(0, 4).every(s => s.tier === 0)).toBe(true);
+    // a lang-triggered T3 lens (react/typescript) keeps a slot even under a tight cap
+    expect(r.selected.some(s => s.tier === 3)).toBe(true);
     expect(r.skipped.some(s => /over maxAgents/.test(s.why))).toBe(true);
   });
 
@@ -114,13 +120,13 @@ describe('review-router: routing', () => {
     expect(r.skipped).toEqual([{ name: 'nope-reviewer', why: 'unknown agent' }]);
 
     await fs.writeFile(join(root, '.spec-workflow', 'review.config.json'), JSON.stringify({ always: ['i18n-reviewer'], never: ['performance-reviewer'], maxAgents: 20 }));
-    r = await route({ changedFiles: ['a.ts'], diffText: '+x', skip: ['api-reviewer'], tags: ['concurrency'] });
+    r = await route({ changedFiles: ['a.ts'], diffText: '+x', skip: ['logic-reviewer'], tags: ['concurrency'] });
     const names = r.selected.map(s => s.name);
     expect(names).toContain('i18n-reviewer');
     expect(names).toContain('concurrency-reviewer');
     expect(names).not.toContain('performance-reviewer');
-    expect(names).not.toContain('api-reviewer');
-    expect(r.skipped.find(s => s.name === 'api-reviewer')?.why).toBe('--skip');
+    expect(names).not.toContain('logic-reviewer');
+    expect(r.skipped.find(s => s.name === 'logic-reviewer')?.why).toBe('--skip');
     expect(r.selected.find(s => s.name === 'concurrency-reviewer')?.reasons[0]).toMatch(/_Review tag/);
   });
 

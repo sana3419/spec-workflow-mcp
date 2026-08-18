@@ -36,7 +36,7 @@ Then in Claude Code:
 /plugin install spec-workflow@spec-workflow
 ```
 (or start a session with `claude --plugin-dir /absolute/path/to/spec-workflow-mcp`). The plugin ships the
-`spec-workflow` MCP server, the `/review /qa /tdd /design-review` skills, the 18 reviewer agents and two setup
+`spec-workflow` MCP server, the `/review /qa /tdd /design-review` skills, the 38 reviewer agents and two setup
 skills: **`/spec-workflow:init`** (bootstrap the current project — config.toml, loop runner, CLAUDE.md,
 settings.json) and **`/spec-workflow:telegram`** (loop_bot daemon).
 
@@ -159,7 +159,7 @@ Claude Code (orchestrator)
 "Build a user auth system"       → spec-workflow planning
 "Show progress"                  → spec-status
 "Tests passed / failed"          → verify-task green/red
-"Use /review"                    → launches 4 review subagents (Claude)
+"Use /review"                    → routes & launches the right reviewer agents (Claude), returns a VERDICT
 "Use /tdd to develop this"       → dispatches Codex for TDD
 ```
 
@@ -182,7 +182,7 @@ Human-only CLI equivalents: `spec-workflow-mcp status|stop|reset|set-status|clea
 
 | Skill | Engine | Purpose |
 |-------|--------|---------|
-| `/review` | Claude | Launches 4 review subagents in parallel (security, logic, performance, API) |
+| `/review` | Claude | Routes the diff to the right reviewer agents (of 38), runs them in parallel, consolidates into `VERDICT: safe-to-merge / fix-first / blocked` |
 | `/qa` | Codex | Systematic QA testing + atomic fixes |
 | `/design-review` | Claude | Visual/interaction audit (multimodal) |
 | `/tdd` | Codex | TDD red-green-refactor + worktree isolation |
@@ -203,10 +203,10 @@ agent — no LLM guessing, same diff → same set.
 | 4 · infra | iac · cicd · deployment-safety | Dockerfile / k8s / terraform / workflows / deploy files |
 | 5 · LLM apps | prompt-injection · prompt-quality · llm-eval | LLM SDK in deps or prompt/tool-call code in the diff |
 
-38 agents total; a typical diff routes 8–10.
+38 agents total; a typical small diff routes 4–8, a wide one up to 12.
 
 Overrides: `/review --agents a,b` (exact) · `--add/--skip` · `--full` (no cap) · tasks.md `_Review: security, concurrency`
-· `.spec-workflow/review.config.json` (`always` / `never` / `maxAgents`, default 10). Dry run:
+· `.spec-workflow/review.config.json` (`always` / `never` / `maxAgents`, default 12). Dry run:
 `spec-workflow-mcp route --base HEAD~1` prints the selection and reasons. The loop's `_Verify: panel` reuses
 the same routing for its extra lenses (the cross-family judge remains the anchor).
 

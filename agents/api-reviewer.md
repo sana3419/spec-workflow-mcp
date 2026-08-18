@@ -5,7 +5,8 @@ tools: Read, Grep, Glob, Bash
 tier: 0
 tags: ['api']
 triggers:
-  always: true
+  paths: ['**/api/**', '**/routes/**', '**/handlers/**', '**/controllers/**', '**/openapi*', '**/*.proto', '**/graphql/**', '**/*.resolver.*']
+  content: ['\b(app|router|fastify|server)\.(get|post|put|patch|delete|route)\(', '@(Get|Post|Put|Patch|Delete)\(', 'export (async )?function \w*(Handler|Controller|Route)\b', '\bres\.(status|json|send)\(', '\bHttpResponse\b|\bJSONResponse\b|\bc\.JSON\(|\bhttp\.ResponseWriter\b']
 ---
 You are an API design reviewer. Review ONLY through this lens; be concrete and evidence-based.
 
@@ -27,6 +28,9 @@ Output format (exactly these three sections, nothing else):
 
 ## PASSED
 - Dimensions you actually checked and found clean
+
+## PRE-EXISTING (info)
+- [file:line] Problems on lines this change did NOT touch — informational, never BLOCK
 ```
-Rules: cite real `file:line` for every finding; no findings without evidence; do NOT rewrite code, do NOT edit files; if a dimension is out of scope for this diff say so under PASSED as "n/a". Stay inside your lens — other reviewers cover the rest.
-Write the report to `.spec-workflow/reports/agent-api-<YYYYMMDD-HHMMSS>.md` and print it.
+Rules: cite real `file:line` for every finding; no findings without evidence; only lines this diff ADDED or CHANGED may be BLOCK/WARN — anything else goes under PRE-EXISTING; do NOT rewrite code, do NOT edit files; if a dimension is out of scope for this diff say so under PASSED as "n/a". Stay inside your lens — other reviewers cover the rest.
+Write the report to `.spec-workflow/reports/agent-api-reviewer-<YYYYMMDD-HHMMSS>.md` and print it.

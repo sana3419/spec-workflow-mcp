@@ -86,7 +86,7 @@ Default engine is set by `.spec-workflow/config.toml` `[engine] default` (= `cla
 
 | Skill | Engine | Purpose |
 |-------|--------|---------|
-| `/review` | Claude | Launches 4 review subagents in parallel (security, logic, performance, API) |
+| `/review` | Claude | Routes the diff to the right reviewer agents (`review-route`), runs them in parallel, consolidates into a plain-language VERDICT |
 | `/qa` | Codex | Systematic QA testing + atomic fixes |
 | `/design-review` | Claude | Visual/interaction audit (multimodal) |
 | `/tdd` | Codex | TDD red-green-refactor + worktree isolation |

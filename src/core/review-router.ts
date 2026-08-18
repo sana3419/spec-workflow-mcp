@@ -17,7 +17,8 @@ const execFileP = promisify(execFile);
  *     always: true                 always selected
  *     paths:   ['**\/migrations/**', ...]     glob on changed file paths
  *     content: ['ALTER TABLE', ...]           regex on ADDED diff lines
- *     langs:   ['typescript', ...]            project profile languages
+ *     langs:   ['typescript', ...]            project language AND a changed file of that language
+ *     profile: ['hasSpecs', 'hasLlmSdk', ...] project profile flags
  * No LLM is involved: same diff + same agents → same selection, with a reason per agent.
  *
  * Override precedence (highest first): explicit `agents` list → `add`/`skip` → tasks.md `_Review:` tags
@@ -29,7 +30,7 @@ export interface AgentSpec {
   description: string;
   tier: number;
   tags: string[];
-  triggers: { always?: boolean; paths?: string[]; content?: string[]; langs?: string[] };
+  triggers: { always?: boolean; paths?: string[]; content?: string[]; langs?: string[]; profile?: string[] };
   file: string;
 }
 
@@ -65,6 +66,8 @@ export interface RouteResult {
 }
 
 export interface ProjectProfile {
+  /** .spec-workflow/specs has at least one spec */
+  hasSpecs: boolean;
   languages: string[];
   frameworks: string[];
   hasMigrations: boolean;
@@ -152,6 +155,7 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
           paths: Array.isArray(trig.paths) ? trig.paths.map(String) : undefined,
           content: Array.isArray(trig.content) ? trig.content.map(String) : undefined,
           langs: Array.isArray(trig.langs) ? trig.langs.map(String) : undefined,
+          profile: Array.isArray(trig.profile) ? trig.profile.map(String) : undefined,
         },
         file: join(dir, n),
       });
@@ -196,7 +200,9 @@ export async function detectProfile(projectPath: string): Promise<ProjectProfile
   if (await exists('pom.xml') || await exists('build.gradle') || await exists('build.gradle.kts')) languages.push('java');
   const hasMigrations = (await exists('migrations')) || (await exists('db/migrate')) || (await exists('prisma/migrations')) || (await exists('alembic'));
   const hasIac = (await exists('Dockerfile')) || (await exists('docker-compose.yml')) || (await exists('terraform')) || (await exists('k8s')) || (await exists('helm'));
-  return { languages, frameworks, hasMigrations, hasLlmSdk, hasIac, hasUi };
+  let hasSpecs = false;
+  try { hasSpecs = (await fs.readdir(join(root, '.spec-workflow', 'specs'))).length > 0; } catch { /* none */ }
+  return { hasSpecs, languages, frameworks, hasMigrations, hasLlmSdk, hasIac, hasUi };
 }
 
 // ------------------------------------------------------------------ globs
@@ -224,7 +230,7 @@ export function globToRegExp(glob: string): RegExp {
 
 const GIT_REF = /^[A-Za-z0-9._\/~^@{}-]{1,200}$/;
 
-async function gitDiff(projectPath: string, base: string): Promise<{ files: string[]; text: string; error?: string }> {
+async function gitDiff(projectPath: string, base: string, onlyFiles?: string[]): Promise<{ files: string[]; text: string; error?: string }> {
   const cwd = PathUtils.translatePath(projectPath);
   let files: string[] = [], text = '', error: string | undefined;
   // `base` may come from an LLM tool call: never let it be parsed as a git option (--output=... = file write).
@@ -241,7 +247,8 @@ async function gitDiff(projectPath: string, base: string): Promise<{ files: stri
     return { files: [], text: '', error: `git diff --name-only ${base} failed: ${(e as Error).message.split('\n')[0]}` };
   }
   try {
-    const { stdout } = await execFileP('git', ['diff', '--no-color', '--end-of-options', base], { cwd, maxBuffer: 32e6 });
+    const scoped = onlyFiles && onlyFiles.length ? ['--', ...onlyFiles.filter(f => !f.startsWith('-'))] : [];
+    const { stdout } = await execFileP('git', ['diff', '--no-color', '--end-of-options', base, ...scoped], { cwd, maxBuffer: 32e6 });
     text = stdout.slice(0, 4e6);
   } catch (e) {
     error = `git diff ${base} failed (content triggers skipped): ${(e as Error).message.split('\n')[0]}`;
@@ -255,6 +262,10 @@ export function addedLines(diff: string): string[] {
 }
 
 const DOC_EXT = /\.(md|mdx|txt|rst|adoc)$/i;
+const LANG_EXT: Record<string, RegExp> = {
+  typescript: /\.(ts|tsx|mts|cts)$/i, javascript: /\.(js|jsx|mjs|cjs)$/i, python: /\.py$/i, go: /\.go$/i,
+  rust: /\.rs$/i, ruby: /\.rb$/i, java: /\.(java|kt)$/i,
+};
 
 // ------------------------------------------------------------------ route
 
@@ -268,19 +279,21 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
   const { agents, dir } = await loadAgents(input.projectPath, fallbackAgentsDir);
   const known = new Map(agents.map(a => [a.name, a]));
   const cfg = await loadReviewConfig(input.projectPath);
-  const maxAgents = input.full ? Infinity : (input.maxAgents ?? cfg.maxAgents ?? 10);
+  const maxAgents = input.full ? Infinity : (input.maxAgents ?? cfg.maxAgents ?? 12);
   const profile = await detectProfile(input.projectPath);
 
   let changedFiles = input.changedFiles;
   let diffText = input.diffText;
   let gitError: string | undefined;
   if (!changedFiles || (!diffText && changedFiles.length)) {
-    const d = await gitDiff(input.projectPath, input.base ?? 'HEAD');
+    const d = await gitDiff(input.projectPath, input.base ?? 'HEAD', changedFiles);
     changedFiles = changedFiles ?? d.files; diffText = diffText ?? d.text; gitError = d.error;
   }
   changedFiles = (changedFiles ?? []).map(f => f.replace(/^\.\//, ''));
   const added = addedLines(diffText ?? '');
-  const docsOnly = changedFiles.length > 0 && changedFiles.every(f => DOC_EXT.test(f));
+  // prompt files are markdown but are code for LLM apps — never treat them as docs
+  const isDoc = (f: string) => DOC_EXT.test(f) && !/(^|\/)prompts?\//i.test(f) && !/\.prompt\.md$/i.test(f);
+  const docsOnly = changedFiles.length > 0 && changedFiles.every(isDoc);
 
   const skipped: RouteResult['skipped'] = [];
   const reasons = new Map<string, string[]>();
@@ -324,7 +337,14 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
           if (line) { push(a.name, `content /${pat}/`); break; }
         }
       }
-      if (t.langs?.length && t.langs.some(l => profile.languages.includes(l))) push(a.name, `lang ${t.langs.filter(l => profile.languages.includes(l)).join('/')}`);
+      if (t.langs?.length) {
+        const hits = t.langs.filter(l => profile.languages.includes(l) && changedFiles.some(f => LANG_EXT[l]?.test(f)));
+        if (hits.length) push(a.name, `lang ${hits.join('/')} (changed files)`);
+      }
+      if (t.profile?.length) {
+        const hits = t.profile.filter(k => (profile as any)[k] === true);
+        if (hits.length) push(a.name, `profile ${hits.join('/')}`);
+      }
     }
     // profile-driven nudges (still deterministic)
     if (!docsOnly && profile.hasLlmSdk) push('cost-reviewer', 'profile: LLM SDK present');
@@ -334,12 +354,27 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
   for (const n of input.skip ?? []) { if (reasons.delete(n)) skipped.push({ name: n, why: '--skip' }); }
   for (const n of cfg.never ?? []) { if (reasons.delete(n)) skipped.push({ name: n, why: 'review.config.json never' }); }
 
-  // order: tier, then number of reasons desc, then name; cap
+  // order: tier 0 first; then SPECIFIC hits (path/content/profile/tag/explicit) before lang-only hits;
+  // then more reasons first; then lower tier; then name. Cap afterwards.
+  const specific = (rs: string[]) => rs.some(r => !r.startsWith('lang '));
   let selected = [...reasons.entries()].map(([name, rs]) => ({ name, reasons: rs, tier: known.get(name)!.tier }))
-    .sort((a, b) => a.tier - b.tier || b.reasons.length - a.reasons.length || a.name.localeCompare(b.name));
+    .sort((a, b) => (a.tier === 0 ? 0 : 1) - (b.tier === 0 ? 0 : 1)
+      || Number(specific(b.reasons)) - Number(specific(a.reasons))
+      || b.reasons.length - a.reasons.length
+      || a.tier - b.tier
+      || a.name.localeCompare(b.name));
   if (selected.length > maxAgents) {
-    for (const s of selected.slice(maxAgents)) skipped.push({ name: s.name, why: `over maxAgents=${maxAgents} (use --full or --max-agents)` });
-    selected = selected.slice(0, maxAgents);
+    let keep = selected.slice(0, maxAgents);
+    const dropped = selected.slice(maxAgents);
+    // A language/stack lens (tier 3, lang-triggered) is what most users want most: reserve one slot for it
+    // by displacing the lowest-ranked tier-1 lens if it would otherwise fall off.
+    const langLens = dropped.find(s => s.tier === 3 && s.reasons.some(r => r.startsWith('lang ')));
+    if (langLens && !keep.some(s => s.tier === 3)) {
+      const idx = keep.map(s => s.tier).lastIndexOf(1);
+      if (idx >= 0) { dropped.push(keep[idx]); keep = [...keep.slice(0, idx), ...keep.slice(idx + 1), langLens]; dropped.splice(dropped.indexOf(langLens), 1); }
+    }
+    for (const s of dropped) skipped.push({ name: s.name, why: `over maxAgents=${maxAgents} (use --full or --max-agents)` });
+    selected = keep;
   }
   return { selected, skipped, changedFiles, profile, docsOnly, maxAgents: Number.isFinite(maxAgents) ? maxAgents : -1, agentsDir: relative(process.cwd(), dir) || dir, ...(gitError ? { gitError } : {}) };
 }

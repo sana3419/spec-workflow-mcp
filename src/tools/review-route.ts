@@ -27,7 +27,7 @@ Call this BEFORE launching review subagents (the /review skill does). Routing re
       skip: { type: 'array', items: { type: 'string' } },
       tags: { type: 'array', items: { type: 'string' }, description: "Tags from the task's _Review: field, e.g. ['security','concurrency']" },
       full: { type: 'boolean', description: 'Select everything that triggers; ignore maxAgents' },
-      maxAgents: { type: 'number', description: 'Cap (default 10 or review.config.json maxAgents)' },
+      maxAgents: { type: 'number', description: 'Cap (default 12 or review.config.json maxAgents)' },
     },
   },
   annotations: { title: 'Review Route', readOnlyHint: true },
@@ -50,7 +50,8 @@ export async function reviewRouteHandler(args: any, context: ToolContext): Promi
         : 'No reviewers selected (no agents found or nothing changed).',
       data: r,
       nextSteps: r.selected.length
-        ? ['Launch exactly these agents in parallel via the Agent tool, one per name, with the changed file list',
+        ? [`Tell the user first: "${r.selected.length} reviewers will run in parallel (~${r.selected.length * 30}–${r.selected.length * 80}k tokens); say 'skip X' / 'only X' to adjust" — then launch`,
+           'Launch exactly these agents in parallel via the Agent tool, one per name, with the changed file list',
            'Each agent writes .spec-workflow/reports/agent-<name>-<ts>.md; consolidate BLOCK/WARN/PASSED afterwards',
            ...(r.skipped.length ? [`Skipped: ${r.skipped.map(s => `${s.name} (${s.why})`).join(', ')}`] : [])]
         : ['Run `bash init.sh <project>` to install the reviewer agents into .claude/agents/, or pass changedFiles'],

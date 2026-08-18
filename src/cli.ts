@@ -226,6 +226,7 @@ export async function runRouteCli(args: string[]): Promise<number> {
   if (r.gitError) console.log(`⚠ ${r.gitError}`);
   console.log(`changed files: ${r.changedFiles.length}${r.docsOnly ? ' (docs only)' : ''} · profile: ${[...r.profile.languages, ...r.profile.frameworks].join(',') || '-'}${r.profile.hasLlmSdk ? ',llm' : ''}${r.profile.hasMigrations ? ',migrations' : ''}${r.profile.hasIac ? ',iac' : ''} · agents dir: ${r.agentsDir}`);
   for (const s of r.selected) console.log(`  ✓ ${s.name.padEnd(28)} T${s.tier}  ${s.reasons.join('; ')}`);
+  console.log(`  ≈ ${r.selected.length} agent(s) in parallel · ~${Math.max(2, Math.ceil(r.changedFiles.length / 10) + 2)}–${Math.max(4, Math.ceil(r.changedFiles.length / 5) + 4)} min wall-clock · roughly ${r.selected.length * 30}–${r.selected.length * 80}k tokens · silence one with review.config.json {"never":[..]} or --skip`);
   for (const s of r.skipped) console.log(`  – ${s.name.padEnd(28)}     ${s.why}`);
   if (!r.selected.length) console.log('  (nothing selected)');
   return 0;

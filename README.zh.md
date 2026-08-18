@@ -192,11 +192,11 @@ MCP 工具会被自动调用。也可以用自然语言触发：
 "查看 user-auth 的进度"              → spec-status
 "这个任务测试通过了"                  → verify-task signal:green
 "测试失败了，报错 xxx"                → verify-task signal:red
-"用 /review 审查代码"                → 并行启动 4 个审查子代理
+"用 /review 审查代码"                → 路由并并行启动合适的审查 agent，给出 VERDICT
 "用 /tdd 模式开发这个功能"            → 调度 Codex 进行 TDD 开发
 "用 /qa 跑一遍测试"                  → 调度 Codex 进行 QA 测试
 "帮我看看 UI"                        → Claude 直接执行视觉审查（多模态）
-"全面审查一下"                       → 并行启动 4 个审查子代理
+"全面审查一下"                       → `--full`：所有触发的审查 agent
 ```
 
 ## Telegram 控制（取代 Dashboard）
@@ -211,16 +211,21 @@ node /path/to/spec-workflow-mcp/dist/index.js --telegram
 
 命令行等价物：`spec-workflow-mcp status|stop|reset|set-status|cleanup`。
 
-## 审查子代理（4 个，并行独立上下文）
+## 审查 agent（38 个，按需路由，独立上下文）
 
-自动安装到 `.claude/agents/`，在独立上下文中运行，不污染主对话：
+自动安装到 `.claude/agents/`，每个都是只读"审查视角"（BLOCK/WARN/PASSED/PRE-EXISTING 契约，frontmatter 里声明 `tier/tags/triggers`）。`/review` 先调 `review-route` 工具**确定性**选集（同一 diff → 同一集合，每个 agent 附触发原因），再并行运行，最后汇总成一句话 `VERDICT: safe-to-merge / fix-first / blocked` + 去重后的 BLOCK/WARN 列表。
 
-| 子代理 | 审查方向 |
-|--------|---------|
-| `security-reviewer` | 注入漏洞、认证缺陷、硬编码密钥、CVE |
-| `logic-reviewer` | 边界条件、竞态、资源泄漏、错误处理 |
-| `performance-reviewer` | N+1 查询、内存泄漏、阻塞操作、包体积 |
-| `api-reviewer` | 命名规范、HTTP 语义、版本兼容、数据验证 |
+| 层 | agent | 何时 |
+|---|---|---|
+| 0 常开 | security · logic · performance · **test-adequacy-judge**（L2 rubric） | 每次 |
+| 0 条件 | api（改到 api/routes/handlers）· **spec-drift-detector**（spec 文档变了或项目有 spec） | 命中即跑 |
+| 1 横切 | concurrency · error-handling · data-migration · backward-compat · dependency-license · config-secrets · observability · i18n · accessibility · ux-copy · cost · architecture | 改动路径 / 新增行内容 / 项目画像触发 |
+| 2 spec 阶段 | spec-hardener · requirements-analyst · assumption-mapper · plan-risk-reviewer · acceptance-criteria-judge | `.spec-workflow/specs/**` 变化 |
+| 3 语言栈 | typescript · python · go · rust · react · node-backend · sql · shell-script · mobile | 项目语言 **且** 改到该语言文件 |
+| 4 infra | iac · cicd · deployment-safety | Dockerfile / k8s / terraform / workflows |
+| 5 LLM 应用 | prompt-injection · prompt-quality · llm-eval | 依赖里有 LLM SDK 或 diff 有 prompt/tool-call 代码 |
+
+覆盖：`/review --agents a,b`（精确集）· `--add/--skip` · `--full`（不设上限）· tasks.md `_Review: security, concurrency` · `.spec-workflow/review.config.json`（`always` / `never` / `maxAgents`，默认 12）。dry-run：`spec-workflow-mcp route --base HEAD~1`。
 
 ## 技能（4 个，来自 GStack + Superpowers）
 
@@ -228,7 +233,7 @@ node /path/to/spec-workflow-mcp/dist/index.js --telegram
 
 | 技能 | 引擎 | 用途 |
 |------|------|------|
-| `/review` | Claude | 并行启动 4 个审查子代理（安全、逻辑、性能、API） |
+| `/review` | Claude | 用 `review-route` 从 38 个审查 agent 里确定性选集、并行运行、汇总为 `VERDICT: safe-to-merge / fix-first / blocked` |
 | `/qa` | Codex | 系统化 QA 测试 + 原子修复 |
 | `/design-review` | Claude | 视觉/交互审查（多模态） |
 | `/tdd` | Codex | TDD 红绿重构 + worktree 隔离 |

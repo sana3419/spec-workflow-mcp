@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.0] — 2026-08-18 (fork)
 
+### Reviewer UX (from the user-perspective validation)
+- `/review` now ends with `VERDICT: safe-to-merge | fix-first | blocked` + one plain-language paragraph + deduped roll-up (same finding from several lenses → one entry with the agreeing lenses); agents report untouched-line issues under `## PRE-EXISTING (info)`, never as BLOCK.
+- Routing precision: `langs` triggers need a changed file of that language; `api-reviewer` and `spec-drift-detector` are conditional (paths/content, `profile: hasSpecs`) instead of always-on; `node-backend` no longer fires on every JS/TS repo; broad regexes (`\basync\b`, `\bversion\b`, `\bt\(`, `http\.request`, `**/*.yaml`, `**/index.ts`) tightened; specific hits outrank lang-only hits; one slot reserved for the language lens; prompt files are never "docs-only"; diff text scoped to `--files`; default cap 12. Typical focused diff now routes 5–8 agents.
+- `route` prints a cost/time preview and how to silence an agent; README/CLAUDE.md no longer say "4 review subagents".
+
 ### Hardening (post-review)
 - Agent self-test (4 shipped reviewers run on the v3 diff) found and we fixed: `review-route` `base` argument injection (`--output=` → file write) — refs validated + `--end-of-options`; GATE_SECRET was on `openssl -hmac` argv (visible in `ps`) — now env-fed `spec-workflow-mcp gate-hmac|gate-sign|gate-verify-pending`; empty-hmac acceptance; getUpdates offset never persisted (replay after restart); `_Tests` selector command injection into `testCommand` (pre-existing) — character whitelist; `.`/`..` spec names; runner `trap` on INT/TERM; atomic pid lock + stale-pid reclaim; `sed -i` portability; init.sh placeholder injection via awk; agent-derived text in board/broadcast lines routed through `inlineUntrusted`; end-to-end daemon inbound tests (allowlist drop, approve idempotency, unknown/stale callbacks) and runner↔daemon signature parity in L5.
 - Runner signs gate pendings; daemon ignores unsigned/forged ones and composes gate cards from its own strings only; runner-authored summary/auditor reasons go in a separate untrusted message.

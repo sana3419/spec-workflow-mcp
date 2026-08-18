@@ -15,7 +15,7 @@ agents to launch **with a reason each**. Defaults: Tier 0 always (`security-revi
 `logic-reviewer`, `performance-reviewer`, `api-reviewer`, `test-adequacy-judge`, `spec-drift-detector`);
 Tier 1 lenses (concurrency, error-handling, data-migration, backward-compat, dependency-license,
 config-secrets, observability, i18n, accessibility, ux-copy, cost, architecture) when a changed path or an
-added diff line matches their triggers; Tier 2 (spec docs), Tier 3 (language/stack), Tier 4 (infra), Tier 5 (LLM apps) likewise; cap 10.
+added diff line matches their triggers; Tier 2 (spec docs), Tier 3 (language/stack), Tier 4 (infra), Tier 5 (LLM apps) likewise; cap 12.
 
 Map what the user said onto the tool arguments:
 - "review" / "全面审查"                → `{}` (working-tree diff) or `{ base: "HEAD~1" }` for the last commit
@@ -25,7 +25,7 @@ Map what the user said onto the tool arguments:
 - a task with `_Review: security, concurrency` → `{ tags: ["security","concurrency"] }`
 - "what would you run?" (dry run)        → call the tool and STOP — print the selection + reasons only
 
-Show the user the selected list + reasons in one line each before launching (they can adjust).
+Show the user the selected list + reasons in one line each **and the cost preview** ("N reviewers in parallel, ~N×30–80k tokens, a few minutes") before launching; they can say "skip X", "only X", "full". Silencing permanently: `.spec-workflow/review.config.json` `{ "never": ["i18n-reviewer"] }`.
 
 ### Phase 1: Subagent Review (parallel)
 
@@ -55,14 +55,36 @@ After subagents complete, run MCP-based verification in main context. Use the RE
 
 3. If MCP tools are unavailable (or the graph/index was never built), skip this phase (subagent results are sufficient).
 
-### Phase 3: Consolidate
+### Phase 3: Consolidate — the ONLY thing most users read
 
 1. Read all subagent reports from `.spec-workflow/reports/agent-*.md` (only this run's timestamps)
 2. Merge with MCP verification findings
-3. Deduplicate and classify: BLOCK / WARN / NOTE
-4. Output consolidated review report
+3. **Deduplicate across agents**: same `file:line` (±3 lines) or the same root cause reported by several lenses →
+   ONE entry, keep the highest severity, list the lenses that agreed (`[security, config-secrets, shell]`).
+   A finding under an agent's `## PRE-EXISTING (info)` heading (untouched lines) never becomes BLOCK/WARN.
+4. Output the consolidated report in EXACTLY this shape — first lines first, details last:
 
-Summary: any BLOCK → fail, WARN/NOTE only → pass.
+```
+VERDICT: safe-to-merge | fix-first | blocked
+<one paragraph, plain language, no jargon: what this change does, what's wrong (if anything), what to do next>
+
+Roll-up: N BLOCK · M WARN · K pre-existing (info) — from R reviewers (list)
+
+## BLOCK
+- [file:line] one line · why it matters · fix · agreed by [lenses]
+## WARN
+- ...
+## PRE-EXISTING (info)
+- ... (short; not caused by this change)
+## What was checked and found clean
+- one line per reviewer (their PASSED sections, condensed)
+<details per agent collapsed / linked to report files>
+```
+
+`blocked` = any confirmed BLOCK; `fix-first` = WARN only that a maintainer would want before merge;
+`safe-to-merge` = nothing above pre-existing/info. If `test-adequacy-judge` returned `VERDICT: fail`, the
+overall verdict is at least `fix-first` and the paragraph must say the *tests* (not the code) are the gap.
+Write the consolidated report to `.spec-workflow/reports/review-<YYYYMMDD-HHMMSS>.md` too.
 
 For targeted review the router already narrowed the set; skip the MCP phase when only 1–2 agents ran.
 If `test-adequacy-judge` ends with `VERDICT: fail`, treat that as a BLOCK on the tests, not the code.
