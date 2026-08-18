@@ -1,0 +1,476 @@
+import { promises as fs } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
+import { TelegramApi, TelegramApiError, TgUpdate, InlineKeyboardMarkup } from './api.js';
+import { loadConfig, loadState, saveState, TelegramConfig, DaemonState } from './config.js';
+import { acceptMessage, acceptCallback, Audit } from './access.js';
+import { handleCommand, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, Reply } from './commands.js';
+import { esc, b, code, ago, untrusted } from './render.js';
+import { ProjectRegistry } from '../core/project-registry.js';
+import { PathUtils } from '../core/path-utils.js';
+import { SpecParser } from '../core/parser.js';
+import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
+import { listPendingGates, updatePendingGate, writeDecision, readDecision, PendingGate } from '../core/gates.js';
+import { getLoopStatus } from '../core/run-state.js';
+import type { ManualTaskStatus } from '../core/verify-core.js';
+
+/**
+ * loop_bot daemon — ONE process per machine (Telegram allows a single getUpdates consumer per
+ * token). Discovers projects from the MCP project registry (+ TELEGRAM_PROJECTS), tails each
+ * project's loop-audit.log, keeps one "board" message per running spec up to date, posts gate
+ * cards, and answers commands from allowlisted users. Never runs claude/codex itself; all state
+ * writes go through core (verify-core / run-state / gates / archive / cleanup).
+ */
+
+const TICK_MS = 4000;
+
+export interface DaemonOptions {
+  once?: boolean;             // run one tick and exit (tests / cron)
+  fetchImpl?: typeof fetch;
+  log?: (s: string) => void;
+}
+
+export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void> {
+  const log = opts.log ?? ((s: string) => console.error(`[telegram] ${s}`));
+  const cfg = await loadConfig();
+  const api = new TelegramApi(cfg.token, opts.fetchImpl);
+  const state = await loadState(cfg.stateFile);
+  const audit = new Audit(cfg.auditDir);
+  const version = await readVersion();
+  const me = await api.getMe().catch(e => { throw new Error(`Telegram getMe failed: ${e.message}`); });
+  log(`connected as @${me.username} · allowFrom=${cfg.allowFrom.join(',')} · notify=${cfg.notify.join(',')} · sendOnly=${cfg.sendOnly}`);
+
+  const d = new Daemon(api, cfg, state, audit, version, log);
+  await d.discoverProjects();
+  await d.tick();          // pushes + gate cards
+  if (opts.once) { await d.flush(); return; }
+
+  let stopping = false;
+  const onSig = () => { stopping = true; };
+  process.on('SIGINT', onSig); process.on('SIGTERM', onSig);
+
+  // Two loops: long-poll for commands (unless send-only) and a periodic watcher tick.
+  const watcher = (async () => {
+    while (!stopping) {
+      try { await d.tick(); } catch (e) { log(`tick error: ${(e as Error).message}`); }
+      await sleep(TICK_MS);
+    }
+  })();
+  const poller = (async () => {
+    if (cfg.sendOnly) return;
+    let backoff = 1000;
+    while (!stopping) {
+      try {
+        const updates = await api.getUpdates(state.offset, 25);
+        backoff = 1000;
+        for (const u of updates) {
+          state.offset = Math.max(state.offset, u.update_id + 1);
+          try { await d.handleUpdate(u); } catch (e) { log(`update ${u.update_id} error: ${(e as Error).message}`); }
+        }
+        if (updates.length) await d.flush();
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (e instanceof TelegramApiError && e.code === 409) {
+          log('409 Conflict: another process is polling this bot token (the orchestrator plugin? a second daemon?). Use a dedicated loop_bot token or TELEGRAM_SEND_ONLY=true.');
+        } else if (!/aborted/i.test(msg)) log(`poll error: ${msg}`);
+        await sleep(backoff); backoff = Math.min(backoff * 2, 60_000);
+      }
+    }
+  })();
+  await Promise.all([watcher, poller]);
+  await d.flush();
+  log('stopped');
+}
+
+class Daemon {
+  private projects: string[] = [];
+  private lastDiscover = 0;
+  private dirty = false;
+  private awaitingReason = new Map<number, { project: string; spec: string; taskId: string }>();
+  private specNames = new Map<string, string[]>();
+
+  constructor(
+    private api: TelegramApi,
+    private cfg: TelegramConfig,
+    private state: DaemonState,
+    private audit: Audit,
+    private version: string,
+    private log: (s: string) => void,
+  ) {}
+
+  // ------------------------------------------------------------ projects
+
+  async discoverProjects(): Promise<void> {
+    const found = new Set<string>(this.cfg.extraProjects);
+    try {
+      const reg = new ProjectRegistry();
+      for (const p of await reg.getAllProjects()) found.add(p.workflowRootPath || p.projectPath);
+    } catch (e) { this.log(`registry read failed: ${(e as Error).message}`); }
+    const alive: string[] = [];
+    for (const p of found) {
+      try { await fs.access(PathUtils.getWorkflowRoot(PathUtils.translatePath(p))); alive.push(p); } catch { /* not a spec-workflow project (yet) */ }
+    }
+    this.projects = alive.sort();
+    this.lastDiscover = Date.now();
+  }
+
+  private ctx(userId: number, chatId: number): CommandCtx {
+    return {
+      userId, chatId,
+      projects: this.projects,
+      currentProject: this.state.currentProject[String(chatId)],
+      setCurrentProject: async (p) => { if (p) this.state.currentProject[String(chatId)] = p; else delete this.state.currentProject[String(chatId)]; this.dirty = true; },
+      registerCallback: async (payload) => this.registerKey(payload),
+      version: this.version,
+    };
+  }
+
+  private async registerKey(payload: string): Promise<string> {
+    // 8 hex chars keeps callback_data well under 64 bytes: "t:xxxxxxxx:s"
+    const key = randomBytes(4).toString('hex');
+    this.state.cbKeys[key] = { payload, at: Date.now() };
+    for (const [k, v] of Object.entries(this.state.cbKeys)) if (Date.now() - v.at > 7 * 86400e3) delete this.state.cbKeys[k];
+    this.dirty = true;
+    return key;
+  }
+  private payloadFor(key: string): string | undefined { return this.state.cbKeys[key]?.payload; }
+
+  async flush(): Promise<void> {
+    if (!this.dirty) return;
+    await saveState(this.state, this.cfg.stateFile);
+    this.dirty = false;
+  }
+
+  // ------------------------------------------------------------ inbound
+
+  async handleUpdate(u: TgUpdate): Promise<void> {
+    if (u.callback_query) return this.handleCallback(u);
+    const acc = acceptMessage(u.message ?? u.edited_message, this.cfg.allowFrom);
+    if (!acc.ok) return; // silently drop — never reveal the bot exists to strangers
+    const { text, userId, chatId } = acc;
+
+    // A pending "send me the block reason" prompt consumes the next non-command message.
+    const pending = this.awaitingReason.get(chatId);
+    if (pending && !text.startsWith('/')) {
+      this.awaitingReason.delete(chatId);
+      const ctx = this.ctx(userId, chatId);
+      const r = await applyTaskAction(ctx, pending.project, pending.spec, pending.taskId, 'blocked', text.slice(0, 300));
+      await this.auditCmd(userId, chatId, u.update_id, 'task.block', [pending.spec, pending.taskId], pending.project, pending.spec, r.message);
+      await this.send(chatId, r.ok ? await taskCard(ctx, pending.project, pending.spec, pending.taskId) : { text: `❌ ${esc(r.message)}` });
+      return;
+    }
+    if (!text.startsWith('/')) { await this.send(chatId, { text: HELP }); return; }
+    if (this.awaitingReason.has(chatId)) this.awaitingReason.delete(chatId);
+
+    if (Date.now() - this.lastDiscover > 30_000) await this.discoverProjects();
+    const ctx = this.ctx(userId, chatId);
+    const replies = await handleCommand(text, ctx);
+    const [cmd, ...args] = text.split(/\s+/);
+    await this.auditCmd(userId, chatId, u.update_id, cmd, args, ctx.currentProject, undefined, replies.map(r => r.text.slice(0, 80)).join(' | '));
+    for (const r of replies) await this.send(chatId, r);
+  }
+
+  private async handleCallback(u: TgUpdate): Promise<void> {
+    const cb = u.callback_query!;
+    const acc = acceptCallback(cb, this.cfg.allowFrom);
+    if (!acc.ok) { await this.api.answerCallbackQuery(cb.id).catch(() => {}); return; }
+    const { userId, chatId, messageId, data } = acc;
+    const [kind, key, arg] = data.split(':');
+    const ctx = this.ctx(userId, chatId);
+    const ack = (t?: string) => this.api.answerCallbackQuery(cb.id, t).catch(() => {});
+
+    if (kind === 'g') return this.handleGateCallback(cb.id, userId, chatId, messageId, key, arg, u.update_id);
+
+    const payload = this.payloadFor(key);
+    if (!payload) { await ack('expired'); return; }
+    const parts = payload.split(':');
+    switch (kind) {
+      case 'd': { // spec document
+        const [, project, spec] = parts;
+        await ack();
+        await this.send(chatId, await specDocument(project, spec, arg as 'r' | 'd' | 't'));
+        return;
+      }
+      case 's': { const [, project] = parts; await ack(); await this.send(chatId, await steeringDocument(project, arg)); return; }
+      case 't': { // task actions
+        const [, project, spec, taskId] = parts;
+        if (arg === 'q') { await ack(); await this.send(chatId, await promptFor(project, spec, taskId)); return; }
+        if (arg === 'r') { await ack('refreshed'); await this.editCard(chatId, messageId, await taskCard(ctx, project, spec, taskId)); return; }
+        if (arg === 'b') {
+          this.awaitingReason.set(chatId, { project, spec, taskId });
+          await ack();
+          await this.send(chatId, { text: `⛔ reply with the reason to block task ${code(taskId)} of ${code(spec)} (next message; any /command cancels)` });
+          return;
+        }
+        const map: Record<string, ManualTaskStatus> = { s: 'in-progress', c: 'completed', p: 'pending' };
+        const status = map[arg];
+        if (!status) { await ack('?'); return; }
+        const r = await applyTaskAction(ctx, project, spec, taskId, status);
+        await this.auditCmd(userId, chatId, u.update_id, `task.${status}`, [spec, taskId], project, spec, r.message);
+        await ack(r.ok ? 'done' : r.message.slice(0, 190));
+        if (r.ok) await this.editCard(chatId, messageId, await taskCard(ctx, project, spec, taskId));
+        else await this.send(chatId, { text: `❌ ${esc(r.message)}` });
+        return;
+      }
+      case 'a': { // archive confirm
+        const [, project, spec, flag] = parts;
+        if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        try {
+          const msg = await doArchive(project, spec, flag === '1');
+          await this.auditCmd(userId, chatId, u.update_id, flag === '1' ? 'archive' : 'unarchive', [spec], project, spec, 'ok');
+          await ack('done'); await this.editCard(chatId, messageId, { text: msg });
+        } catch (e) { await ack('failed'); await this.send(chatId, { text: `❌ ${esc((e as Error).message)}` }); }
+        return;
+      }
+      case 'c': { // cleanup confirm
+        const [, project, daysRaw, flag] = parts;
+        if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        const msg = await doCleanup(project, Number(daysRaw), flag === '1');
+        await this.auditCmd(userId, chatId, u.update_id, 'cleanup', [daysRaw, flag === '1' ? 'archived' : 'active'], project, undefined, msg.replace(/<[^>]+>/g, ''));
+        await ack('done'); await this.editCard(chatId, messageId, { text: msg });
+        return;
+      }
+      default: await ack('?');
+    }
+  }
+
+  private async handleGateCallback(cbId: string, userId: number, chatId: number, messageId: number, key: string, arg: string, updateId: number): Promise<void> {
+    const ack = (t?: string, alert = false) => this.api.answerCallbackQuery(cbId, t, alert).catch(() => {});
+    const ref = this.state.gateKeys[key];
+    if (!ref) { await ack('gate expired'); return; }
+    if (arg !== 'a' && arg !== 'r') { await ack('?'); return; }
+    const decision = arg === 'a' ? 'approve' : 'reject';
+    // Still pending? (runner may have timed out)
+    const stillPending = (await listPendingGates(ref.project, ref.spec)).find(g => g.id === ref.id && g.nonce === ref.nonce);
+    const already = await readDecision(ref.project, ref.id);
+    if (!stillPending && !already) {
+      await ack('this gate is no longer pending (timeout or runner stopped)', true);
+      await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {});
+      return;
+    }
+    const { record, alreadyDecided } = await writeDecision(ref.project, { id: ref.id, nonce: ref.nonce }, decision, `tg:${userId}`, this.cfg.gateSecret);
+    await this.auditCmd(userId, chatId, updateId, `gate.${record.decision}`, [ref.id], ref.project, ref.spec, alreadyDecided ? 'already decided' : 'recorded');
+    await ack(alreadyDecided ? `already ${record.decision}d by ${record.by}` : `${record.decision}d`);
+    await this.api.editMessageText(chatId, messageId, this.gateCardText(ref.spec, ref.project, ref.id, ref.createdAt, undefined, record), { parse_mode: 'HTML' }).catch(() => {});
+    delete this.state.gateKeys[key];
+    this.dirty = true;
+  }
+
+  // ------------------------------------------------------------ outbound helpers
+
+  private async send(chatId: number, r: Reply): Promise<number | undefined> {
+    let id: number | undefined;
+    if (r.text) {
+      const m = await this.api.sendMessage(chatId, r.text, { parse_mode: 'HTML', reply_markup: r.keyboard, disable_notification: r.silent });
+      id = m.message_id;
+    }
+    for (const f of r.files || []) {
+      await this.api.sendDocument(chatId, f.name, f.content, f.caption).catch(async e => {
+        await this.api.sendMessage(chatId, `❌ could not send ${esc(f.name)}: ${esc(e.message)}`, { parse_mode: 'HTML' });
+      });
+    }
+    return id;
+  }
+
+  private async editCard(chatId: number, messageId: number, r: Reply): Promise<void> {
+    await this.api.editMessageText(chatId, messageId, r.text, { parse_mode: 'HTML', reply_markup: r.keyboard }).catch(async (e: Error) => {
+      if (!/message is not modified/i.test(e.message)) await this.send(chatId, r);
+    });
+  }
+
+  private async broadcast(r: Reply): Promise<void> {
+    for (const chatId of this.cfg.notify) {
+      try { await this.send(chatId, r); } catch (e) { this.log(`broadcast to ${chatId} failed: ${(e as Error).message}`); }
+    }
+  }
+
+  private async auditCmd(senderId: number, chatId: number, updateId: number | undefined, cmd: string, args: string[], project?: string, spec?: string, result = ''): Promise<void> {
+    try { await this.audit.append({ ts: new Date().toISOString(), senderId, chatId, updateId, cmd, args, project, spec, result: result.slice(0, 200) }); }
+    catch (e) { this.log(`audit append failed: ${(e as Error).message}`); }
+  }
+
+  // ------------------------------------------------------------ watcher tick
+
+  async tick(): Promise<void> {
+    if (Date.now() - this.lastDiscover > 60_000) await this.discoverProjects();
+    for (const p of this.projects) {
+      const off = this.state.auditOffsets[p] ?? 0;
+      const { events, offset } = await readNewEvents(p, off);
+      // First run on an existing log: don't replay history — just remember the end.
+      if (off === 0 && events.length > 50) {
+        this.state.auditOffsets[p] = offset; this.dirty = true;
+      } else if (events.length) {
+        this.state.auditOffsets[p] = offset; this.dirty = true;
+        for (const ev of events) {
+          try { await this.onEvent(p, ev); } catch (e) { this.log(`event error: ${(e as Error).message}`); }
+        }
+      }
+      await this.scanGates(p);
+    }
+    await this.flush();
+  }
+
+  private async specsOf(project: string): Promise<string[]> {
+    const cached = this.specNames.get(project);
+    if (cached && Math.random() > 0.2) return cached; // refresh ~every 5th call
+    const specs = (await new SpecParser(PathUtils.translatePath(project)).getAllSpecs()).map(s => s.name);
+    this.specNames.set(project, specs);
+    return specs;
+  }
+
+  private label(project: string): string { return project.replace(/\/+$/, '').split('/').pop() || project; }
+
+  private async onEvent(project: string, ev: LoopEvent): Promise<void> {
+    const key = `${project}::${ev.spec}`;
+    const head = `${b(this.label(project))}/${b(ev.spec)}`;
+    switch (ev.type) {
+      case 'start': {
+        // New board message per run.
+        const text = await this.boardText(project, ev.spec, `▶️ loop started${ev.pid ? ` (pid ${ev.pid})` : ''}`);
+        for (const chatId of this.cfg.notify) {
+          const id = await this.send(chatId, { text });
+          if (id) { this.state.boards[key] = { chatId, messageId: id, runStartedAt: ev.ts, lastText: text }; this.dirty = true; }
+        }
+        return;
+      }
+      case 'green': case 'iter': case 'judge': case 'unverified': case 'spec-gate':
+        await this.updateBoard(project, ev.spec, describe(ev));
+        if (ev.type === 'spec-gate' && (ev.verdict === 'fail' || ev.verdict === 'overridden')) await this.broadcast({ text: `${head} · ${describe(ev)}` });
+        if (ev.type === 'judge' && ev.verdict === 'fail') await this.broadcast({ text: `${head} · ${describe(ev)}`, silent: true });
+        return;
+      case 'red':
+        await this.updateBoard(project, ev.spec, describe(ev));
+        return;
+      case 'blocked': case 'tamper': case 'regression': case 'integration': case 'warn':
+        await this.updateBoard(project, ev.spec, describe(ev));
+        await this.broadcast({ text: `${head} · ${describe(ev)}` });
+        return;
+      case 'gate':
+        if (ev.state !== 'pending') await this.updateBoard(project, ev.spec, describe(ev));
+        return;
+      case 'stop': case 'done':
+        await this.updateBoard(project, ev.spec, describe(ev));
+        return;
+      case 'end': {
+        await this.updateBoard(project, ev.spec, `⏹ loop ended: ${ev.reason}${ev.iterations !== undefined ? ` after ${ev.iterations} iteration(s)` : ''}`);
+        await this.broadcast({ text: `${head} · ⏹ loop ended: ${b(ev.reason)}${ev.iterations !== undefined ? ` · ${ev.iterations} iter` : ''}\n${await specStatusText(project, ev.spec)}` });
+        delete this.state.boards[key]; this.dirty = true;
+        return;
+      }
+      default: return;
+    }
+  }
+
+  private async boardText(project: string, spec: string, last: string): Promise<string> {
+    return `${await specStatusText(project, spec)}\n\n<i>last: ${last} · ${esc(new Date().toISOString().slice(11, 19))}Z</i>`;
+  }
+
+  private async updateBoard(project: string, spec: string, last: string): Promise<void> {
+    const key = `${project}::${spec}`;
+    const board = this.state.boards[key];
+    const text = await this.boardText(project, spec, last);
+    if (!board) {
+      // Loop is running but we have no board (daemon started mid-run) → create one silently.
+      if (!(await getLoopStatus(project, spec)).running) return;
+      for (const chatId of this.cfg.notify) {
+        const id = await this.send(chatId, { text, silent: true });
+        if (id) { this.state.boards[key] = { chatId, messageId: id, runStartedAt: new Date().toISOString(), lastText: text }; this.dirty = true; }
+      }
+      return;
+    }
+    if (board.lastText === text) return;
+    await this.api.editMessageText(board.chatId, board.messageId, text, { parse_mode: 'HTML' }).catch((e: Error) => {
+      if (!/not modified/i.test(e.message)) this.log(`board edit failed: ${e.message}`);
+    });
+    board.lastText = text; this.dirty = true;
+  }
+
+  // ------------------------------------------------------------ gates
+
+  private async scanGates(project: string): Promise<void> {
+    for (const spec of await this.specsOf(project)) {
+      const pending = await listPendingGates(project, spec);
+      for (const g of pending) {
+        const pkey = `${project}::${spec}::${g.id}`;
+        if (this.state.postedGates[pkey]) continue;
+        // Was it decided already (e.g. via another chat) — skip posting.
+        if (await readDecision(project, g.id)) { this.state.postedGates[pkey] = 'decided'; this.dirty = true; continue; }
+        await this.postGate(project, spec, g);
+        this.state.postedGates[pkey] = new Date().toISOString(); this.dirty = true;
+      }
+      // prune postedGates for gates no longer pending
+      const ids = new Set(pending.map(g => g.id));
+      for (const k of Object.keys(this.state.postedGates)) {
+        if (k.startsWith(`${project}::${spec}::`) && !ids.has(k.split('::')[2])) { delete this.state.postedGates[k]; this.dirty = true; }
+      }
+    }
+  }
+
+  private gateCardText(spec: string, project: string, id: string, createdAt: string, g?: PendingGate, decided?: { decision: string; by: string; at: string }): string {
+    const lines = [
+      `⏸ ${b('GATE')} · ${b(this.label(project))}/${b(spec)}`,
+      g ? `kind: ${code(g.kind)}` : '',
+      g ? esc(g.summary) : '',
+      g?.detail ? Object.entries(g.detail).map(([k, v]) => `${esc(k)}: ${code(String(v).slice(0, 200))}`).join('\n') : '',
+      `id ${code(id)} · opened ${ago(createdAt)} ago`,
+      decided ? `\n${decided.decision === 'approve' ? '✅ APPROVED' : '⛔ REJECTED'} by ${esc(decided.by)} at ${esc(decided.at)}` : '\n<i>harness-authored card — approve/reject below</i>',
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
+
+  private async postGate(project: string, spec: string, g: PendingGate): Promise<void> {
+    // The card is HARNESS text only. Repo-derived detail (e.g. judge reasons) is sent as a
+    // separate untrusted message so it can never sit next to the buttons.
+    const key = randomBytes(4).toString('hex');
+    const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[{ text: '✅ Approve', callback_data: `g:${key}:a` }, { text: '⛔ Reject', callback_data: `g:${key}:r` }]] };
+    const safeDetail = g.detail ? Object.fromEntries(Object.entries(g.detail).filter(([k]) => !/reason|output|log|note/i.test(k))) : undefined;
+    const card = { ...g, detail: safeDetail };
+    for (const chatId of this.cfg.notify) {
+      const id = await this.send(chatId, { text: this.gateCardText(spec, project, g.id, g.createdAt, card), keyboard });
+      if (id) {
+        this.state.gateKeys[key] = { project, spec, id: g.id, nonce: g.nonce, chatId, messageId: id, createdAt: g.createdAt };
+        try { await updatePendingGate(project, spec, g.id, { postedMessageId: id, postedChatId: chatId }); } catch { /* runner may have consumed it */ }
+      }
+      const reasons = g.detail && Object.entries(g.detail).find(([k]) => /reason/i.test(k))?.[1];
+      if (reasons) await this.send(chatId, { text: untrusted(String(reasons), 800, 'gate reasons (from judge/auditor)'), silent: true });
+    }
+    this.dirty = true;
+  }
+}
+
+// ---------------------------------------------------------------- helpers
+
+function describe(ev: LoopEvent): string {
+  switch (ev.type) {
+    case 'iter': return `iter ${ev.iter} → task ${code(ev.taskId)} (${ev.remaining} left)`;
+    case 'green': return `✅ task ${code(ev.taskId)} green`;
+    case 'red': return `❌ task ${code(ev.taskId)} red (exit ${ev.exitCode ?? '?'}${ev.failureClass ? `, ${ev.failureClass}` : ''})`;
+    case 'blocked': return `⛔ task ${code(ev.taskId)} blocked${ev.reason ? ` — ${esc(ev.reason.slice(0, 200))}` : ''}`;
+    case 'tamper': return `🚨 tamper gate on task ${code(ev.taskId)}: ${esc(ev.reason.slice(0, 200))}`;
+    case 'unverified': return `⚠️ task ${code(ev.taskId)} completed WITHOUT independent verification`;
+    case 'judge': return `⚖️ judge ${ev.verdict} on task ${code(ev.taskId)}${ev.reasons ? ` — ${esc(ev.reasons.slice(0, 200))}` : ''}`;
+    case 'regression': return `⚠️ regression after task ${code(ev.taskId ?? '?')}`;
+    case 'spec-gate': return `🧭 spec gate ${ev.verdict}${ev.reasons ? ` — ${esc(ev.reasons.slice(0, 200))}` : ''}`;
+    case 'integration': return `🏗 integration ${ev.verdict}${ev.detail ? ` ${esc(ev.detail.slice(0, 200))}` : ''}`;
+    case 'gate': return `⏸ gate ${ev.state}${ev.kind ? ` (${esc(ev.kind)})` : ''}${ev.by ? ` by ${esc(ev.by)}` : ''}`;
+    case 'stop': return `🛑 stop ${ev.by ? `by ${esc(ev.by)}` : esc(ev.reason)}`;
+    case 'done': return '🎉 all tasks done';
+    case 'warn': return `⚠️ ${esc(ev.message.slice(0, 200))}`;
+    case 'start': return '▶️ loop started';
+    case 'end': return `⏹ ended ${esc(ev.reason)}`;
+    default: return esc((ev as any).message ?? ev.raw).slice(0, 200);
+  }
+}
+
+async function readVersion(): Promise<string> {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    for (const rel of ['../../package.json', '../package.json']) {
+      try { return JSON.parse(await fs.readFile(join(here, rel), 'utf-8')).version; } catch { /* next */ }
+    }
+  } catch { /* ignore */ }
+  return 'unknown';
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));

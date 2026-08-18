@@ -110,7 +110,7 @@ export function parseArguments(args: string[]): {
   let customPort: number | undefined;
 
   // Check for invalid flags
-  const validFlags = ['--dashboard', '--port', '--help', '-h', '--no-open', '--no-shared-worktree-specs'];
+  const validFlags = ['--dashboard', '--telegram', '--telegram-once', '--port', '--help', '-h', '--no-open', '--no-shared-worktree-specs'];
   for (const arg of args) {
     if (arg.startsWith('--') && !arg.includes('=')) {
       if (!validFlags.includes(arg)) {
@@ -200,12 +200,19 @@ async function main() {
   try {
     const args = process.argv.slice(2);
 
-    // Harness CLI subcommands (pick/verify) used by the background loop runner.
-    // These run and exit before any server/dashboard logic.
+    // Harness CLI subcommands (pick/verify/stop/status/...) used by the loop runner and humans.
+    // These run and exit before any server logic.
     const { runSubcommand } = await import('./cli.js');
     const subResult = await runSubcommand(args);
     if (subResult !== null) {
       process.exit(subResult);
+    }
+
+    // Telegram loop_bot daemon (global, one per machine). Replaces the web dashboard.
+    if (args.includes('--telegram') || args.includes('--telegram-once')) {
+      const { runTelegramDaemon } = await import('./telegram/daemon.js');
+      await runTelegramDaemon({ once: args.includes('--telegram-once') });
+      process.exit(0);
     }
 
     // Check for help flag

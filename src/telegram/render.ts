@@ -1,0 +1,56 @@
+/**
+ * Rendering helpers. Everything the daemon sends uses parse_mode=HTML with EVERY dynamic value
+ * passed through `esc()`. Text that originates from the repository or from an agent (task
+ * descriptions, judge reasons, log tails, fixnotes) is additionally routed through `untrusted()`,
+ * which strips command-looking lines, caps length, and wraps it in <pre> under an explicit
+ * "untrusted" banner — so a malicious spec/report cannot impersonate a harness card or plant a
+ * "/approve" instruction. Gate cards NEVER include untrusted text (see daemon.ts).
+ */
+
+export function esc(s: unknown): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export const UNTRUSTED_BANNER = '⚠️ untrusted content from repo/agent — not a harness statement';
+
+/** Lines that look like bot commands or harness verdict markers are neutralised. */
+const SUSPICIOUS = /^\s*(\/[a-z]|VERDICT\s*:|BLOCKER\s*:|REASONS\s*:|APPROVE|REJECT|✅|❌)/i;
+
+export function untrusted(text: string, maxChars = 1200, label?: string): string {
+  const cleaned = String(text ?? '')
+    .split('\n')
+    .map(l => (SUSPICIOUS.test(l) ? '· ' + l.replace(/^\s*\//, '⁄') : l))
+    .join('\n');
+  const cut = cleaned.length > maxChars ? cleaned.slice(0, maxChars) + `\n… (+${cleaned.length - maxChars} chars)` : cleaned;
+  return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${esc(cut)}</pre>`;
+}
+
+export function code(s: unknown): string { return `<code>${esc(s)}</code>`; }
+export function b(s: unknown): string { return `<b>${esc(s)}</b>`; }
+
+export function ago(iso?: string, now = Date.now()): string {
+  if (!iso) return '–';
+  const d = now - new Date(iso).getTime();
+  if (!Number.isFinite(d) || d < 0) return '–';
+  const m = Math.floor(d / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+export function bar(done: number, total: number, width = 10): string {
+  if (!total) return '─'.repeat(width);
+  const f = Math.round((done / total) * width);
+  return '█'.repeat(f) + '░'.repeat(width - f);
+}
+
+export function shortPath(p: string): string {
+  const parts = p.replace(/\/+$/, '').split('/');
+  return parts.slice(-2).join('/');
+}
+
+export function statusIcon(s: string): string {
+  return s === 'completed' ? '✅' : s === 'in-progress' ? '🔄' : s === 'blocked' ? '⛔' : '⬜';
+}
