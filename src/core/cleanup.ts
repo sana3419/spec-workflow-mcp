@@ -50,7 +50,7 @@ export async function findCleanupCandidates(
   const candidates: CleanupCandidate[] = [];
   for (const spec of specs) {
     const created = new Date(spec.createdAt).getTime();
-    if (Number.isFinite(created) && created < cutoff) {
+    if (Number.isFinite(created) && created <= cutoff) {
       candidates.push({
         name: spec.name,
         createdAt: spec.createdAt,

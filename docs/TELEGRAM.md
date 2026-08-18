@@ -123,6 +123,17 @@ How it stays trustworthy:
 * The project `settings.json` written by `init.sh` denies the implementing agent access to
   `~/.spec-workflow/**`, `.run/**`, the audit log and `api.telegram.org`.
 
+## Trust boundary (read this once)
+
+The gate secret lives in `~/.spec-workflow/telegram.env`, readable by the OS user that runs the daemon.
+The loop runner runs headless `claude`/`codex` as **the same OS user**. `settings.json` denies the
+implementing agent the `Read`/`Write` tools on that file and on the gates dir, and the runner never puts the
+secret on a command line (it is passed by environment to `spec-workflow-mcp gate-hmac`), but a Bash
+one-liner from a misbehaving agent is not a boundary the deny list can fully close. If you need a hard
+boundary, run the daemon as a **separate OS user** (own `$HOME`, `telegram.env` 0600, gates dir 0700) and
+give the runner only a verify capability. Everything else in this document is defence in depth against
+*accidental* or *prompt-injected* misbehaviour, which is the realistic threat.
+
 ## Files
 
 ```

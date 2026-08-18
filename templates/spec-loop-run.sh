@@ -26,7 +26,7 @@ set +e
 
 SPEC="$1"
 if [ -z "$SPEC" ]; then echo "usage: spec-loop-run.sh <spec-name>"; exit 1; fi
-case "$SPEC" in *[!A-Za-z0-9._-]*|"") echo "invalid spec name"; exit 1 ;; esac
+case "$SPEC" in *[!A-Za-z0-9._-]*|""|.|..|.*) echo "invalid spec name"; exit 1 ;; esac
 
 SW=".spec-workflow"
 SPECDIR="$SW/specs/$SPEC"
@@ -132,7 +132,7 @@ run_judge() {
 }
 
 # --- L4 integration terminal gate ---
-jesc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\t' '  '; }
+jesc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\t\r' '   ' | tr -d '\000-\010\013\014\016-\037'; }
 integration_rubric() {
   cat <<RUBRIC
 You are an INDEPENDENT cross-module reviewer (READ-ONLY) for spec "$SPEC" in this repository. Every task passed its own scoped tests AND the assembled build/boot command succeeded. Your job: find CROSS-MODULE contract holes a green build cannot catch — API to frontend field/shape mismatches, middleware/assembly ordering, env/secret/bootstrap requirements, integration points that compile but will not interoperate.
@@ -265,8 +265,11 @@ JSON
 # which writes an HMAC-signed DECISION OUTSIDE the project (the implementing agent cannot forge it).
 # Approve on a spec-gate fail = override-and-proceed (audited). Approve on an integration fail =
 # one more bounded fix round. Timeout / reject / no secret = the conservative default (stop).
-gate_secret() { [ -f "$TG_ENV" ] && sed -n 's/^GATE_SECRET=//p' "$TG_ENV" | head -1 | tr -d '"\r'; }
-gate_hmac()   { printf '%s' "$1:$2:$3:$4:$5" | openssl dgst -sha256 -hmac "$6" 2>/dev/null | awk '{print $NF}'; }
+gate_secret() { [ -f "$TG_ENV" ] && sed -n 's/^GATE_SECRET=//p' "$TG_ENV" | head -1 | tr -d "\"'\r" | tr -d '[:space:]'; }
+# The secret NEVER goes on a command line (it would show in ps / /proc/*/cmdline to the implementing agent):
+# it is passed to the package's helper via the environment; the helper computes HMAC-SHA256 in-process.
+gate_hmac()   { GATE_SECRET="$6" $SWMCP gate-hmac "$1" "$2" "$3" "$4" "$5" 2>/dev/null; }
+gate_sign()   { GATE_SECRET="$5" $SWMCP gate-sign "$1" "$2" "$3" "$4" 2>/dev/null; }
 # wait_gate <kind> <summary> [detail-json-object]  → 0 approve, 1 reject/timeout/unavailable
 wait_gate() {
   local kind="$1" summary="$2" detail="${3:-{\}}"
@@ -274,12 +277,14 @@ wait_gate() {
   if [ -z "$secret" ] || ! command -v openssl >/dev/null 2>&1; then
     echo "$(date -u +%FT%TZ) [$SPEC] GATE unavailable kind=$kind (no GATE_SECRET / openssl) — treating as reject" >> "$AUDIT"; return 1
   fi
-  local id nonce now pend
+  local selftest; selftest="$(gate_hmac x y approve z w "$secret")"
+  case "$selftest" in ????????????????????????????????????????????????????????????????) ;; *) echo "$(date -u +%FT%TZ) [$SPEC] GATE unavailable kind=$kind (hmac helper failed) — treating as reject" >> "$AUDIT"; return 1 ;; esac
+  local id nonce now
   nonce="$(openssl rand -hex 16)"; now="$(date -u +%FT%TZ)"
   id="$SPEC-$kind-$$-$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$GATES" "$GATE_HOME" 2>/dev/null
-  pend="$GATES/$id.pending"
-  local sig; sig="$(printf '%s' "$id:$nonce:$kind:$now" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
+  PEND_ACTIVE="$GATES/$id.pending"; local pend="$PEND_ACTIVE"
+  local sig; sig="$(gate_sign "$id" "$nonce" "$kind" "$now" "$secret")"
   cat > "$pend.tmp" <<JSON
 { "id": "$id", "spec": "$SPEC", "kind": "$kind", "nonce": "$nonce", "summary": "$(jesc "$summary")", "createdAt": "$now", "detail": $detail, "sig": "$sig" }
 JSON
@@ -294,7 +299,8 @@ JSON
       dec="$(cat "$dfile" 2>/dev/null)"
       d_id="$(json_str "$dec" id)"; d_nonce="$(json_str "$dec" nonce)"; d_dec="$(json_str "$dec" decision)"
       d_by="$(json_str "$dec" by)";  d_at="$(json_str "$dec" at)";       d_hmac="$(json_str "$dec" hmac)"
-      if [ "$d_id" = "$id" ] && [ "$d_nonce" = "$nonce" ] && [ "$(gate_hmac "$id" "$nonce" "$d_dec" "$d_by" "$d_at" "$secret")" = "$d_hmac" ]; then
+      local expect_hmac; expect_hmac="$(gate_hmac "$id" "$nonce" "$d_dec" "$d_by" "$d_at" "$secret")"
+      if [ "$d_id" = "$id" ] && [ "$d_nonce" = "$nonce" ] && [ -n "$d_hmac" ] && [ -n "$expect_hmac" ] && [ "$expect_hmac" = "$d_hmac" ]; then
         rm -f "$pend"
         echo "$(date -u +%FT%TZ) [$SPEC] GATE $d_dec id=$id by=$d_by at=$d_at" >> "$AUDIT"
         [ "$d_dec" = "approve" ] && return 0 || return 1
@@ -304,7 +310,7 @@ JSON
     fi
     sleep 5
   done
-  rm -f "$pend"
+  rm -f "$pend"; PEND_ACTIVE=""
   echo "$(date -u +%FT%TZ) [$SPEC] GATE timeout id=$id after ${GATE_TIMEOUT}m — treating as reject" >> "$AUDIT"; return 1
 }
 
@@ -361,11 +367,26 @@ if ! claude -p "Reply with exactly: OK" >/dev/null 2>&1; then
 fi
 
 mkdir -p "$RUN" "$GATES" 2>/dev/null
-if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; then
-  echo "A loop is already running for '$SPEC' (pid $(cat "$PIDF")). Stop it first."; exit 1
+# Atomic pid lock (noclobber): two simultaneous starts cannot both win. A stale pid (dead process, or a
+# reused pid that is not a runner) is reclaimed.
+OLDPID="$(cat "$PIDF" 2>/dev/null)"
+if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
+  if [ ! -r "/proc/$OLDPID/cmdline" ] || tr '\0' ' ' < "/proc/$OLDPID/cmdline" 2>/dev/null | grep -q "spec-loop-run.sh"; then
+    echo "A loop is already running for '$SPEC' (pid $OLDPID). Stop it first."; exit 1
+  fi
+fi
+rm -f "$PIDF"
+if ! ( set -o noclobber; echo $$ > "$PIDF" ) 2>/dev/null; then
+  echo "A loop is already running for '$SPEC' (pid $(cat "$PIDF" 2>/dev/null)). Stop it first."; exit 1
 fi
 rm -f "$STOPF" "$GATES"/*.pending >/dev/null 2>&1   # a stale stop/gate must never act on THIS run
-echo $$ > "$PIDF"
+PEND_ACTIVE=""
+on_signal() {
+  echo "$(date -u +%FT%TZ) [$SPEC] loop-run END reason=SIGNAL (interrupted)" >> "$AUDIT" 2>/dev/null
+  rm -f "$PIDF" "$PEND_ACTIVE" "$RUN/iter-out" "$RUN/testout" "$RUN/regout" >/dev/null 2>&1
+  exit 130
+}
+trap on_signal INT TERM
 if [ -z "$TEST_CMD" ]; then
   echo "$(date -u +%FT%TZ) [$SPEC] WARN SELF-CERTIFIED (no [loop].testCommand — verification NOT independent, DEPRECATED)" | tee -a "$AUDIT" >> "$LOG"
 fi
@@ -377,7 +398,7 @@ if [ "$SPEC_GATE" = "true" ] && ! run_spec_gate; then
   SG_REASON="$(json_str "$(cat "$SPECDIR/spec-gate-result.json" 2>/dev/null)" reasons)"
   if [ "$GATE_ON_SPECFAIL" = "true" ] && wait_gate spec-gate-fail "Spec gate FAILED — approve to override and implement anyway (audited), reject to stop." "{\"reasons\":\"$(jesc "$SG_REASON")\"}"; then
     # Override is recorded in the result file so it is never mistaken for a pass.
-    sed -i 's/"status": "fail"/"status": "fail", "overriddenBy": "gate"/' "$SPECDIR/spec-gate-result.json" 2>/dev/null
+    sed 's/"status": "fail"/"status": "fail", "overriddenBy": "gate"/' "$SPECDIR/spec-gate-result.json" > "$SPECDIR/spec-gate-result.json.tmp" 2>/dev/null && mv -f "$SPECDIR/spec-gate-result.json.tmp" "$SPECDIR/spec-gate-result.json"
     echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE overridden by human gate — proceeding" >> "$AUDIT"
   else
     echo "$(date -u +%FT%TZ) [$SPEC] loop-run ABORTED by spec gate — run /harden-spec or fix the spec, then re-run" >> "$AUDIT"
@@ -412,6 +433,11 @@ while true; do
   ENGINE="$(json_str "$PICK" engine)"; [ -z "$ENGINE" ] && ENGINE="claude"
   VERIFYMODE="$(json_str "$PICK" verify)"
   [ -z "$TASKID" ] && { EXIT_REASON=NOTASK; echo "$(date -u +%FT%TZ) [$SPEC] pick returned no task; stopping" >> "$AUDIT"; break; }
+  # _Tests: comes from tasks.md (repo-controlled) and is substituted into testCommand → whitelist its characters.
+  case "$SCOPE" in *[!A-Za-z0-9._/@*:,\ {}=-]*)
+    $SWMCP verify "$SPEC" --task "$TASKID" --signal blocked --note "unsafe _Tests selector (characters outside [A-Za-z0-9._/@*:,{}= -])" $TG --project "$PWD" >> "$LOG" 2>&1
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID BLOCKED (unsafe _Tests selector)" >> "$AUDIT"; continue ;;
+  esac
 
   echo "" >> "$LOG"; echo "===== iter $iter @ $(date -u +%FT%TZ) task=$TASKID scope='${SCOPE:-none}' (remaining=$R) =====" >> "$LOG"
   echo "$(date -u +%FT%TZ) [$SPEC] iter=$iter task=$TASKID remaining=$R" >> "$AUDIT"

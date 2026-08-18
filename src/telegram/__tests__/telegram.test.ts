@@ -8,6 +8,7 @@ import { chunk } from '../api.js';
 import { parseAuditLine, readNewEvents } from '../../core/run-watcher.js';
 import { handleCommand, CommandCtx } from '../commands.js';
 import { getRunFile, RUN_FILES } from '../../core/run-state.js';
+import { loadConfig } from '../config.js';
 
 const now = Math.floor(Date.now() / 1000);
 const msg = (over: any = {}) => ({ message_id: 1, date: now, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/status', ...over });
@@ -171,5 +172,22 @@ describe('telegram/commands', () => {
     expect(bad.text).toContain('usage');
     const [inv] = await handleCommand('/tasks ../../etc', ctxFor());
     expect(inv.text).toMatch(/invalid spec name|unknown project/);
+  });
+});
+
+describe('telegram/config', () => {
+  it('refuses to start without a token or with an empty/invalid allowlist (env-only, no file)', async () => {
+    const saved = { ...process.env };
+    try {
+      delete process.env.TELEGRAM_BOT_TOKEN; delete process.env.TELEGRAM_ALLOW_FROM;
+      process.env.HOME = join(tmpdir(), `swmcp-cfg-${Date.now()}`); // no telegram.env there
+      await expect(loadConfig()).rejects.toThrow(/TELEGRAM_BOT_TOKEN/);
+      process.env.TELEGRAM_BOT_TOKEN = '123456:' + 'A'.repeat(35);
+      process.env.TELEGRAM_ALLOW_FROM = 'abc,-1,0';
+      await expect(loadConfig()).rejects.toThrow(/TELEGRAM_ALLOW_FROM/);
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
   });
 });

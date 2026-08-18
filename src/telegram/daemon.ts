@@ -6,7 +6,7 @@ import { TelegramApi, TelegramApiError, TgUpdate, InlineKeyboardMarkup } from '.
 import { loadConfig, loadState, saveState, TelegramConfig, DaemonState } from './config.js';
 import { acceptMessage, acceptCallback, Audit } from './access.js';
 import { handleCommand, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
-import { esc, b, code, ago, untrusted } from './render.js';
+import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { SpecParser } from '../core/parser.js';
@@ -29,6 +29,8 @@ export interface DaemonOptions {
   once?: boolean;             // run one tick and exit (tests / cron)
   fetchImpl?: typeof fetch;
   log?: (s: string) => void;
+  /** tests only: updates to feed through handleUpdate during a `once` run (instead of polling) */
+  injectUpdates?: TgUpdate[];
 }
 
 export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void> {
@@ -44,7 +46,13 @@ export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void>
   const d = new Daemon(api, cfg, state, audit, version, log);
   await d.discoverProjects();
   await d.tick();          // pushes + gate cards
-  if (opts.once) { await d.flush(); return; }
+  if (opts.once) {
+    for (const u of opts.injectUpdates ?? []) {
+      state.offset = Math.max(state.offset, u.update_id + 1); d.markDirty();
+      try { await d.handleUpdate(u); } catch (e) { log(`update ${u.update_id} error: ${(e as Error).message}`); }
+    }
+    await d.flush(); return;
+  }
 
   let stopping = false;
   const pollAbort = new AbortController();
@@ -67,7 +75,7 @@ export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void>
         if (stopping) break;
         backoff = 1000;
         for (const u of updates) {
-          state.offset = Math.max(state.offset, u.update_id + 1);
+          state.offset = Math.max(state.offset, u.update_id + 1); d.markDirty();
           try { await d.handleUpdate(u); } catch (e) { log(`update ${u.update_id} error: ${(e as Error).message}`); }
         }
         if (updates.length) await d.flush();
@@ -140,6 +148,8 @@ class Daemon {
     const p = this.state.cbKeys[key];
     return p && p.kind === kind ? (p as CallbackPayload & { at: number }) : undefined;
   }
+
+  markDirty(): void { this.dirty = true; }
 
   async flush(): Promise<void> {
     if (!this.dirty) return;
@@ -481,17 +491,17 @@ function describe(ev: LoopEvent): string {
     case 'iter': return `iter ${ev.iter} → task ${code(ev.taskId)} (${ev.remaining} left)`;
     case 'green': return `✅ task ${code(ev.taskId)} green`;
     case 'red': return `❌ task ${code(ev.taskId)} red (exit ${esc(ev.exitCode ?? '?')}${ev.failureClass ? `, ${esc(ev.failureClass)}` : ''})`;
-    case 'blocked': return `⛔ task ${code(ev.taskId)} blocked${ev.reason ? ` — ${esc(ev.reason.slice(0, 200))}` : ''}`;
-    case 'tamper': return `🚨 tamper gate on task ${code(ev.taskId)}: ${esc(ev.reason.slice(0, 200))}`;
+    case 'blocked': return `⛔ task ${code(ev.taskId)} blocked${ev.reason ? ` — ${inlineUntrusted(ev.reason)}` : ''}`;
+    case 'tamper': return `🚨 tamper gate on task ${code(ev.taskId)}: ${inlineUntrusted(ev.reason)}`;
     case 'unverified': return `⚠️ task ${code(ev.taskId)} completed WITHOUT independent verification`;
-    case 'judge': return `⚖️ judge ${ev.verdict} on task ${code(ev.taskId)}${ev.reasons ? ` — ${esc(ev.reasons.slice(0, 200))}` : ''}`;
+    case 'judge': return `⚖️ judge ${ev.verdict} on task ${code(ev.taskId)}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
     case 'regression': return `⚠️ regression after task ${code(ev.taskId ?? '?')}`;
-    case 'spec-gate': return `🧭 spec gate ${ev.verdict}${ev.reasons ? ` — ${esc(ev.reasons.slice(0, 200))}` : ''}`;
-    case 'integration': return `🏗 integration ${ev.verdict}${ev.detail ? ` ${esc(ev.detail.slice(0, 200))}` : ''}`;
+    case 'spec-gate': return `🧭 spec gate ${ev.verdict}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
+    case 'integration': return `🏗 integration ${ev.verdict}${ev.detail ? ` ${inlineUntrusted(ev.detail)}` : ''}`;
     case 'gate': return `⏸ gate ${ev.state}${ev.kind ? ` (${esc(ev.kind)})` : ''}${ev.by ? ` by ${esc(ev.by)}` : ''}`;
     case 'stop': return `🛑 stop ${ev.by ? `by ${esc(ev.by)}` : esc(ev.reason)}`;
     case 'done': return '🎉 all tasks done';
-    case 'warn': return `⚠️ ${esc(ev.message.slice(0, 200))}`;
+    case 'warn': return `⚠️ ${inlineUntrusted(ev.message)}`;
     case 'start': return '▶️ loop started';
     case 'end': return `⏹ ended ${esc(ev.reason)}`;
     default: return esc((ev as any).message ?? ev.raw).slice(0, 200);

@@ -100,6 +100,10 @@ gateTimeoutMin = 60            # 超时无决定 = reject
 * 某 spec 的 loop 运行中时拒绝手动改任务状态（先 `/stop`）。
 * `init.sh` 写的项目 `settings.json` 拒绝实现 agent 访问 `~/.spec-workflow/**`、`.run/**`、审计日志和 `api.telegram.org`。
 
+## 信任边界（读一次）
+
+闸门密钥放在 `~/.spec-workflow/telegram.env`，运行守护进程的 OS 用户可读。loop runner 以**同一 OS 用户**运行 headless `claude`/`codex`。`settings.json` 拒绝实现 agent 用 `Read`/`Write` 工具碰该文件与 gates 目录，runner 也从不把密钥放到命令行（通过环境变量传给 `spec-workflow-mcp gate-hmac`），但一个"不听话"的 agent 用 Bash 一行命令仍可能读到它 —— deny 列表不是硬边界。需要硬边界时，把守护进程放到**独立的 OS 用户**下（独立 `$HOME`、`telegram.env` 0600、gates 目录 0700），只给 runner 验签能力。本文其余机制都是针对*意外*或*提示注入*导致的误行为的纵深防御 —— 这才是现实中的威胁。
+
 ## 文件
 
 ```

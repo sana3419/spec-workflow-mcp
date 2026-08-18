@@ -71,6 +71,7 @@ SH
       for _ in $(seq 1 60); do
         pend="$(ls "$T"/.spec-workflow/specs/s/.run/gates/*.pending 2>/dev/null | head -1)"
         if [ -n "$pend" ]; then
+          cp "$pend" "$T/.captured-pending.json" 2>/dev/null
           id="$(sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' "$pend")"; nonce="$(sed -n 's/.*"nonce": *"\([^"]*\)".*/\1/p' "$pend")"
           dec=approve; [ "$approver" = reject ] && dec=reject
           at="2026-08-18T00:00:00Z"; by="tg:42"
@@ -118,17 +119,34 @@ run_scenario 'gateEveryTasks = 1' pass reject
 AUD | grep -q "GATE pending .*kind=every-n-tasks" && AUD | grep -q "GATE reject" && AUD | grep -q "STOP by=gate" \
   && TKS | grep -q '\[x\] 1' && TKS | grep -q '\[ \] 2' \
   && ok "C every-n-tasks gate rejected → STOP after task 1, task 2 untouched" || { no "C"; AUD | tail -6; }
+# C2: the runner-authored pending carries a signature the PACKAGE verifier (what the daemon uses) accepts,
+#     and rejects under a different secret — runner↔daemon parity on the real artefact.
+if [ -f "$SC_DIR/.captured-pending.json" ]; then
+  GATE_SECRET="$SECRET" node "$DIST" gate-verify-pending "$SC_DIR/.captured-pending.json" 2>/dev/null | grep -q '^valid$' \
+    && ! GATE_SECRET="$(openssl rand -hex 32)" node "$DIST" gate-verify-pending "$SC_DIR/.captured-pending.json" 2>/dev/null | grep -q '^valid$' \
+    && ok "C2 runner-signed pending verifies with the daemon's verifier (and not under another secret)" || no "C2 pending signature parity"
+else no "C2 (no pending captured)"; fi
+# C3: the secret must never appear on any process command line while the runner signs/verifies
+! grep -q "openssl dgst.*-hmac" "$TPL" && ok "C3 secret is not passed to openssl argv (env-fed helper)" || no "C3 secret on argv"
 
 run_scenario '' pass none stop
 AUD | grep -q "STOP by=tg:1" && AUD | grep -q "loop-run END reason=STOP" && [ ! -f "$SC_DIR/.spec-workflow/specs/s/.run/pid" ] \
   && ok "D CLI stop mid-run → STOP by=tg:1, pid cleaned" || { no "D"; AUD | tail -6; }
 
 # E: double start refused
-T=$(mktemp -d); mkdir -p "$T/.spec-workflow/specs/s/.run"; echo $$ > "$T/.spec-workflow/specs/s/.run/pid"
+T=$(mktemp -d); mkdir -p "$T/.spec-workflow/specs/s/.run"
+# a live process whose cmdline looks like a runner (the guard checks /proc/<pid>/cmdline on Linux)
+( exec -a "bash .spec-workflow/spec-loop-run.sh s" sleep 20 ) & HOLDER=$!; sleep 0.2
+echo "$HOLDER" > "$T/.spec-workflow/specs/s/.run/pid"
 printf -- '- [ ] 1. t\n' > "$T/.spec-workflow/specs/s/tasks.md"; printf '[loop]\nautoLoop = true\n' > "$T/.spec-workflow/config.toml"
 cp "$TPL" "$T/.spec-workflow/spec-loop-run.sh"; sed -i "s|@@SWMCP_CMD@@|node \"$DIST\"|g" "$T/.spec-workflow/spec-loop-run.sh"
 mkdir -p "$T/bin"; printf '#!/bin/bash\necho OK\n' > "$T/bin/claude"; chmod +x "$T/bin/claude"
 ( cd "$T" && PATH="$T/bin:$PATH" bash .spec-workflow/spec-loop-run.sh s 2>&1 | grep -q "already running" ) && ok "E second start refused while .run/pid alive" || no "E double start"
+kill "$HOLDER" 2>/dev/null
+# E2: a stale pid (dead process) is reclaimed instead of blocking forever
+echo 999999999 > "$T/.spec-workflow/specs/s/.run/pid"
+( cd "$T" && PATH="$T/bin:$PATH" timeout 20 bash .spec-workflow/spec-loop-run.sh s >/dev/null 2>&1; true )
+! grep -q 999999999 "$T/.spec-workflow/specs/s/.run/pid" 2>/dev/null && ok "E2 stale pid reclaimed" || no "E2 stale pid"
 
 run_scenario '' pass none tamper
 AUD | grep -q "config.toml changed" && AUD | grep -q "loop-run END reason=CONFIG_CHANGED" && TKS | grep -q '\[ \] 2' \

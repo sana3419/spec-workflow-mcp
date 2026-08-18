@@ -28,6 +28,13 @@ export function untrusted(text: string, maxChars = 1200, label?: string): string
   return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${body}</pre>`;
 }
 
+/** Inline variant for short agent/repo strings inside harness lines: escaped, command/verdict markers neutralised, capped. */
+export function inlineUntrusted(s: unknown, max = 200): string {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  const cut = t.length > max ? t.slice(0, max) + '…' : t;
+  return `<code>${esc(cut.replace(/(^|\s)\/([a-z])/gi, '$1⁄$2').replace(/\b(VERDICT|APPROVED?|REJECTED?|BLOCKER)\b\s*:?/gi, m => '·' + m.toLowerCase()))}</code>`;
+}
+
 export function code(s: unknown): string { return `<code>${esc(s)}</code>`; }
 export function b(s: unknown): string { return `<b>${esc(s)}</b>`; }
 

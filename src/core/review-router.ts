@@ -222,11 +222,15 @@ export function globToRegExp(glob: string): RegExp {
 
 // ------------------------------------------------------------------ diff
 
+const GIT_REF = /^[A-Za-z0-9._\/~^@{}-]{1,200}$/;
+
 async function gitDiff(projectPath: string, base: string): Promise<{ files: string[]; text: string; error?: string }> {
   const cwd = PathUtils.translatePath(projectPath);
   let files: string[] = [], text = '', error: string | undefined;
+  // `base` may come from an LLM tool call: never let it be parsed as a git option (--output=... = file write).
+  if (!GIT_REF.test(base) || base.startsWith('-')) return { files: [], text: '', error: `invalid git base ref: ${JSON.stringify(base).slice(0, 80)}` };
   try {
-    const { stdout: names } = await execFileP('git', ['diff', '--no-color', '--name-only', base], { cwd, maxBuffer: 8e6 });
+    const { stdout: names } = await execFileP('git', ['diff', '--no-color', '--name-only', '--diff-filter=d', '--end-of-options', base], { cwd, maxBuffer: 8e6 });
     files = names.split('\n').map(s => s.trim()).filter(Boolean);
     if (base === 'HEAD') {
       // include untracked new files so brand-new modules are routed too
@@ -237,7 +241,7 @@ async function gitDiff(projectPath: string, base: string): Promise<{ files: stri
     return { files: [], text: '', error: `git diff --name-only ${base} failed: ${(e as Error).message.split('\n')[0]}` };
   }
   try {
-    const { stdout } = await execFileP('git', ['diff', '--no-color', base], { cwd, maxBuffer: 32e6 });
+    const { stdout } = await execFileP('git', ['diff', '--no-color', '--end-of-options', base], { cwd, maxBuffer: 32e6 });
     text = stdout.slice(0, 4e6);
   } catch (e) {
     error = `git diff ${base} failed (content triggers skipped): ${(e as Error).message.split('\n')[0]}`;
@@ -313,6 +317,7 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
       }
       if (t.content?.length && added.length) {
         for (const pat of t.content) {
+          if (pat.length > 200 || /(\([^)]*[+*][^)]*\)[+*])/.test(pat)) continue; // agent files are project-writable: cap + crude nested-quantifier guard
           let re: RegExp;
           try { re = new RegExp(pat, 'i'); } catch { continue; }
           const line = added.find(l => re.test(l));

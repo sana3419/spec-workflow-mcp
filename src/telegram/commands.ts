@@ -12,7 +12,7 @@ import { cleanupSpecs } from '../core/cleanup.js';
 import { listPendingGates } from '../core/gates.js';
 import { tailAudit } from '../core/run-watcher.js';
 import { SPEC_NAME, TASK_ID } from './access.js';
-import { esc, untrusted, code, b, ago, bar, shortPath, statusIcon } from './render.js';
+import { esc, untrusted, inlineUntrusted, code, b, ago, bar, shortPath, statusIcon } from './render.js';
 import type { InlineKeyboardMarkup } from './api.js';
 import type { VerifyResult } from '../types.js';
 
@@ -283,7 +283,7 @@ async function cmdTasks(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
     const items = real.filter(t => t.status === st);
     if (!items.length) continue;
     out.push(`\n${title} (${items.length})`);
-    for (const t of items.slice(0, 10)) out.push(`  ${code(t.id)} ${esc(t.description.slice(0, 70))}${t.status === 'blocked' && t.blockedReason ? ` — <i>${esc(t.blockedReason.slice(0, 60))}</i>` : ''}`);
+    for (const t of items.slice(0, 10)) out.push(`  ${code(t.id)} ${inlineUntrusted(t.description, 70)}${t.status === 'blocked' && t.blockedReason ? ` — ${inlineUntrusted(t.blockedReason, 60)}` : ''}`);
     if (items.length > 10) out.push(`  … +${items.length - 10}`);
   }
   out.push(`\n/task ${esc(r.spec)} &lt;id&gt; for details`);

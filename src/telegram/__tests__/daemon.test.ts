@@ -117,4 +117,62 @@ describe('telegram daemon (one tick, fake Bot API)', () => {
     const { record } = await gates.writeDecision(root, gate, 'approve', 'tg:42', secret);
     expect(gates.verifyDecision(record, gate, secret)).toBe(true);
   });
+
+  it('inbound path: allowlist enforced end-to-end, gate approve idempotent, unknown/foreign callbacks refused', async () => {
+    const audit = join(root, '.spec-workflow', 'loop-audit.log');
+    await fs.writeFile(audit, '');
+    const tg = fakeTelegram();
+    await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {} }); // registers project, generates secret
+    const secret0 = (await gates.readEnvFile()).GATE_SECRET;
+    const sign = (id: string, nonce: string, kind: string, createdAt: string) => require('crypto').createHmac('sha256', secret0).update(`${id}:${nonce}:${kind}:${createdAt}`).digest('hex');
+    const gdir = join(getRunDir(root, 'auth'), 'gates');
+    await fs.mkdir(gdir, { recursive: true });
+    const gate = { id: 'auth-every-n-tasks-7-20260818T000000Z', spec: 'auth', kind: 'every-n-tasks', nonce: 'ab'.repeat(16), summary: 's', createdAt: '2026-08-18T00:00:00Z', detail: { greens: 3, remaining: 2 } };
+    (gate as any).sig = sign(gate.id, gate.nonce, gate.kind, gate.createdAt);
+    await fs.writeFile(join(gdir, `${gate.id}.pending`), JSON.stringify(gate));
+    await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {} }); // posts the card
+    const card = tg.calls.filter(c => c.method === 'sendMessage').map(c => c.body).find(b => b.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data?.startsWith('g:'));
+    expect(card).toBeTruthy();
+    const approveData = card.reply_markup.inline_keyboard[0][0].callback_data as string;
+    const rejectData = card.reply_markup.inline_keyboard[0][1].callback_data as string;
+    const cardMsgId = 100 + tg.calls.filter(c => c.method === 'sendMessage').findIndex(c => c.body === card); // fake ids start at 100 per test... derive from result instead
+    const now = Math.floor(Date.now() / 1000);
+    const cbMsg = (id: number) => ({ message_id: id, date: now, chat: { id: 42, type: 'private' }, from: { id: 1, is_bot: true } });
+    const before = tg.calls.length;
+
+    // 1) stranger (user 7): /status text and an approve tap → dropped silently, no decision file
+    await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {}, injectUpdates: [
+      { update_id: 1, message: { message_id: 500, date: now, chat: { id: 7, type: 'private' }, from: { id: 7 }, text: '/status' } } as any,
+      { update_id: 2, callback_query: { id: 'cb1', from: { id: 7 }, message: cbMsg(101), data: approveData } } as any,
+    ] });
+    expect(tg.calls.slice(before).filter(c => c.method === 'sendMessage')).toHaveLength(0);
+    expect(await gates.readDecision(root, gate.id)).toBeNull();
+
+    // 2) allowlisted user 42: /status answered; approve tap → decision approve by tg:42
+    await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {}, injectUpdates: [
+      { update_id: 3, message: { message_id: 501, date: now, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/status' } } as any,
+      { update_id: 4, callback_query: { id: 'cb2', from: { id: 42 }, message: cbMsg(101), data: approveData } } as any,
+    ] });
+    expect(tg.calls.some(c => c.method === 'sendMessage' && /Overview/.test(c.body.text))).toBe(true);
+    const dec = await gates.readDecision(root, gate.id);
+    expect(dec?.decision).toBe('approve');
+    expect(dec?.by).toBe('tg:42');
+    expect(gates.verifyDecision(dec!, gate, secret0)).toBe(true);
+    // the card was edited to show the decision
+    expect(tg.calls.some(c => c.method === 'editMessageText' && /APPROVED by tg:42/.test(c.body.text))).toBe(true);
+
+    // 3) reject tap on the same gate (redelivered / second person) → cannot flip; still approve
+    await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {}, injectUpdates: [
+      { update_id: 5, callback_query: { id: 'cb3', from: { id: 42 }, message: cbMsg(101), data: rejectData } } as any,
+      { update_id: 6, callback_query: { id: 'cb4', from: { id: 42 }, message: cbMsg(101), data: 'g:00000000:a' } } as any,   // unknown key
+      { update_id: 7, callback_query: { id: 'cb5', from: { id: 42 }, message: { ...cbMsg(101), date: now - 3 * 86400 }, data: approveData } } as any, // stale
+    ] });
+    expect((await gates.readDecision(root, gate.id))?.decision).toBe('approve');
+    const acks = tg.calls.filter(c => c.method === 'answerCallbackQuery').map(c => c.body.text || '');
+    expect(acks.some(t => /expired/.test(t))).toBe(true);
+    // offset persisted past the last injected update
+    const st = JSON.parse(await fs.readFile(join(home, '.spec-workflow', 'tg-state.json'), 'utf-8'));
+    expect(st.offset).toBe(8);
+    void cardMsgId;
+  });
 });

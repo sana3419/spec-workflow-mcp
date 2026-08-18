@@ -16,6 +16,11 @@ import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
+import { gateHmac, verifyPendingSig } from './core/gates.js';
+import { createHmac } from 'crypto';
+
+const SPEC_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+function badSpec(spec: string | undefined): boolean { return !spec || !SPEC_NAME.test(spec) || spec === '.' || spec === '..'; }
 import { templateAgentsDir } from './tools/review-route.js';
 
 function flag(args: string[], name: string): string | undefined {
@@ -150,7 +155,7 @@ export async function runJudgeRecordCli(args: string[]): Promise<number> {
 /** stop: request a running loop to stop (writes specs/<spec>/.run/stop, JSON with by/at/nonce). */
 export async function runStopCli(args: string[]): Promise<number> {
   const spec = args[0];
-  if (!spec) { console.error('usage: stop <spec> [--by who] [--project p]'); return 2; }
+  if (badSpec(spec)) { console.error('usage: stop <spec> [--by who] [--project p]  (spec: [A-Za-z0-9._-]{1,64})'); return 2; }
   const projectPath = resolveProject(args);
   const status = await getLoopStatus(projectPath, spec);
   const req = await requestLoopStop(projectPath, spec, flag(args, '--by') || 'cli');
@@ -163,6 +168,7 @@ export async function runStopCli(args: string[]): Promise<number> {
 export async function runStatusCli(args: string[]): Promise<number> {
   const projectPath = resolveProject(args);
   const parser = new SpecParser(projectPath);
+  if (args[0] && !args[0].startsWith('--') && badSpec(args[0])) { console.error('invalid spec name'); return 2; }
   const specs = args[0] && !args[0].startsWith('--') ? [await parser.getSpec(args[0])] : await parser.getAllSpecs();
   const out = [];
   for (const s of specs) {
@@ -179,7 +185,7 @@ export async function runSetStatusCli(args: string[], fixed?: ManualTaskStatus):
   const spec = args[0];
   const taskId = flag(args, '--task');
   const status = (fixed || flag(args, '--status')) as ManualTaskStatus | undefined;
-  if (!spec || !taskId || !status || !['pending', 'in-progress', 'completed', 'blocked'].includes(status)) {
+  if (badSpec(spec) || !taskId || !status || !['pending', 'in-progress', 'completed', 'blocked'].includes(status)) {
     console.error('usage: set-status <spec> --task <id> --status <pending|in-progress|completed|blocked> [--reason r] [--by who] [--force] [--project p]\n       reset <spec> --task <id>   (= --status pending)');
     return 2;
   }
@@ -225,6 +231,33 @@ export async function runRouteCli(args: string[]): Promise<number> {
   return 0;
 }
 
+/** gate-hmac / gate-sign / gate-verify-pending: HMAC helpers for the bash runner. The secret is read
+ *  from the GATE_SECRET environment variable ONLY (never argv → never visible in `ps`). */
+export async function runGateHmacCli(args: string[], mode: 'decision' | 'sign' | 'verify-pending'): Promise<number> {
+  const secret = process.env.GATE_SECRET;
+  if (!secret) { console.error('GATE_SECRET env var required'); return 2; }
+  if (mode === 'decision') {
+    const [id, nonce, decision, by, at] = args;
+    if (!id || !nonce || (decision !== 'approve' && decision !== 'reject') || !by || !at) { console.error('usage: gate-hmac <id> <nonce> <approve|reject> <by> <at>'); return 2; }
+    console.log(gateHmac(secret, id, nonce, decision, by, at));
+    return 0;
+  }
+  if (mode === 'sign') {
+    const [id, nonce, kind, at] = args;
+    if (!id || !nonce || !kind || !at) { console.error('usage: gate-sign <id> <nonce> <kind> <createdAt>'); return 2; }
+    console.log(createHmac('sha256', secret).update(`${id}:${nonce}:${kind}:${at}`).digest('hex'));
+    return 0;
+  }
+  const file = args[0];
+  if (!file) { console.error('usage: gate-verify-pending <file>'); return 2; }
+  try {
+    const g = JSON.parse(await fs.readFile(file, 'utf-8'));
+    const ok = verifyPendingSig(g, secret);
+    console.log(ok ? 'valid' : 'invalid');
+    return ok ? 0 : 1;
+  } catch (e) { console.error(`cannot read ${file}: ${(e as Error).message}`); return 2; }
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
@@ -238,5 +271,8 @@ export async function runSubcommand(argv: string[]): Promise<number | null> {
   if (cmd === 'reset') return runSetStatusCli(rest, 'pending');
   if (cmd === 'cleanup') return runCleanupCli(rest);
   if (cmd === 'route') return runRouteCli(rest);
+  if (cmd === 'gate-hmac') return runGateHmacCli(rest, 'decision');
+  if (cmd === 'gate-sign') return runGateHmacCli(rest, 'sign');
+  if (cmd === 'gate-verify-pending') return runGateHmacCli(rest, 'verify-pending');
   return null;
 }

@@ -234,7 +234,8 @@ if [ -f "$RUNNER_SRC" ]; then
   if [ -f "$LOOP_DIST" ]; then
     LOOP_DIST_ABS="$(cd "$(dirname "$LOOP_DIST")" && pwd)/index.js"
     SWMCP_CMD="node \"$LOOP_DIST_ABS\""
-    sed -i "s|@@SWMCP_CMD@@|$SWMCP_CMD|g" "$RUNNER_DST"
+    # awk -v: no sed metacharacter escaping problems (paths with | & \), no GNU-only sed -i
+    awk -v cmd="$SWMCP_CMD" '{ while ((i = index($0, "@@SWMCP_CMD@@")) > 0) $0 = substr($0, 1, i - 1) cmd substr($0, i + 13); print }' "$RUNNER_SRC" > "$RUNNER_DST" && chmod +x "$RUNNER_DST"
   else
     echo "       NOTE: dist/ not built — run 'npm run build'; loop's harness verdict needs it"
   fi
@@ -374,7 +375,7 @@ echo "    Stop:  $SWMCP_CMD stop <spec>   (or Telegram /stop <spec>)"
 echo ""
 echo "  Telegram control (replaces the old web dashboard, one daemon per machine):"
 echo "    1. @BotFather → /newbot  → token for the loop bot"
-echo "    2. printf 'TELEGRAM_BOT_TOKEN=...\nTELEGRAM_ALLOW_FROM=<your numeric id>\n' > ~/.spec-workflow/telegram.env && chmod 600 ~/.spec-workflow/telegram.env"
+echo "    2. mkdir -p ~/.spec-workflow && chmod 700 ~/.spec-workflow && printf 'TELEGRAM_BOT_TOKEN=...\nTELEGRAM_ALLOW_FROM=<your numeric id>\n' > ~/.spec-workflow/telegram.env && chmod 600 ~/.spec-workflow/telegram.env"
 echo "    3. nohup $SWMCP_CMD --telegram >/dev/null 2>&1 &     then DM the bot /help"
 echo ""
 echo "  Recommended: add to your shell profile:"

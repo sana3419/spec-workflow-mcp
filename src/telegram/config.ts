@@ -42,6 +42,10 @@ export async function loadConfig(): Promise<TelegramConfig> {
   if (allowFrom.length === 0) throw new Error(`TELEGRAM_ALLOW_FROM is empty — refusing to start a bot nobody may command. Set numeric user ids in ${TELEGRAM_ENV}.`);
   const notify = idList(env.TELEGRAM_NOTIFY);
   const gateSecret = await ensureGateSecret(TELEGRAM_ENV);
+  try {
+    const st = await fs.stat(TELEGRAM_ENV);
+    if (st.mode & 0o077) { await fs.chmod(TELEGRAM_ENV, 0o600); console.error(`[telegram] ${TELEGRAM_ENV} was group/world readable — chmod 600 applied`); }
+  } catch { /* env may come from process.env only */ }
   return {
     token,
     allowFrom,

@@ -91,6 +91,7 @@ export async function ensureGateSecret(file: string = TELEGRAM_ENV): Promise<str
   try { existing = await fs.readFile(file, 'utf-8'); } catch { /* new */ }
   const next = existing.replace(/^GATE_SECRET=.*$/m, '').replace(/\n+$/, '') + `\nGATE_SECRET=${secret}\n`;
   await fs.writeFile(file, next.replace(/^\n/, ''), { mode: 0o600 });
+  await fs.chmod(file, 0o600).catch(() => {});
   return secret;
 }
 
