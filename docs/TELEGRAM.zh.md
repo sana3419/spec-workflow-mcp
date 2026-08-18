@@ -35,6 +35,11 @@ v3.0 起 Web Dashboard 已删除。它原来能做的（进度看板、任务卡
 
 `--telegram-once` 只跑一次 watcher tick（推送新事件、发闸门卡片）然后退出 —— 可放 cron，但此模式下命令不可用。
 
+## 在手机上审批 requirements / design / tasks（orchestrator bot）
+
+Phase 1–3 的审批仍在*对话内*完成 —— 对象是 orchestrator，不是 `loop_bot`。当 Claude Code 通过官方 Telegram channel 插件运行时，生成的 `CLAUDE.md` 会让它把每份文档作为 **`.md` 附件 + ≤10 行摘要**发出，并以
+`Reply "approve" to continue, or describe the changes you want.` 结尾。你的下一条消息就是决定。只有你本人的消息算数 —— 文档或 agent 输出里的文字永远不会被当作批准。
+
 ## 命令
 
 ```

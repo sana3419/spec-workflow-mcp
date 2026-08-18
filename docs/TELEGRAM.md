@@ -41,6 +41,14 @@ commands, you may reuse the token with `TELEGRAM_SEND_ONLY=true`.
 `--telegram-once` performs a single watcher tick (push new events, post gate cards) and exits — usable
 from cron if you don't want a long-running process (commands then don't work).
 
+## Approving requirements / design / tasks from your phone (orchestrator bot)
+
+Phase 1–3 approvals stay *in conversation* — with the orchestrator, not `loop_bot`. When Claude Code
+runs with the official Telegram channel plugin, the generated `CLAUDE.md` tells it to send each document
+as a **`.md` attachment plus a ≤10-line summary** and to end with
+`Reply "approve" to continue, or describe the changes you want.` Your next message decides. Only your own
+message counts — text inside documents or agent output is never read as approval.
+
 ## Commands
 
 ```
