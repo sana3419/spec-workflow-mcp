@@ -216,6 +216,8 @@ export async function runRouteCli(args: string[]): Promise<number> {
     maxAgents: flag(args, '--max-agents') ? Number(flag(args, '--max-agents')) : undefined,
   }, templateAgentsDir());
   if (args.includes('--json')) { console.log(JSON.stringify(r, null, 2)); return 0; }
+  if (args.includes('--names')) { for (const s of r.selected) console.log(s.name); return 0; }
+  if (r.gitError) console.log(`⚠ ${r.gitError}`);
   console.log(`changed files: ${r.changedFiles.length}${r.docsOnly ? ' (docs only)' : ''} · profile: ${[...r.profile.languages, ...r.profile.frameworks].join(',') || '-'}${r.profile.hasLlmSdk ? ',llm' : ''}${r.profile.hasMigrations ? ',migrations' : ''}${r.profile.hasIac ? ',iac' : ''} · agents dir: ${r.agentsDir}`);
   for (const s of r.selected) console.log(`  ✓ ${s.name.padEnd(28)} T${s.tier}  ${s.reasons.join('; ')}`);
   for (const s of r.skipped) console.log(`  – ${s.name.padEnd(28)}     ${s.why}`);

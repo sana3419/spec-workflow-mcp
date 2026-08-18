@@ -73,14 +73,14 @@ export interface DaemonState {
   auditOffsets: Record<string, number>;
   /** chatId → current project path (for commands that omit <project>) */
   currentProject: Record<string, string>;
-  /** `${project}::${spec}` → board message */
-  boards: Record<string, BoardRef>;
+  /** `${project}::${spec}` → one board message per notify chat */
+  boards: Record<string, BoardRef[]>;
   /** short callback key → gate */
   gateKeys: Record<string, GateKeyRef>;
   /** `${project}::${spec}::${gateId}` → posted (dedupe across restarts) */
   postedGates: Record<string, string>;
-  /** short callback key → payload (documents / task actions / confirmations) */
-  cbKeys: Record<string, { payload: string; at: number }>;
+  /** short callback key → typed payload (documents / task actions / confirmations) */
+  cbKeys: Record<string, { kind: string; project: string; spec?: string; taskId?: string; flag?: string; num?: number; at: number }>;
 }
 
 export function emptyState(): DaemonState {
@@ -98,7 +98,7 @@ export async function loadState(file: string = STATE_FILE): Promise<DaemonState>
 
 export async function saveState(state: DaemonState, file: string = STATE_FILE): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.tmp-${process.pid}`;
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   await fs.writeFile(tmp, JSON.stringify(state, null, 2), { mode: 0o600 });
   await fs.rename(tmp, file);
 }

@@ -43,9 +43,10 @@ export class TelegramApi {
     this.base = `https://api.telegram.org/bot${token}`;
   }
 
-  private async call<T>(method: string, body?: Record<string, unknown> | FormData, timeoutMs = 30_000): Promise<T> {
+  private async call<T>(method: string, body?: Record<string, unknown> | FormData, timeoutMs = 30_000, outer?: AbortSignal): Promise<T> {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), timeoutMs);
+    outer?.addEventListener('abort', () => ctl.abort(), { once: true });
     try {
       const init: RequestInit = { method: 'POST', signal: ctl.signal };
       if (body instanceof FormData) init.body = body;
@@ -68,8 +69,8 @@ export class TelegramApi {
   getMe() { return this.call<TgUser>('getMe'); }
 
   /** Long-poll. `timeout` seconds server-side; we allow +10s on the client. */
-  getUpdates(offset: number, timeout = 25): Promise<TgUpdate[]> {
-    return this.call<TgUpdate[]>('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query'] }, (timeout + 10) * 1000);
+  getUpdates(offset: number, timeout = 25, signal?: AbortSignal): Promise<TgUpdate[]> {
+    return this.call<TgUpdate[]>('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query'] }, (timeout + 10) * 1000, signal);
   }
 
   async sendMessage(chat_id: number, text: string, opts: { parse_mode?: ParseMode; reply_markup?: InlineKeyboardMarkup; disable_notification?: boolean; reply_to_message_id?: number } = {}): Promise<TgMessage> {
@@ -121,12 +122,19 @@ export function chunk(text: string, max: number): string[] {
   if (text.length <= max) return [text];
   const out: string[] = [];
   let rest = text;
+  let openPre = false;
+  const budget = max - 12; // room for </pre> / <pre> wrappers
   while (rest.length > max) {
-    let cut = rest.lastIndexOf('\n', max);
-    if (cut < max * 0.5) cut = max;
-    out.push(rest.slice(0, cut));
+    let cut = rest.lastIndexOf('\n', budget);
+    if (cut < budget * 0.5) cut = budget;
+    let piece = rest.slice(0, cut);
     rest = rest.slice(cut).replace(/^\n/, '');
+    if (openPre) piece = '<pre>' + piece;
+    const opens = (piece.match(/<pre>/g) || []).length, closes = (piece.match(/<\/pre>/g) || []).length;
+    openPre = opens > closes;
+    if (openPre) piece += '</pre>';
+    out.push(piece);
   }
-  if (rest) out.push(rest);
+  if (rest) out.push((openPre ? '<pre>' : '') + rest);
   return out;
 }

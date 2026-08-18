@@ -34,6 +34,7 @@ export function parseAuditLine(line: string): LoopEvent | null {
   const m = line.match(LINE);
   if (!m) return null;
   const [, ts, spec, msg] = m;
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(spec)) return null; // audit log is agent-writable; never let a spec name traverse
   const raw = line;
   let x: RegExpMatchArray | null;
 

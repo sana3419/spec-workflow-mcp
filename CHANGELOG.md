@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.1.0] — 2026-08-18 (fork)
 
+### Hardening (post-review)
+- Runner signs gate pendings; daemon ignores unsigned/forged ones and composes gate cards from its own strings only; runner-authored summary/auditor reasons go in a separate untrusted message.
+- Runner aborts with `CONFIG_CHANGED` if `.spec-workflow/config.toml` changes mid-run; `json_str` tolerates pretty JSON; portable project hash (`pwd -P`, `shasum` fallback); `_Verify: panel` lenses via `route --names`.
+- Daemon: per-chat boards and gate cards, typed callback payloads (kind-checked), HTML-safe chunking of `<pre>`, all verify-result fields escaped, `TELEGRAM_*`/`GATE_SECRET` stripped from the runner's env on `/start`, abortable long-poll on SIGINT, spec names from the audit log validated.
+- Router: git errors surfaced (`gitError`) instead of silently routing tier 0 only; BOM/CRLF-tolerant frontmatter.
+- `init.sh` deny rules narrowed to what matters (token, gates, config.toml, run-state, audit) — documented as defense in depth, not the boundary.
+- L5 harness gains F (config tamper → stop) and G (unattended gate → reject) — 8/8.
+
 ### Added
 - **Claude Code plugin packaging**: `.claude-plugin/plugin.json` + `marketplace.json`, root `.mcp.json` (`${CLAUDE_PLUGIN_ROOT}/dist/index.js`), `skills/` and `agents/` moved to the repo root, new `/spec-workflow:init` and `/spec-workflow:telegram` skills. `init.sh` remains for manual installs and is what the init skill calls.
 - **38 reviewer agents** — Tier 2 spec-phase (spec-hardener, requirements-analyst, assumption-mapper, plan-risk-reviewer, acceptance-criteria-judge), Tier 3 language/stack (typescript, python, go, rust, react, node-backend, sql, shell-script, mobile), Tier 4 infra (iac, cicd, deployment-safety), Tier 5 LLM apps (prompt-injection, prompt-quality, llm-eval) on top of (Tier 0 always: security, logic, performance, api, test-adequacy-judge, spec-drift-detector; Tier 1 triggered: concurrency, error-handling, data-migration, backward-compat, dependency-license, config-secrets, observability, i18n, accessibility, ux-copy, cost, architecture) in a house format with `tier/tags/triggers` frontmatter.

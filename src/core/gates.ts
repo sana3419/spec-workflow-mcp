@@ -38,6 +38,8 @@ export interface PendingGate {
   /** Filled in by the daemon once it has posted the card (so a restart doesn't re-post). */
   postedMessageId?: number;
   postedChatId?: number;
+  /** HMAC(id:nonce:kind:createdAt, GATE_SECRET) written by the runner — proves the runner authored it. */
+  sig?: string;
 }
 
 export interface GateDecisionRecord {
@@ -90,6 +92,14 @@ export async function ensureGateSecret(file: string = TELEGRAM_ENV): Promise<str
   const next = existing.replace(/^GATE_SECRET=.*$/m, '').replace(/\n+$/, '') + `\nGATE_SECRET=${secret}\n`;
   await fs.writeFile(file, next.replace(/^\n/, ''), { mode: 0o600 });
   return secret;
+}
+
+/** Verify the runner's signature on a pending gate (agent-writable location → must be signed). */
+export function verifyPendingSig(g: Pick<PendingGate, 'id' | 'nonce' | 'kind' | 'createdAt' | 'sig'>, secret: string): boolean {
+  if (!g.sig) return false;
+  const expect = createHmac('sha256', secret).update(`${g.id}:${g.nonce}:${g.kind}:${g.createdAt}`).digest('hex');
+  const a = Buffer.from(expect, 'hex'), b = Buffer.from(String(g.sig), 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function gateHmac(secret: string, id: string, nonce: string, decision: GateDecision, by: string, at: string): string {
@@ -145,7 +155,7 @@ export async function writeDecision(
   const record: GateDecisionRecord = { id: gate.id, nonce: gate.nonce, decision, by, at, hmac: gateHmac(secret, gate.id, gate.nonce, decision, by, at) };
   const target = join(dir, `${gate.id}.json`);
   const tmp = `${target}.tmp-${process.pid}`;
-  await fs.writeFile(tmp, JSON.stringify(record, null, 2), { mode: 0o600 });
+  await fs.writeFile(tmp, JSON.stringify(record), { mode: 0o600 });
   await fs.rename(tmp, target);
   return { record, alreadyDecided: false };
 }

@@ -85,11 +85,12 @@ gateTimeoutMin = 60            # 超时无决定 = reject
 
 为什么可信：
 
-* **runner** 写 `specs/<spec>/.run/gates/<id>.pending`（随机 nonce + harness 生成的摘要）。
-* **守护进程** 发的卡片只包含 harness 字段。任何来自仓库或 agent 的文本（judge 理由、日志尾巴）都作为*另一条*消息、带 "untrusted" 横幅、包在代码块里，绝不与按钮同一条。
+* **runner** 写 `specs/<spec>/.run/gates/<id>.pending`（随机 nonce、kind、时间戳）并用 `GATE_SECRET` **签名**；守护进程只对签名验证通过的 pending 出按钮 —— 项目内伪造或改写的 pending 不会有卡片。
+* **守护进程** 发的卡片文本只由守护进程自己按 gate 类型固定的文案 + 数字细节（exit code、次数、计数）组成。任何来自仓库或 agent 的文本（judge 理由、日志尾巴）都作为*另一条*消息、带 "untrusted" 横幅、包在代码块里，绝不与按钮同一条。
 * 你的 Approve/Reject 写在**项目目录之外** `~/.spec-workflow/gates/<projectHash>/<id>.json`，用 `GATE_SECRET` 做 HMAC-SHA256 签名。runner 用 `openssl` 重新计算 HMAC，不匹配一律忽略 —— 实现 agent（在项目内有写权限）无法给自己的闸门放行。
 * 决定幂等（重复点击不会把 approve 翻成 reject），卡片拒绝过期/外来的 callback。L3 失败上的 Approve 绝不改 spec（`spec-gate-result.json` 记 `overriddenBy: "gate"`）；L4 失败上的 Approve 永远不能把结果翻成 pass。
 * 事实层 L0/L1 从不等人。
+* runner 在 START 时记下 `config.toml` 校验和，运行中若被改动则以 `CONFIG_CHANGED` 停止（agent 无法中途把 `testCommand`/`judge`/闸门旋钮改掉）。
 
 ## 安全模型
 

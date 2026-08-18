@@ -24,6 +24,8 @@ export interface Reply {
   silent?: boolean;
 }
 
+export interface CallbackPayload { kind: 'doc' | 'task' | 'steer' | 'arch' | 'clean'; project: string; spec?: string; taskId?: string; flag?: string; num?: number }
+
 export interface CommandCtx {
   userId: number;
   chatId: number;
@@ -31,8 +33,8 @@ export interface CommandCtx {
   projects: string[];
   currentProject?: string;
   setCurrentProject(p: string | undefined): Promise<void>;
-  /** register a short callback key → payload; returns key */
-  registerCallback(payload: string): Promise<string>;
+  /** register a short callback key → typed payload; returns key */
+  registerCallback(payload: CallbackPayload): Promise<string>;
   version: string;
 }
 
@@ -186,9 +188,11 @@ export async function specStatusText(project: string, spec: string): Promise<str
   const parser = new SpecParser(PathUtils.translatePath(project));
   const s = (await parser.getSpec(spec)) || (await parser.getArchivedSpec(spec));
   if (!s) return `spec ${code(spec)} not found in ${esc(projectLabel(project))}`;
-  const loop = await getLoopStatus(project, spec);
+  const archived = !(await parser.getSpec(spec));
+  const loop = archived ? { running: false } as Awaited<ReturnType<typeof getLoopStatus>> : await getLoopStatus(project, spec);
   const tp = s.taskProgress;
-  const tasksFile = join(PathUtils.getSpecPath(PathUtils.translatePath(project), spec), 'tasks.md');
+  const specDir = archived ? PathUtils.getArchiveSpecPath(PathUtils.translatePath(project), spec) : PathUtils.getSpecPath(PathUtils.translatePath(project), spec);
+  const tasksFile = join(specDir, 'tasks.md');
   let counts = { completed: 0, inProgress: 0, blocked: 0, pending: 0, total: 0 };
   try {
     const t = parseTasksFromMarkdown(await fs.readFile(tasksFile, 'utf-8')).tasks.filter(x => !x.isHeader);
@@ -200,12 +204,12 @@ export async function specStatusText(project: string, spec: string): Promise<str
       pending: t.filter(x => x.status === 'pending').length,
     };
   } catch { /* no tasks */ }
-  const gates = await listPendingGates(project, spec);
+  const gates = archived ? [] : await listPendingGates(project, spec);
   const lines = [
-    `${b(projectLabel(project))} / ${b(spec)}`,
+    `${b(projectLabel(project))} / ${b(spec)}${archived ? ' 📦 archived' : ''}`,
     `phases: req ${s.phases.requirements.exists ? '✅' : '—'} · design ${s.phases.design.exists ? '✅' : '—'} · tasks ${s.phases.tasks.exists ? '✅' : '—'}`,
     tp ? `tasks ${counts.completed}/${counts.total} ${bar(counts.completed, counts.total)} · ✅${counts.completed} 🔄${counts.inProgress} ⛔${counts.blocked} ⬜${counts.pending}` : 'no tasks.md yet',
-    `loop: ${loop.running ? `🔄 running (pid ${loop.pid})` : loop.stale ? '💤 stopped (stale pid)' : '💤 idle'}${loop.stopRequested ? ' · stop requested' : ''}`,
+    archived ? '' : `loop: ${loop.running ? `🔄 running (pid ${loop.pid})` : loop.stale ? '💤 stopped (stale pid)' : '💤 idle'}${loop.stopRequested ? ' · stop requested' : ''}`,
     gates.length ? `⏸ ${gates.length} gate(s) waiting — /gates` : '',
     `updated ${ago(s.lastModified)} ago`,
   ].filter(Boolean);
@@ -238,13 +242,13 @@ async function cmdSpec(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
   const loc = await specExists(r.project, r.spec);
   if (loc === 'missing') return [{ text: `spec ${code(r.spec)} not found` }];
   const text = await specStatusText(r.project, r.spec);
-  const key = await ctx.registerCallback(`doc:${r.project}:${r.spec}`);
+  const key = await ctx.registerCallback({ kind: 'doc', project: r.project, spec: r.spec });
   const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[
     { text: '📄 requirements', callback_data: `d:${key}:r` },
     { text: '📐 design', callback_data: `d:${key}:d` },
     { text: '☑️ tasks', callback_data: `d:${key}:t` },
   ]] };
-  return [{ text: `${text}${loc === 'archived' ? '\n📦 archived' : ''}`, keyboard }];
+  return [{ text, keyboard }];
 }
 
 /** Send one of the spec documents as a file attachment. */
@@ -313,12 +317,12 @@ export async function taskCard(ctx: CommandCtx, project: string, spec: string, t
   if (t.status === 'blocked' && t.blockedReason) lines.push(`⛔ ${untrusted(t.blockedReason, 300, 'blocked reason')}`);
   if (v) {
     const parts = [
-      `last: ${v.lastSignal ?? '—'}${v.verifiedBy ? ` (${v.verifiedBy})` : ''}`,
-      v.exitCode !== undefined ? `exit ${v.exitCode}` : '',
-      v.failureClass ? `class ${v.failureClass}` : '',
-      `fix ${v.fixAttempts}`,
+      `last: ${esc(v.lastSignal ?? '—')}${v.verifiedBy ? ` (${esc(v.verifiedBy)})` : ''}`,
+      v.exitCode !== undefined ? `exit ${esc(v.exitCode)}` : '',
+      v.failureClass ? `class ${esc(v.failureClass)}` : '',
+      `fix ${esc(v.fixAttempts)}`,
       v.tamperGate === 'off' ? '⚠️ tamperGate off' : '',
-      v.judge ? `judge ${v.judge.verdict} (${esc(v.judge.engine)}${v.judge.attempts ? `, ${v.judge.attempts} reopen` : ''})` : '',
+      v.judge ? `judge ${esc(v.judge.verdict)} (${esc(v.judge.engine)}${v.judge.attempts ? `, ${esc(v.judge.attempts)} reopen` : ''})` : '',
       v.manual ? `manual ${esc(v.manual.from)}→${esc(v.manual.to)} by ${esc(v.manual.by)}` : '',
     ].filter(Boolean);
     lines.push(`🧪 ${parts.join(' · ')} · ${ago(v.lastTimestamp)}`);
@@ -326,7 +330,7 @@ export async function taskCard(ctx: CommandCtx, project: string, spec: string, t
     if (v.judge?.verdict === 'fail' && v.judge.reasons) lines.push(untrusted(v.judge.reasons, 300, 'judge reasons'));
   }
   if (loop.running) lines.push(`🔄 loop running — manual state changes disabled (/stop ${esc(spec)} first)`);
-  const key = await ctx.registerCallback(`task:${project}:${spec}:${taskId}`);
+  const key = await ctx.registerCallback({ kind: 'task', project, spec, taskId });
   const row: InlineKeyboardMarkup['inline_keyboard'][number] = [];
   if (!loop.running) {
     if (t.status !== 'in-progress') row.push({ text: '▶ start', callback_data: `t:${key}:s` });
@@ -363,7 +367,7 @@ export async function promptFor(project: string, spec: string, taskId: string): 
   const t = getTaskById(tasks, taskId);
   if (!t) return { text: `task ${code(taskId)} not found` };
   const p = t.prompt || `Please work on task ${t.id} for spec "${spec}"`;
-  return { text: `<b>implement prompt · ${esc(spec)} · ${esc(t.id)}</b>\n${untrusted(p, 3000, 'from tasks.md')}` };
+  return { text: `<b>implement prompt · ${esc(spec)} · ${esc(t.id)}</b>\n${untrusted(p, 2500, 'from tasks.md')}` };
 }
 
 async function cmdPrompt(ctx: CommandCtx, ref?: string, taskId?: string): Promise<Reply[]> {
@@ -377,7 +381,7 @@ async function cmdSteering(ctx: CommandCtx, token?: string): Promise<Reply[]> {
   const project = resolveProjectRef(ctx, token);
   if (!project) return [{ text: 'which project? /use <proj>' }];
   const st = await new SpecParser(PathUtils.translatePath(project)).getProjectSteeringStatus();
-  const key = await ctx.registerCallback(`steer:${project}`);
+  const key = await ctx.registerCallback({ kind: 'steer', project });
   const row: InlineKeyboardMarkup['inline_keyboard'][number] = [];
   const lines = [`<b>Steering · ${esc(projectLabel(project))}</b>`];
   for (const d of ['product', 'tech', 'structure'] as const) {
@@ -465,7 +469,7 @@ async function cmdRunlog(ctx: CommandCtx, ref?: string, nRaw?: string): Promise<
   const n = Math.min(Math.max(parseInt(nRaw || '20', 10) || 20, 1), 200);
   const lines = await tailAudit(r.project, n, r.spec);
   if (!lines.length) return [{ text: `no audit lines for ${code(r.spec)}` }];
-  return [{ text: `<b>audit · ${esc(r.spec)} · last ${lines.length}</b>\n${untrusted(lines.join('\n'), 3500, 'loop-audit.log')}` }];
+  return [{ text: `<b>audit · ${esc(r.spec)} · last ${lines.length}</b>\n${untrusted(lines.join('\n'), 2800, 'loop-audit.log')}` }];
 }
 
 // -------------------------------------------------------------- control commands
@@ -481,7 +485,8 @@ async function cmdStartLoop(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const logDir = join(PathUtils.getSpecPath(project, r.spec));
   await fs.mkdir(logDir, { recursive: true });
   const outFile = await fs.open(join(logDir, 'loop-run.stdout'), 'a');
-  const child = spawn('bash', [runner, r.spec], { cwd: project, detached: true, stdio: ['ignore', outFile.fd, outFile.fd], env: { ...process.env } });
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^TELEGRAM_|^GATE_SECRET$/.test(k)));
+  const child = spawn('bash', [runner, r.spec], { cwd: project, detached: true, stdio: ['ignore', outFile.fd, outFile.fd], env });
   child.unref();
   await outFile.close();
   return [{ text: `▶️ started loop for ${b(r.spec)} in ${esc(projectLabel(r.project))} (pid ${child.pid}).\nIt exits at once if [loop].autoLoop is false — check /status ${esc(r.spec)} in a moment.` }];
@@ -504,7 +509,7 @@ async function cmdArchive(ctx: CommandCtx, ref: string | undefined, archive: boo
   if (archive && loc !== 'active') return [{ text: `${code(r.spec)} is not an active spec` }];
   if (!archive && loc !== 'archived') return [{ text: `${code(r.spec)} is not archived` }];
   if (archive && (await getLoopStatus(r.project, r.spec)).running) return [{ text: `loop is running for ${code(r.spec)} — /stop it first` }];
-  const key = await ctx.registerCallback(`arch:${r.project}:${r.spec}:${archive ? '1' : '0'}`);
+  const key = await ctx.registerCallback({ kind: 'arch', project: r.project, spec: r.spec, flag: archive ? '1' : '0' });
   return [{ text: `${archive ? '📦 Archive' : '📤 Unarchive'} ${b(r.spec)} in ${esc(projectLabel(r.project))}?`, keyboard: { inline_keyboard: [[{ text: archive ? 'Archive' : 'Unarchive', callback_data: `a:${key}:y` }, { text: 'Cancel', callback_data: `a:${key}:n` }]] } }];
 }
 
@@ -522,7 +527,7 @@ async function cmdCleanup(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const archived = args[1]?.toLowerCase() === 'archived';
   const dry = await cleanupSpecs(project, { daysOld: days, archived, dryRun: true });
   if (!dry.candidates.length) return [{ text: `nothing ${archived ? 'archived ' : ''}older than ${days}d in ${esc(projectLabel(project))} (${dry.processed} checked)` }];
-  const key = await ctx.registerCallback(`clean:${project}:${days}:${archived ? '1' : '0'}`);
+  const key = await ctx.registerCallback({ kind: 'clean', project, num: days, flag: archived ? '1' : '0' });
   const list = dry.candidates.slice(0, 20).map(c => `• ${code(c.name)} (${ago(c.createdAt)})`).join('\n');
   return [{ text: `🧹 Would delete ${dry.candidates.length} ${archived ? 'archived ' : ''}spec(s) older than ${days}d in ${esc(projectLabel(project))}:\n${list}${dry.candidates.length > 20 ? '\n…' : ''}\n\n<b>This is irreversible.</b>`, keyboard: { inline_keyboard: [[{ text: `Delete ${dry.candidates.length}`, callback_data: `c:${key}:y` }, { text: 'Cancel', callback_data: `c:${key}:n` }]] } }];
 }

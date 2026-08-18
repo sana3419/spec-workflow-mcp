@@ -21,8 +21,11 @@ export function untrusted(text: string, maxChars = 1200, label?: string): string
     .split('\n')
     .map(l => (SUSPICIOUS.test(l) ? '· ' + l.replace(/^\s*\//, '⁄') : l))
     .join('\n');
-  const cut = cleaned.length > maxChars ? cleaned.slice(0, maxChars) + `\n… (+${cleaned.length - maxChars} chars)` : cleaned;
-  return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${esc(cut)}</pre>`;
+  // Cap AFTER escaping so HTML entity inflation can never push a message past Telegram's 4096 limit.
+  const cap = Math.min(maxChars, 3000);
+  let body = esc(cleaned);
+  if (body.length > cap) body = body.slice(0, cap).replace(/&[^;]{0,6}$/, '') + `\n… (+${cleaned.length - cap} chars)`;
+  return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${body}</pre>`;
 }
 
 export function code(s: unknown): string { return `<code>${esc(s)}</code>`; }

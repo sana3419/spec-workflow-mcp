@@ -96,8 +96,8 @@ gateTimeoutMin = 60            # no decision in time = reject
 
 How it stays trustworthy:
 
-* The **runner** writes `specs/<spec>/.run/gates/<id>.pending` (a random nonce + harness-authored summary).
-* The **daemon** posts a card whose text contains only harness fields. Anything that came from the repo
+* The **runner** writes `specs/<spec>/.run/gates/<id>.pending` (random nonce, kind, timestamp) and **signs it** with `GATE_SECRET`; the daemon shows buttons only for pendings whose signature verifies — a pending file forged or rewritten inside the project gets no card.
+* The **daemon** posts a card whose text is composed only from daemon-owned strings keyed by gate kind plus numeric details (exit code, attempts, counts). Anything that came from the repo
   or an agent (judge reasons, log tails) is sent as a *separate* message under an “untrusted” banner in a
   code block, never next to the buttons.
 * Your Approve/Reject is written **outside the project** to `~/.spec-workflow/gates/<projectHash>/<id>.json`,
@@ -107,6 +107,7 @@ How it stays trustworthy:
   callback queries. Approve on an L3 failure never edits the spec (`spec-gate-result.json` gets
   `overriddenBy: "gate"`); approve on an L4 failure can never flip the result to pass.
 * Ground-truth layers L0/L1 never wait on a human.
+* The runner snapshots `config.toml` at START and stops with `CONFIG_CHANGED` if it changes mid-run (an agent cannot flip `testCommand`/`judge`/gate knobs under it).
 
 ## Security model
 

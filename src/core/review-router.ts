@@ -60,6 +60,8 @@ export interface RouteResult {
   docsOnly: boolean;
   maxAgents: number;
   agentsDir: string;
+  /** set when git could not produce the diff — selection then rests on tier 0 / explicit inputs only */
+  gitError?: string;
 }
 
 export interface ProjectProfile {
@@ -80,7 +82,7 @@ export interface ReviewConfig {
 // ------------------------------------------------------------------ frontmatter
 
 export function parseFrontmatter(md: string): Record<string, unknown> {
-  const m = md.match(/^---\n([\s\S]*?)\n---/);
+  const m = md.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/);
   if (!m) return {};
   const out: Record<string, unknown> = {};
   const lines = m[1].split('\n');
@@ -143,7 +145,7 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
       agents.push({
         name: fm.name,
         description: String(fm.description ?? ''),
-        tier: typeof fm.tier === 'number' ? fm.tier : 9,
+        tier: typeof fm.tier === 'number' ? fm.tier : (typeof fm.tier === 'string' && /^\d+$/.test(fm.tier) ? Number(fm.tier) : 9),
         tags: Array.isArray(fm.tags) ? fm.tags.map(String) : [],
         triggers: {
           always: trig.always === true,
@@ -220,22 +222,27 @@ export function globToRegExp(glob: string): RegExp {
 
 // ------------------------------------------------------------------ diff
 
-async function gitDiff(projectPath: string, base: string): Promise<{ files: string[]; text: string } | null> {
+async function gitDiff(projectPath: string, base: string): Promise<{ files: string[]; text: string; error?: string }> {
   const cwd = PathUtils.translatePath(projectPath);
+  let files: string[] = [], text = '', error: string | undefined;
   try {
-    const args = base === 'HEAD' ? ['diff', 'HEAD'] : ['diff', base];
-    const { stdout: names } = await execFileP('git', ['diff', '--name-only', ...(base === 'HEAD' ? ['HEAD'] : [base])], { cwd, maxBuffer: 8e6 });
-    let files = names.split('\n').map(s => s.trim()).filter(Boolean);
+    const { stdout: names } = await execFileP('git', ['diff', '--no-color', '--name-only', base], { cwd, maxBuffer: 8e6 });
+    files = names.split('\n').map(s => s.trim()).filter(Boolean);
     if (base === 'HEAD') {
       // include untracked new files so brand-new modules are routed too
       const { stdout: untracked } = await execFileP('git', ['ls-files', '--others', '--exclude-standard'], { cwd, maxBuffer: 8e6 });
       files = [...new Set([...files, ...untracked.split('\n').map(s => s.trim()).filter(Boolean)])];
     }
-    const { stdout: text } = await execFileP('git', args, { cwd, maxBuffer: 32e6 });
-    return { files, text: text.slice(0, 4e6) };
-  } catch {
-    return null;
+  } catch (e) {
+    return { files: [], text: '', error: `git diff --name-only ${base} failed: ${(e as Error).message.split('\n')[0]}` };
   }
+  try {
+    const { stdout } = await execFileP('git', ['diff', '--no-color', base], { cwd, maxBuffer: 32e6 });
+    text = stdout.slice(0, 4e6);
+  } catch (e) {
+    error = `git diff ${base} failed (content triggers skipped): ${(e as Error).message.split('\n')[0]}`;
+  }
+  return { files, text, error };
 }
 
 /** Only ADDED lines (`+...`, not `+++` headers) — reviewers care about what the change introduces. */
@@ -262,9 +269,10 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
 
   let changedFiles = input.changedFiles;
   let diffText = input.diffText;
+  let gitError: string | undefined;
   if (!changedFiles || (!diffText && changedFiles.length)) {
     const d = await gitDiff(input.projectPath, input.base ?? 'HEAD');
-    if (d) { changedFiles = changedFiles ?? d.files; diffText = diffText ?? d.text; }
+    changedFiles = changedFiles ?? d.files; diffText = diffText ?? d.text; gitError = d.error;
   }
   changedFiles = (changedFiles ?? []).map(f => f.replace(/^\.\//, ''));
   const added = addedLines(diffText ?? '');
@@ -328,5 +336,5 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
     for (const s of selected.slice(maxAgents)) skipped.push({ name: s.name, why: `over maxAgents=${maxAgents} (use --full or --max-agents)` });
     selected = selected.slice(0, maxAgents);
   }
-  return { selected, skipped, changedFiles, profile, docsOnly, maxAgents: Number.isFinite(maxAgents) ? maxAgents : -1, agentsDir: relative(process.cwd(), dir) || dir };
+  return { selected, skipped, changedFiles, profile, docsOnly, maxAgents: Number.isFinite(maxAgents) ? maxAgents : -1, agentsDir: relative(process.cwd(), dir) || dir, ...(gitError ? { gitError } : {}) };
 }

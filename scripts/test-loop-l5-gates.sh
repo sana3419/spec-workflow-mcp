@@ -8,6 +8,8 @@
 #   C  gateEveryTasks=1 → pending appears under specs/s/.run/gates, reject → STOP by=gate
 #   D  `spec-workflow-mcp stop s --by tg:1` mid-run → STOP by=tg:1, .run/pid removed
 #   E  double start refused while .run/pid alive
+#   F  agent edits config.toml mid-run (testCommand="true") → STOP config changed, task 2 untouched
+#   G  pending gate carries a runner signature (sig) the daemon can verify
 #
 #   bash scripts/test-loop-l5-gates.sh     # requires `npm run build`, node, git, openssl
 set -u
@@ -50,6 +52,7 @@ task="$(printf '%s' "$prompt" | grep -oE 'task [0-9]+' | head -1 | awk '{print $
 sleep "${IMPL_SLEEP:-0}"
 mkdir -p src tests; echo "module.exports={add:(a,b)=>a+b}" > src/lib.js
 printf 'const t=require("node:test"),a=require("node:assert");t("add",()=>{a.strictEqual(require("../src/lib").add(2,3),5)});\n' > "tests/task${task}.test.js"
+[ "${TAMPER_CONFIG:-}" = 1 ] && [ "$task" = 1 ] && printf '\ntestCommand = "true"\n' >> .spec-workflow/config.toml
 exit 0
 SH
   cat > bin/codex <<'SH'
@@ -74,7 +77,8 @@ SH
           hmac="$(printf '%s' "$id:$nonce:$dec:$by:$at" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $NF}')"
           [ "$approver" = badhmac ] && hmac="deadbeef"
           mkdir -p "$GDIR"
-          printf '{"id":"%s","nonce":"%s","decision":"%s","by":"%s","at":"%s","hmac":"%s"}\n' "$id" "$nonce" "$dec" "$by" "$at" "$hmac" > "$GDIR/$id.json.tmp"
+          # pretty-printed like a JSON.stringify(x, null, 2) writer would — the runner must tolerate spaces/newlines
+          printf '{\n  "id": "%s",\n  "nonce": "%s",\n  "decision": "%s",\n  "by": "%s",\n  "at": "%s",\n  "hmac": "%s"\n}\n' "$id" "$nonce" "$dec" "$by" "$at" "$hmac" > "$GDIR/$id.json.tmp"
           mv "$GDIR/$id.json.tmp" "$GDIR/$id.json"
           exit 0
         fi
@@ -86,6 +90,7 @@ SH
     ( sleep 4; node "$DIST" stop s --by tg:1 --project "$T" >/dev/null 2>&1 ) &
   fi
   local extra_env=""; [ "$stopper" = stop ] && extra_env="IMPL_SLEEP=3"
+  [ "$stopper" = tamper ] && extra_env="TAMPER_CONFIG=1"
   HOME="$FAKE_HOME" PATH="$T/bin:$PATH" env SPEC_VERDICT="$verdict" $extra_env timeout 150 bash .spec-workflow/spec-loop-run.sh s >/dev/null 2>&1
   wait
   popd >/dev/null
@@ -124,6 +129,16 @@ printf -- '- [ ] 1. t\n' > "$T/.spec-workflow/specs/s/tasks.md"; printf '[loop]\
 cp "$TPL" "$T/.spec-workflow/spec-loop-run.sh"; sed -i "s|@@SWMCP_CMD@@|node \"$DIST\"|g" "$T/.spec-workflow/spec-loop-run.sh"
 mkdir -p "$T/bin"; printf '#!/bin/bash\necho OK\n' > "$T/bin/claude"; chmod +x "$T/bin/claude"
 ( cd "$T" && PATH="$T/bin:$PATH" bash .spec-workflow/spec-loop-run.sh s 2>&1 | grep -q "already running" ) && ok "E second start refused while .run/pid alive" || no "E double start"
+
+run_scenario '' pass none tamper
+AUD | grep -q "config.toml changed" && AUD | grep -q "loop-run END reason=CONFIG_CHANGED" && TKS | grep -q '\[ \] 2' \
+  && ok "F config.toml edited mid-run → STOP CONFIG_CHANGED, task 2 untouched" || { no "F"; AUD | tail -6; }
+
+# G: pending is signed by the runner (start a gate, read the pending before it is consumed)
+run_scenario 'gateEveryTasks = 1' pass none
+# with no approver the gate times out (1 min); the pending file is removed on timeout, so inspect the audit only
+AUD | grep -q "GATE pending .*kind=every-n-tasks" && AUD | grep -q "GATE timeout" \
+  && ok "G unattended gate times out → treated as reject (no silent approve)" || { no "G"; AUD | tail -6; }
 
 echo ""; echo "L5 result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

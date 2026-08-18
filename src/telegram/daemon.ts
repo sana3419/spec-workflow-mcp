@@ -5,13 +5,13 @@ import { randomBytes } from 'crypto';
 import { TelegramApi, TelegramApiError, TgUpdate, InlineKeyboardMarkup } from './api.js';
 import { loadConfig, loadState, saveState, TelegramConfig, DaemonState } from './config.js';
 import { acceptMessage, acceptCallback, Audit } from './access.js';
-import { handleCommand, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, Reply } from './commands.js';
+import { handleCommand, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
 import { esc, b, code, ago, untrusted } from './render.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { SpecParser } from '../core/parser.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
-import { listPendingGates, updatePendingGate, writeDecision, readDecision, PendingGate } from '../core/gates.js';
+import { listPendingGates, updatePendingGate, writeDecision, readDecision, verifyPendingSig, PendingGate, GateKind } from '../core/gates.js';
 import { getLoopStatus } from '../core/run-state.js';
 import type { ManualTaskStatus } from '../core/verify-core.js';
 
@@ -47,7 +47,8 @@ export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void>
   if (opts.once) { await d.flush(); return; }
 
   let stopping = false;
-  const onSig = () => { stopping = true; };
+  const pollAbort = new AbortController();
+  const onSig = () => { if (stopping) process.exit(130); stopping = true; pollAbort.abort(); };
   process.on('SIGINT', onSig); process.on('SIGTERM', onSig);
 
   // Two loops: long-poll for commands (unless send-only) and a periodic watcher tick.
@@ -62,7 +63,8 @@ export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void>
     let backoff = 1000;
     while (!stopping) {
       try {
-        const updates = await api.getUpdates(state.offset, 25);
+        const updates = await api.getUpdates(state.offset, 25, pollAbort.signal);
+        if (stopping) break;
         backoff = 1000;
         for (const u of updates) {
           state.offset = Math.max(state.offset, u.update_id + 1);
@@ -126,15 +128,18 @@ class Daemon {
     };
   }
 
-  private async registerKey(payload: string): Promise<string> {
+  private async registerKey(payload: CallbackPayload): Promise<string> {
     // 8 hex chars keeps callback_data well under 64 bytes: "t:xxxxxxxx:s"
     const key = randomBytes(4).toString('hex');
-    this.state.cbKeys[key] = { payload, at: Date.now() };
+    this.state.cbKeys[key] = { ...payload, at: Date.now() };
     for (const [k, v] of Object.entries(this.state.cbKeys)) if (Date.now() - v.at > 7 * 86400e3) delete this.state.cbKeys[k];
     this.dirty = true;
     return key;
   }
-  private payloadFor(key: string): string | undefined { return this.state.cbKeys[key]?.payload; }
+  private payloadFor(key: string, kind: CallbackPayload['kind']): (CallbackPayload & { at: number }) | undefined {
+    const p = this.state.cbKeys[key];
+    return p && p.kind === kind ? (p as CallbackPayload & { at: number }) : undefined;
+  }
 
   async flush(): Promise<void> {
     if (!this.dirty) return;
@@ -174,7 +179,7 @@ class Daemon {
   private async handleCallback(u: TgUpdate): Promise<void> {
     const cb = u.callback_query!;
     const acc = acceptCallback(cb, this.cfg.allowFrom);
-    if (!acc.ok) { await this.api.answerCallbackQuery(cb.id).catch(() => {}); return; }
+    if (!acc.ok) { await this.api.answerCallbackQuery(cb.id, acc.why === 'stale' ? 'expired — re-run the command' : undefined).catch(() => {}); return; }
     const { userId, chatId, messageId, data } = acc;
     const [kind, key, arg] = data.split(':');
     const ctx = this.ctx(userId, chatId);
@@ -182,19 +187,18 @@ class Daemon {
 
     if (kind === 'g') return this.handleGateCallback(cb.id, userId, chatId, messageId, key, arg, u.update_id);
 
-    const payload = this.payloadFor(key);
-    if (!payload) { await ack('expired'); return; }
-    const parts = payload.split(':');
+    const kindMap: Record<string, CallbackPayload['kind']> = { d: 'doc', s: 'steer', t: 'task', a: 'arch', c: 'clean' };
+    const payload = kindMap[kind] ? this.payloadFor(key, kindMap[kind]) : undefined;
+    if (!payload) { await ack('expired — re-run the command'); return; }
+    const project = payload.project, spec = payload.spec ?? '', taskId = payload.taskId ?? '';
     switch (kind) {
       case 'd': { // spec document
-        const [, project, spec] = parts;
         await ack();
         await this.send(chatId, await specDocument(project, spec, arg as 'r' | 'd' | 't'));
         return;
       }
-      case 's': { const [, project] = parts; await ack(); await this.send(chatId, await steeringDocument(project, arg)); return; }
+      case 's': { await ack(); await this.send(chatId, await steeringDocument(project, arg)); return; }
       case 't': { // task actions
-        const [, project, spec, taskId] = parts;
         if (arg === 'q') { await ack(); await this.send(chatId, await promptFor(project, spec, taskId)); return; }
         if (arg === 'r') { await ack('refreshed'); await this.editCard(chatId, messageId, await taskCard(ctx, project, spec, taskId)); return; }
         if (arg === 'b') {
@@ -214,7 +218,7 @@ class Daemon {
         return;
       }
       case 'a': { // archive confirm
-        const [, project, spec, flag] = parts;
+        const flag = payload.flag;
         if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
         try {
           const msg = await doArchive(project, spec, flag === '1');
@@ -224,10 +228,10 @@ class Daemon {
         return;
       }
       case 'c': { // cleanup confirm
-        const [, project, daysRaw, flag] = parts;
-        if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
-        const msg = await doCleanup(project, Number(daysRaw), flag === '1');
-        await this.auditCmd(userId, chatId, u.update_id, 'cleanup', [daysRaw, flag === '1' ? 'archived' : 'active'], project, undefined, msg.replace(/<[^>]+>/g, ''));
+        const flag = payload.flag, days = payload.num ?? NaN;
+        if (arg !== 'y' || !Number.isFinite(days)) { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        const msg = await doCleanup(project, days, flag === '1');
+        await this.auditCmd(userId, chatId, u.update_id, 'cleanup', [String(days), flag === '1' ? 'archived' : 'active'], project, undefined, msg.replace(/<[^>]+>/g, ''));
         await ack('done'); await this.editCard(chatId, messageId, { text: msg });
         return;
       }
@@ -252,8 +256,12 @@ class Daemon {
     const { record, alreadyDecided } = await writeDecision(ref.project, { id: ref.id, nonce: ref.nonce }, decision, `tg:${userId}`, this.cfg.gateSecret);
     await this.auditCmd(userId, chatId, updateId, `gate.${record.decision}`, [ref.id], ref.project, ref.spec, alreadyDecided ? 'already decided' : 'recorded');
     await ack(alreadyDecided ? `already ${record.decision}d by ${record.by}` : `${record.decision}d`);
-    await this.api.editMessageText(chatId, messageId, this.gateCardText(ref.spec, ref.project, ref.id, ref.createdAt, undefined, record), { parse_mode: 'HTML' }).catch(() => {});
-    delete this.state.gateKeys[key];
+    // Update every chat's card for this gate (each chat has its own key/message).
+    for (const [k, r] of Object.entries(this.state.gateKeys)) {
+      if (r.id !== ref.id || r.project !== ref.project) continue;
+      await this.api.editMessageText(r.chatId, r.messageId, this.gateCardText(r.spec, r.project, r.id, r.createdAt, undefined, record), { parse_mode: 'HTML' }).catch(() => {});
+      delete this.state.gateKeys[k];
+    }
     this.dirty = true;
   }
 
@@ -329,10 +337,14 @@ class Daemon {
       case 'start': {
         // New board message per run.
         const text = await this.boardText(project, ev.spec, `▶️ loop started${ev.pid ? ` (pid ${ev.pid})` : ''}`);
+        const refs = [];
         for (const chatId of this.cfg.notify) {
-          const id = await this.send(chatId, { text });
-          if (id) { this.state.boards[key] = { chatId, messageId: id, runStartedAt: ev.ts, lastText: text }; this.dirty = true; }
+          try {
+            const id = await this.send(chatId, { text });
+            if (id) refs.push({ chatId, messageId: id, runStartedAt: ev.ts, lastText: text });
+          } catch (e) { this.log(`board post to ${chatId} failed: ${(e as Error).message}`); }
         }
+        this.state.boards[key] = refs; this.dirty = true;
         return;
       }
       case 'green': case 'iter': case 'judge': case 'unverified': case 'spec-gate':
@@ -354,7 +366,7 @@ class Daemon {
         await this.updateBoard(project, ev.spec, describe(ev));
         return;
       case 'end': {
-        await this.updateBoard(project, ev.spec, `⏹ loop ended: ${ev.reason}${ev.iterations !== undefined ? ` after ${ev.iterations} iteration(s)` : ''}`);
+        await this.updateBoard(project, ev.spec, `⏹ loop ended: ${esc(ev.reason)}${ev.iterations !== undefined ? ` after ${ev.iterations} iteration(s)` : ''}`);
         await this.broadcast({ text: `${head} · ⏹ loop ended: ${b(ev.reason)}${ev.iterations !== undefined ? ` · ${ev.iterations} iter` : ''}\n${await specStatusText(project, ev.spec)}` });
         delete this.state.boards[key]; this.dirty = true;
         return;
@@ -369,22 +381,28 @@ class Daemon {
 
   private async updateBoard(project: string, spec: string, last: string): Promise<void> {
     const key = `${project}::${spec}`;
-    const board = this.state.boards[key];
+    const boards = this.state.boards[key];
     const text = await this.boardText(project, spec, last);
-    if (!board) {
+    if (!boards || !boards.length) {
       // Loop is running but we have no board (daemon started mid-run) → create one silently.
       if (!(await getLoopStatus(project, spec)).running) return;
+      const refs = [];
       for (const chatId of this.cfg.notify) {
-        const id = await this.send(chatId, { text, silent: true });
-        if (id) { this.state.boards[key] = { chatId, messageId: id, runStartedAt: new Date().toISOString(), lastText: text }; this.dirty = true; }
+        try {
+          const id = await this.send(chatId, { text, silent: true });
+          if (id) refs.push({ chatId, messageId: id, runStartedAt: new Date().toISOString(), lastText: text });
+        } catch (e) { this.log(`board post to ${chatId} failed: ${(e as Error).message}`); }
       }
+      this.state.boards[key] = refs; this.dirty = true;
       return;
     }
-    if (board.lastText === text) return;
-    await this.api.editMessageText(board.chatId, board.messageId, text, { parse_mode: 'HTML' }).catch((e: Error) => {
-      if (!/not modified/i.test(e.message)) this.log(`board edit failed: ${e.message}`);
-    });
-    board.lastText = text; this.dirty = true;
+    for (const board of boards) {
+      if (board.lastText === text) continue;
+      await this.api.editMessageText(board.chatId, board.messageId, text, { parse_mode: 'HTML' }).catch((e: Error) => {
+        if (!/not modified/i.test(e.message)) this.log(`board edit failed: ${e.message}`);
+      });
+      board.lastText = text; this.dirty = true;
+    }
   }
 
   // ------------------------------------------------------------ gates
@@ -397,7 +415,12 @@ class Daemon {
         if (this.state.postedGates[pkey]) continue;
         // Was it decided already (e.g. via another chat) — skip posting.
         if (await readDecision(project, g.id)) { this.state.postedGates[pkey] = 'decided'; this.dirty = true; continue; }
-        await this.postGate(project, spec, g);
+        if (!verifyPendingSig(g, this.cfg.gateSecret)) {
+          // Not signed by the runner (forged / rewritten inside the project) → never show buttons for it.
+          this.log(`gate ${g.id} in ${spec}: bad or missing runner signature — ignored`);
+          this.state.postedGates[pkey] = 'unsigned'; this.dirty = true; continue;
+        }
+        try { await this.postGate(project, spec, g); } catch (e) { this.log(`gate post failed: ${(e as Error).message}`); }
         this.state.postedGates[pkey] = new Date().toISOString(); this.dirty = true;
       }
       // prune postedGates for gates no longer pending
@@ -408,12 +431,22 @@ class Daemon {
     }
   }
 
+  /** Card text is composed ONLY from daemon-owned strings keyed by gate kind + numeric details. */
   private gateCardText(spec: string, project: string, id: string, createdAt: string, g?: PendingGate, decided?: { decision: string; by: string; at: string }): string {
+    const KIND_TEXT: Record<GateKind, string> = {
+      'spec-gate-fail': 'Spec gate (L3) FAILED — the cross-family auditor thinks the spec lets wrong-but-green outcomes through.\nApprove = override and implement anyway (audited, result stays "fail"). Reject = stop.',
+      'integration-fail': 'Integration gate (L4) FAILED — the assembled build/boot did not pass.\nApprove = ONE more bounded auto-fix round. Reject = stop. (Approve can never turn this into a pass.)',
+      'every-n-tasks': 'Checkpoint — N tasks went green. Approve = continue the loop. Reject = stop.',
+      'manual': 'Manual gate. Approve = continue. Reject = stop.',
+    };
+    const kind = (g && (g.kind in KIND_TEXT) ? g.kind : undefined) as GateKind | undefined;
+    const NUM_KEYS = ['exitCode', 'attempts', 'greens', 'remaining'];
+    const nums = g?.detail ? Object.entries(g.detail).filter(([k, v]) => NUM_KEYS.includes(k) && Number.isFinite(Number(v))).map(([k, v]) => `${k} ${Number(v)}`).join(' · ') : '';
     const lines = [
       `⏸ ${b('GATE')} · ${b(this.label(project))}/${b(spec)}`,
-      g ? `kind: ${code(g.kind)}` : '',
-      g ? esc(g.summary) : '',
-      g?.detail ? Object.entries(g.detail).map(([k, v]) => `${esc(k)}: ${code(String(v).slice(0, 200))}`).join('\n') : '',
+      kind ? `kind: ${code(kind)}` : (g ? 'kind: <i>unknown</i>' : ''),
+      kind ? esc(KIND_TEXT[kind]) : '',
+      nums,
       `id ${code(id)} · opened ${ago(createdAt)} ago`,
       decided ? `\n${decided.decision === 'approve' ? '✅ APPROVED' : '⛔ REJECTED'} by ${esc(decided.by)} at ${esc(decided.at)}` : '\n<i>harness-authored card — approve/reject below</i>',
     ].filter(Boolean);
@@ -423,18 +456,19 @@ class Daemon {
   private async postGate(project: string, spec: string, g: PendingGate): Promise<void> {
     // The card is HARNESS text only. Repo-derived detail (e.g. judge reasons) is sent as a
     // separate untrusted message so it can never sit next to the buttons.
-    const key = randomBytes(4).toString('hex');
-    const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[{ text: '✅ Approve', callback_data: `g:${key}:a` }, { text: '⛔ Reject', callback_data: `g:${key}:r` }]] };
-    const safeDetail = g.detail ? Object.fromEntries(Object.entries(g.detail).filter(([k]) => !/reason|output|log|note/i.test(k))) : undefined;
-    const card = { ...g, detail: safeDetail };
     for (const chatId of this.cfg.notify) {
-      const id = await this.send(chatId, { text: this.gateCardText(spec, project, g.id, g.createdAt, card), keyboard });
-      if (id) {
-        this.state.gateKeys[key] = { project, spec, id: g.id, nonce: g.nonce, chatId, messageId: id, createdAt: g.createdAt };
-        try { await updatePendingGate(project, spec, g.id, { postedMessageId: id, postedChatId: chatId }); } catch { /* runner may have consumed it */ }
-      }
-      const reasons = g.detail && Object.entries(g.detail).find(([k]) => /reason/i.test(k))?.[1];
-      if (reasons) await this.send(chatId, { text: untrusted(String(reasons), 800, 'gate reasons (from judge/auditor)'), silent: true });
+      const key = randomBytes(4).toString('hex'); // one key per chat so every card can be updated
+      const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[{ text: '✅ Approve', callback_data: `g:${key}:a` }, { text: '⛔ Reject', callback_data: `g:${key}:r` }]] };
+      try {
+        const id = await this.send(chatId, { text: this.gateCardText(spec, project, g.id, g.createdAt, g), keyboard });
+        if (id) {
+          this.state.gateKeys[key] = { project, spec, id: g.id, nonce: g.nonce, chatId, messageId: id, createdAt: g.createdAt };
+          try { await updatePendingGate(project, spec, g.id, { postedMessageId: id, postedChatId: chatId }); } catch { /* runner may have consumed it */ }
+        }
+        // Repo/agent-derived text (auditor reasons, runner summary) goes in a SEPARATE untrusted message.
+        const extra = [g.summary, ...(g.detail ? Object.entries(g.detail).filter(([k]) => /reason|output|log|note|summary/i.test(k)).map(([, v]) => String(v)) : [])].filter(Boolean).join('\n');
+        if (extra) await this.send(chatId, { text: untrusted(extra, 800, 'gate context (runner/auditor text)'), silent: true });
+      } catch (e) { this.log(`gate card to ${chatId} failed: ${(e as Error).message}`); }
     }
     this.dirty = true;
   }
@@ -446,7 +480,7 @@ function describe(ev: LoopEvent): string {
   switch (ev.type) {
     case 'iter': return `iter ${ev.iter} → task ${code(ev.taskId)} (${ev.remaining} left)`;
     case 'green': return `✅ task ${code(ev.taskId)} green`;
-    case 'red': return `❌ task ${code(ev.taskId)} red (exit ${ev.exitCode ?? '?'}${ev.failureClass ? `, ${ev.failureClass}` : ''})`;
+    case 'red': return `❌ task ${code(ev.taskId)} red (exit ${esc(ev.exitCode ?? '?')}${ev.failureClass ? `, ${esc(ev.failureClass)}` : ''})`;
     case 'blocked': return `⛔ task ${code(ev.taskId)} blocked${ev.reason ? ` — ${esc(ev.reason.slice(0, 200))}` : ''}`;
     case 'tamper': return `🚨 tamper gate on task ${code(ev.taskId)}: ${esc(ev.reason.slice(0, 200))}`;
     case 'unverified': return `⚠️ task ${code(ev.taskId)} completed WITHOUT independent verification`;

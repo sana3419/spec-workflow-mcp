@@ -38,7 +38,9 @@ LOG="$SPECDIR/loop-run.log"
 AUDIT="$SW/loop-audit.log"
 PIDF="$RUN/pid"
 STOPF="$RUN/stop"
-GATE_HOME="$HOME/.spec-workflow/gates/$(printf '%s' "$(realpath "$PWD" 2>/dev/null || pwd)" | sha256sum | cut -c1-16)"
+sha256_16() { { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } | cut -c1-16; }
+PROJ_REAL="$(realpath "$PWD" 2>/dev/null || pwd -P)"
+GATE_HOME="$HOME/.spec-workflow/gates/$(printf '%s' "$PROJ_REAL" | sha256_16)"
 TG_ENV="$HOME/.spec-workflow/telegram.env"
 
 # Absolute package command (pick/verify subcommands), sed-injected by init.sh at install time.
@@ -66,7 +68,7 @@ read_str() {
     }' "$CONFIG" 2>/dev/null
 }
 # Pull a "key":"value" out of a JSON line (no jq dependency); empty for null/absent.
-json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\":\"\([^\"]*\)\".*/\1/p"; }
+json_str() { printf '%s' "$1" | tr -d '\n' | sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1; }
 
 # --- L2 cross-family adequacy judge helpers ---
 parse_verdict() { printf '%s\n' "$1" | grep -ioE 'VERDICT:[[:space:]]*(pass|fail)' | tail -1 | grep -ioE 'pass|fail' | tr '[:upper:]' '[:lower:]'; }
@@ -112,10 +114,10 @@ run_judge() {
     # the anchor and always runs first). Names come from the routed agent set for the task's scope
     # (tier-0 minus the judge itself), falling back to the classic security+logic pair.
     local lens lout lv lenses
-    lenses="$($SWMCP route --files "$scope" --json --project "$PWD" 2>/dev/null | grep -oE '"name": *"[a-z0-9-]+-reviewer"' | sed 's/.*"\([a-z0-9-]*\)"$/\1/' | head -4 | tr '\n' ' ')"
+    lenses="$($SWMCP route --files "${scope// /,}" --names --project "$PWD" 2>/dev/null | grep -E -- '-reviewer$' | head -4 | tr '\n' ' ')"
     [ -z "$lenses" ] && lenses="security-reviewer logic-reviewer"
     for lens in $lenses; do
-      lout="$(timeout 300 claude -p --agent "$lens" "$rubric" 2>/dev/null)"
+      lout="$(timeout 300 claude -p --agent "$lens" "$rubric" </dev/null 2>/dev/null)"
       lv="$(parse_verdict "$lout")"
       [ "$lv" = "fail" ] && { verdict="fail"; reasons="$reasons [$lens] $(parse_reasons "$lout")"; }
     done
@@ -277,10 +279,12 @@ wait_gate() {
   id="$SPEC-$kind-$$-$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$GATES" "$GATE_HOME" 2>/dev/null
   pend="$GATES/$id.pending"
+  local sig; sig="$(printf '%s' "$id:$nonce:$kind:$now" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
   cat > "$pend.tmp" <<JSON
-{ "id": "$id", "spec": "$SPEC", "kind": "$kind", "nonce": "$nonce", "summary": "$(jesc "$summary")", "createdAt": "$now", "detail": $detail }
+{ "id": "$id", "spec": "$SPEC", "kind": "$kind", "nonce": "$nonce", "summary": "$(jesc "$summary")", "createdAt": "$now", "detail": $detail, "sig": "$sig" }
 JSON
   mv -f "$pend.tmp" "$pend"
+  [ -f "$pend" ] || { echo "$(date -u +%FT%TZ) [$SPEC] GATE unavailable kind=$kind (cannot write pending) — treating as reject" >> "$AUDIT"; return 1; }
   echo "$(date -u +%FT%TZ) [$SPEC] GATE pending id=$id kind=$kind timeout=${GATE_TIMEOUT}m" >> "$AUDIT"
   local deadline=$(( $(date +%s) + GATE_TIMEOUT*60 )) dec dfile d_id d_nonce d_dec d_by d_at d_hmac
   while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -382,8 +386,13 @@ if [ "$SPEC_GATE" = "true" ] && ! run_spec_gate; then
   fi
 fi
 
+CONFIG_SUM="$(cksum < "$CONFIG" 2>/dev/null)"
 iter=0; lasthash=""; noprog=0; GREENS=0; EXIT_REASON=""
 while true; do
+  # The agent must not retune the harness under us (testCommand="true", judge=false, gate knobs...).
+  if [ "$(cksum < "$CONFIG" 2>/dev/null)" != "$CONFIG_SUM" ]; then
+    EXIT_REASON=CONFIG_CHANGED; echo "$(date -u +%FT%TZ) [$SPEC] STOP config.toml changed during the run — refusing to continue with a possibly weakened harness" >> "$AUDIT"; break
+  fi
   [ -f "$STOPF" ] && { EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP by=$(json_str "$(cat "$STOPF" 2>/dev/null)" by)" >> "$AUDIT"; break; }
 
   R="$(remaining)"; [ -z "$R" ] && R=0
@@ -486,7 +495,8 @@ while true; do
     # 8) Optional human checkpoint every N green tasks (never inside L0/L1 — ground truth doesn't wait).
     GREENS=$((GREENS + 1))
     if [ "$GATE_EVERY" -gt 0 ] && [ $((GREENS % GATE_EVERY)) -eq 0 ]; then
-      if ! wait_gate every-n-tasks "$GREENS tasks green so far ($(remaining) remaining). Approve to continue, reject to stop." "{\"greens\":$GREENS,\"remaining\":$(remaining)}"; then
+      REM="$(remaining)"; [ -z "$REM" ] && REM=0
+      if ! wait_gate every-n-tasks "$GREENS tasks green so far ($REM remaining). Approve to continue, reject to stop." "{\"greens\":$GREENS,\"remaining\":$REM}"; then
         EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP by=gate (every-n-tasks rejected/timeout)" >> "$AUDIT"; break
       fi
     fi

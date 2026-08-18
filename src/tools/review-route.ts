@@ -46,7 +46,7 @@ export async function reviewRouteHandler(args: any, context: ToolContext): Promi
     return {
       success: true,
       message: r.selected.length
-        ? `Selected ${r.selected.length} reviewer(s) for ${r.changedFiles.length} changed file(s)${r.docsOnly ? ' [docs-only fast path]' : ''}:\n- ${list}`
+        ? `${r.gitError ? `⚠ ${r.gitError}\n` : ''}Selected ${r.selected.length} reviewer(s) for ${r.changedFiles.length} changed file(s)${r.docsOnly ? ' [docs-only fast path]' : ''}:\n- ${list}`
         : 'No reviewers selected (no agents found or nothing changed).',
       data: r,
       nextSteps: r.selected.length

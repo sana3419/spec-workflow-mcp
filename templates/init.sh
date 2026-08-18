@@ -182,8 +182,10 @@ fi
 # v3: NO blanket allows. Claude Code auto mode (default since 2026-08-14) already gates ordinary
 # tool calls; blanket "Bash(*)"/"Write(*)" allows would BYPASS its classifier — dangerous in the
 # headless loop where the agent is fed untrusted spec/test output. Only the MCP servers are
-# pre-allowed. The deny list protects the Telegram token, gate decisions, run-state and audit log
-# from the implementing agent (it must not approve its own gates or rewrite the audit trail).
+# pre-allowed. The deny list protects the Telegram token, gate decisions, config.toml (harness knobs),
+# run-state and audit log from the implementing agent. Defense in depth only — the REAL boundaries are:
+# gate decisions live outside the project and are HMAC-signed; the runner aborts if config.toml changes
+# mid-run; the daemon renders repo text as untrusted. Bash one-liners are not fully covered by these rules.
 SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
 if [ ! -f "$SETTINGS_FILE" ]; then
   echo "[7/11] Creating project settings.json..."
@@ -198,16 +200,18 @@ if [ ! -f "$SETTINGS_FILE" ]; then
       "mcp__gitnexus__*"
     ],
     "deny": [
-      "Read(~/.spec-workflow/**)",
+      "Read(~/.spec-workflow/telegram.env)",
+      "Read(~/.spec-workflow/gates/**)",
       "Read(~/.claude/channels/**)",
-      "Write(~/.spec-workflow/**)",
-      "Edit(~/.spec-workflow/**)",
+      "Write(~/.spec-workflow/gates/**)",
+      "Edit(~/.spec-workflow/gates/**)",
+      "Write(.spec-workflow/config.toml)",
+      "Edit(.spec-workflow/config.toml)",
       "Write(.spec-workflow/specs/*/.run/**)",
       "Edit(.spec-workflow/specs/*/.run/**)",
       "Write(.spec-workflow/loop-audit.log)",
       "Edit(.spec-workflow/loop-audit.log)",
       "Bash(*api.telegram.org*)",
-      "Bash(*/.spec-workflow/telegram.env*)",
       "Bash(*/.spec-workflow/gates*)"
     ]
   }
