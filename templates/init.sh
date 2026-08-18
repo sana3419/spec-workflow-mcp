@@ -89,6 +89,12 @@ noProgressStop = 3            # stop after N iterations with no tasks.md/verify-
 # ambiguity / underspecification; if the spec would let wrong-but-green outcomes through, the loop
 # refuses to start and reports (it does NOT rewrite the spec — run /harden-spec or fix by hand). Opt-in.
 # specGate = false
+# Remote approval gates (Telegram): the runner pauses and asks a human on Telegram; decisions are
+# HMAC-signed and stored OUTSIDE the project (~/.spec-workflow/gates). Timeout/reject = stop.
+# gateOnSpecGateFail = false     # spec gate failed → approve = override-and-proceed (audited)
+# gateOnIntegrationFail = false  # integration failed → approve = one more bounded fix round
+# gateEveryTasks = 0             # >0: pause for a human checkpoint after every N green tasks
+# gateTimeoutMin = 60            # minutes to wait for a decision before treating it as reject
 TOML
 else
   echo "[3/11] config.toml exists, skipping"

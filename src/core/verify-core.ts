@@ -6,6 +6,7 @@ import { VerifyResult } from '../types.js';
 
 export type VerifySignal = 'green' | 'red' | 'blocked';
 export type VerifySource = 'harness-exec' | 'agent' | 'none';
+export type FailureClass = 'test-fail' | 'build-fail' | 'env' | 'timeout';
 
 export interface RecordVerificationArgs {
   projectPath: string;
@@ -24,6 +25,8 @@ export interface RecordVerificationArgs {
   testScope?: string;
   /** True when the L1 tamper gate was degraded (non-git) for this verdict — recorded durably. */
   tamperGateOff?: boolean;
+  /** Harness-authored classification of a red (test-fail | build-fail | env | timeout). */
+  failureClass?: FailureClass;
   usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number; durationMs?: number } | null;
 }
 
@@ -45,7 +48,7 @@ export interface RecordVerificationResult {
 export async function recordVerification(args: RecordVerificationArgs): Promise<RecordVerificationResult> {
   const {
     projectPath, specName, taskId, signal, source,
-    testResults = [], fixNote, engine, exitCode, testScope, tamperGateOff, usage,
+    testResults = [], fixNote, engine, exitCode, testScope, tamperGateOff, usage, failureClass,
   } = args;
   const maxFixAttempts = args.maxFixAttempts ?? 5;
 
@@ -96,6 +99,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
     if (exitCode !== undefined) verifyData.exitCode = exitCode;
     if (testScope !== undefined) verifyData.testScope = testScope;
     if (tamperGateOff) verifyData.tamperGate = 'off';
+    if (signal === 'red') verifyData.failureClass = failureClass; else delete verifyData.failureClass;
   };
 
   if (signal === 'green') {

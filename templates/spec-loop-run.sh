@@ -10,21 +10,36 @@
 #   bash .spec-workflow/spec-loop-run.sh <spec-name>                              # foreground
 #   nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &      # background
 #
-# Watch:  tail -f .spec-workflow/loop-run.log     Stop:  touch .spec-workflow/.loop-stop
-# Guardrails: .spec-workflow/config.toml [loop] (maxIterations, noProgressStop, testCommand).
+# Watch:  tail -f .spec-workflow/specs/<spec>/loop-run.log   (or Telegram: /status, /runlog)
+# Stop:   spec-workflow-mcp stop <spec>   |  Telegram /stop <spec>
+#         (writes .spec-workflow/specs/<spec>/.run/stop — JSON {by,at,nonce}, audited)
+# Guardrails: .spec-workflow/config.toml [loop] (maxIterations, noProgressStop, testCommand, gates).
+#
+# Run-state layout (v3, per spec — concurrent specs never clobber each other):
+#   specs/<spec>/.run/pid|stop|gates/<id>.pending|testout|regout|iter-out|fixnote-*|judgenote-*
+#   specs/<spec>/loop-run.log, spec-gate-result.json, integration-result.json, .regression, ...
+#   loop-audit.log stays PROJECT-wide (one event stream; every line is tagged [spec]).
+# Remote gate DECISIONS live outside the project: ~/.spec-workflow/gates/<projectHash>/<id>.json
+# (HMAC-signed with GATE_SECRET from ~/.spec-workflow/telegram.env) — see src/core/gates.ts.
 
 set +e
 
 SPEC="$1"
 if [ -z "$SPEC" ]; then echo "usage: spec-loop-run.sh <spec-name>"; exit 1; fi
+case "$SPEC" in *[!A-Za-z0-9._-]*|"") echo "invalid spec name"; exit 1 ;; esac
 
 SW=".spec-workflow"
-TASKS="$SW/specs/$SPEC/tasks.md"
+SPECDIR="$SW/specs/$SPEC"
+TASKS="$SPECDIR/tasks.md"
 CONFIG="$SW/config.toml"
-LOG="$SW/loop-run.log"
+RUN="$SPECDIR/.run"
+GATES="$RUN/gates"
+LOG="$SPECDIR/loop-run.log"
 AUDIT="$SW/loop-audit.log"
-PIDF="$SW/.loop-run.pid"
-STOPF="$SW/.loop-stop"
+PIDF="$RUN/pid"
+STOPF="$RUN/stop"
+GATE_HOME="$HOME/.spec-workflow/gates/$(printf '%s' "$(realpath "$PWD" 2>/dev/null || pwd)" | sha256sum | cut -c1-16)"
+TG_ENV="$HOME/.spec-workflow/telegram.env"
 
 # Absolute package command (pick/verify subcommands), sed-injected by init.sh at install time.
 SWMCP="${SWMCP:-@@SWMCP_CMD@@}"
@@ -102,7 +117,7 @@ run_judge() {
   fi
   $SWMCP judge-record "$SPEC" --task "$tid" --verdict "$verdict" --engine "$opp" --reasons "$reasons" --max "$JUDGE_MAX" --project "$PWD" >> "$LOG" 2>&1
   if [ "$verdict" = "fail" ]; then
-    printf '%s' "$reasons" > "$SW/.judgenote-$tid"
+    printf '%s' "$reasons" > "$RUN/judgenote-$tid"
     echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE fail ($opp${mode:+/$mode}): $reasons" >> "$AUDIT"
   else
     echo "$(date -u +%FT%TZ) [$SPEC] task=$tid JUDGE pass ($opp${mode:+/$mode})" >> "$AUDIT"
@@ -158,9 +173,18 @@ run_integration() {
     fi
   fi
 
+  # Human gate on integration failure: approve = ONE more bounded fix round (never flips to pass).
+  if { [ "$ec" -ne 0 ] || [ "$jverdict" = "fail" ]; } && [ "$GATE_ON_INTEGFAIL" = "true" ]; then
+    if wait_gate integration-fail "Integration gate FAILED (exit $ec${jreasons:+, judge: $jreasons}). Approve for one more auto-fix round, reject to stop." "{\"exitCode\":$ec,\"attempts\":$attempt}"; then
+      echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION extra fix round approved by gate" >> "$AUDIT"
+      claude -p "The ASSEMBLED integration command for spec '$SPEC' still fails: $INTEG_CMD. Failure output (tail): $(tail -c 1200 "$log" | tr '\n' ' ').${jreasons:+ Cross-module reviewer said: $jreasons.} Fix the integration issue; do NOT weaken or delete any task's tests. Then stop." </dev/null >> "$LOG" 2>&1
+      bash -c "$INTEG_CMD" >> "$log" 2>&1; ec=$?; attempt=$((attempt+1))
+      [ "$ec" -eq 0 ] && jverdict="none"
+    fi
+  fi
   local status="pass"; { [ "$ec" -ne 0 ] || [ "$jverdict" = "fail" ]; } && status="fail"
   local blocked; blocked="$(grep -cE '^[[:space:]]*- \[~\]' "$TASKS" 2>/dev/null)"; case "$blocked" in ''|*[!0-9]*) blocked=0 ;; esac
-  cat > "$SW/integration-result.json" <<JSON
+  cat > "$SPECDIR/integration-result.json" <<JSON
 {
   "spec": "$SPEC",
   "status": "$status",
@@ -175,10 +199,10 @@ run_integration() {
 }
 JSON
   if [ "$status" = "pass" ]; then
-    rm -f "$SW/.integration-failed" >/dev/null 2>&1
+    rm -f "$SPECDIR/.integration-failed" >/dev/null 2>&1
     echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION pass (exit 0$([ "$INTEG_JUDGE" = true ] && echo ", judge $jverdict"))" >> "$AUDIT"
   else
-    touch "$SW/.integration-failed"
+    touch "$SPECDIR/.integration-failed"
     echo "$(date -u +%FT%TZ) [$SPEC] INTEGRATION fail (exit $ec, attempts $attempt$([ "$jverdict" = fail ] && echo ", judge fail: $jreasons"))" >> "$AUDIT"
   fi
 }
@@ -209,16 +233,16 @@ run_spec_gate() {
   v="$(parse_verdict "$out")"
   if [ "$v" = "fail" ]; then
     reasons="$(parse_reasons "$out")"
-    cat > "$SW/spec-gate-result.json" <<JSON
+    cat > "$SPECDIR/spec-gate-result.json" <<JSON
 { "spec": "$SPEC", "status": "fail", "engine": "$opp", "reasons": "$(jesc "$reasons")", "timestamp": "$(date -u +%FT%TZ)" }
 JSON
-    touch "$SW/.spec-gate-failed"
+    touch "$SPECDIR/.spec-gate-failed"
     echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE fail ($opp): $reasons" >> "$AUDIT"
     return 1
   fi
-  rm -f "$SW/.spec-gate-failed" >/dev/null 2>&1
+  rm -f "$SPECDIR/.spec-gate-failed" >/dev/null 2>&1
   if [ -n "$v" ]; then
-    cat > "$SW/spec-gate-result.json" <<JSON
+    cat > "$SPECDIR/spec-gate-result.json" <<JSON
 { "spec": "$SPEC", "status": "pass", "engine": "$opp", "reasons": "", "timestamp": "$(date -u +%FT%TZ)" }
 JSON
     echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE pass ($opp)" >> "$AUDIT"
@@ -227,6 +251,61 @@ JSON
     echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE advisory-pass ($opp produced no verdict)" >> "$AUDIT"
   fi
   return 0
+}
+
+# --- Remote approval gates (Telegram) ---
+# The runner writes a PENDING request inside the project; a human decides via the Telegram daemon,
+# which writes an HMAC-signed DECISION OUTSIDE the project (the implementing agent cannot forge it).
+# Approve on a spec-gate fail = override-and-proceed (audited). Approve on an integration fail =
+# one more bounded fix round. Timeout / reject / no secret = the conservative default (stop).
+gate_secret() { [ -f "$TG_ENV" ] && sed -n 's/^GATE_SECRET=//p' "$TG_ENV" | head -1 | tr -d '"\r'; }
+gate_hmac()   { printf '%s' "$1:$2:$3:$4:$5" | openssl dgst -sha256 -hmac "$6" 2>/dev/null | awk '{print $NF}'; }
+# wait_gate <kind> <summary> [detail-json-object]  → 0 approve, 1 reject/timeout/unavailable
+wait_gate() {
+  local kind="$1" summary="$2" detail="${3:-{\}}"
+  local secret; secret="$(gate_secret)"
+  if [ -z "$secret" ] || ! command -v openssl >/dev/null 2>&1; then
+    echo "$(date -u +%FT%TZ) [$SPEC] GATE unavailable kind=$kind (no GATE_SECRET / openssl) — treating as reject" >> "$AUDIT"; return 1
+  fi
+  local id nonce now pend
+  nonce="$(openssl rand -hex 16)"; now="$(date -u +%FT%TZ)"
+  id="$SPEC-$kind-$$-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$GATES" "$GATE_HOME" 2>/dev/null
+  pend="$GATES/$id.pending"
+  cat > "$pend.tmp" <<JSON
+{ "id": "$id", "spec": "$SPEC", "kind": "$kind", "nonce": "$nonce", "summary": "$(jesc "$summary")", "createdAt": "$now", "detail": $detail }
+JSON
+  mv -f "$pend.tmp" "$pend"
+  echo "$(date -u +%FT%TZ) [$SPEC] GATE pending id=$id kind=$kind timeout=${GATE_TIMEOUT}m" >> "$AUDIT"
+  local deadline=$(( $(date +%s) + GATE_TIMEOUT*60 )) dec dfile d_id d_nonce d_dec d_by d_at d_hmac
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    [ -f "$STOPF" ] && { echo "$(date -u +%FT%TZ) [$SPEC] GATE id=$id aborted (stop requested)" >> "$AUDIT"; rm -f "$pend"; return 1; }
+    dfile="$GATE_HOME/$id.json"
+    if [ -f "$dfile" ]; then
+      dec="$(cat "$dfile" 2>/dev/null)"
+      d_id="$(json_str "$dec" id)"; d_nonce="$(json_str "$dec" nonce)"; d_dec="$(json_str "$dec" decision)"
+      d_by="$(json_str "$dec" by)";  d_at="$(json_str "$dec" at)";       d_hmac="$(json_str "$dec" hmac)"
+      if [ "$d_id" = "$id" ] && [ "$d_nonce" = "$nonce" ] && [ "$(gate_hmac "$id" "$nonce" "$d_dec" "$d_by" "$d_at" "$secret")" = "$d_hmac" ]; then
+        rm -f "$pend"
+        echo "$(date -u +%FT%TZ) [$SPEC] GATE $d_dec id=$id by=$d_by at=$d_at" >> "$AUDIT"
+        [ "$d_dec" = "approve" ] && return 0 || return 1
+      fi
+      echo "$(date -u +%FT%TZ) [$SPEC] GATE id=$id INVALID decision file (bad hmac/nonce) — ignored" >> "$AUDIT"
+      mv -f "$dfile" "$dfile.invalid" 2>/dev/null
+    fi
+    sleep 5
+  done
+  rm -f "$pend"
+  echo "$(date -u +%FT%TZ) [$SPEC] GATE timeout id=$id after ${GATE_TIMEOUT}m — treating as reject" >> "$AUDIT"; return 1
+}
+
+# Failure classification for a red verdict (harness-authored, from the test output + exit code).
+classify_failure() {  # <exit-code> <output-file>
+  local ec="$1" f="$2"
+  if [ "$ec" -eq 124 ] || [ "$ec" -eq 137 ]; then echo timeout; return; fi
+  if grep -qiE "Cannot find module|command not found|ENOENT|ECONNREFUSED|EACCES|No such file or directory|not installed" "$f" 2>/dev/null; then echo env; return; fi
+  if grep -qiE "error TS[0-9]+|SyntaxError|Build failed|compilation failed|cannot compile|tsc.*error" "$f" 2>/dev/null; then echo build-fail; return; fi
+  echo test-fail
 }
 
 AUTO="$(read_key loop autoLoop)"
@@ -244,6 +323,10 @@ INTEG_CMD="$(read_str loop integrationCommand)"
 INTEG_FIX="$(read_key loop integrationFixAttempts)"; case "$INTEG_FIX" in ''|*[!0-9]*) INTEG_FIX=1 ;; esac
 INTEG_JUDGE="$(read_key loop integrationJudge)"
 SPEC_GATE="$(read_key loop specGate)"
+GATE_ON_SPECFAIL="$(read_key loop gateOnSpecGateFail)"
+GATE_ON_INTEGFAIL="$(read_key loop gateOnIntegrationFail)"
+GATE_EVERY="$(read_key loop gateEveryTasks)"; case "$GATE_EVERY" in ''|*[!0-9]*) GATE_EVERY=0 ;; esac
+GATE_TIMEOUT="$(read_key loop gateTimeoutMin)"; case "$GATE_TIMEOUT" in ''|*[!0-9]*) GATE_TIMEOUT=60 ;; esac
 ENGINE_DEFAULT="$(read_key engine default)"; [ -z "$ENGINE_DEFAULT" ] && ENGINE_DEFAULT="claude"
 
 # Detect an un-injected placeholder. The pattern is '*@@*' (not the literal placeholder) so the
@@ -268,30 +351,41 @@ if ! claude -p "Reply with exactly: OK" >/dev/null 2>&1; then
   exit 1
 fi
 
-rm -f "$STOPF" >/dev/null 2>&1
+mkdir -p "$RUN" "$GATES" 2>/dev/null
+if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; then
+  echo "A loop is already running for '$SPEC' (pid $(cat "$PIDF")). Stop it first."; exit 1
+fi
+rm -f "$STOPF" "$GATES"/*.pending >/dev/null 2>&1   # a stale stop/gate must never act on THIS run
 echo $$ > "$PIDF"
 if [ -z "$TEST_CMD" ]; then
   echo "$(date -u +%FT%TZ) [$SPEC] WARN SELF-CERTIFIED (no [loop].testCommand — verification NOT independent, DEPRECATED)" | tee -a "$AUDIT" >> "$LOG"
 fi
 echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX git=$IS_GIT harness=$([ -n "$TEST_CMD" ] && echo on || echo off) pid=$$)" >> "$AUDIT"
-[ "$IS_GIT" = 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] WARN TAMPER-GATE OFF (not a git repo — pre-existing test tamper undetectable; verdicts flagged tamperGate:off)" >> "$AUDIT"; touch "$SW/.tamper-gate-off"; }
+[ "$IS_GIT" = 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] WARN TAMPER-GATE OFF (not a git repo — pre-existing test tamper undetectable; verdicts flagged tamperGate:off)" >> "$AUDIT"; touch "$SPECDIR/.tamper-gate-off"; }
 
 # L3 pre-flight spec gate — refuse to autonomously implement a spec too hackable/underspecified to verify.
 if [ "$SPEC_GATE" = "true" ] && ! run_spec_gate; then
-  echo "$(date -u +%FT%TZ) [$SPEC] loop-run ABORTED by spec gate — run /harden-spec or fix the spec, then re-run" >> "$AUDIT"
-  rm -f "$PIDF" >/dev/null 2>&1
-  exit 1
+  SG_REASON="$(json_str "$(cat "$SPECDIR/spec-gate-result.json" 2>/dev/null)" reasons)"
+  if [ "$GATE_ON_SPECFAIL" = "true" ] && wait_gate spec-gate-fail "Spec gate FAILED — approve to override and implement anyway (audited), reject to stop." "{\"reasons\":\"$(jesc "$SG_REASON")\"}"; then
+    # Override is recorded in the result file so it is never mistaken for a pass.
+    sed -i 's/"status": "fail"/"status": "fail", "overriddenBy": "gate"/' "$SPECDIR/spec-gate-result.json" 2>/dev/null
+    echo "$(date -u +%FT%TZ) [$SPEC] SPEC-GATE overridden by human gate — proceeding" >> "$AUDIT"
+  else
+    echo "$(date -u +%FT%TZ) [$SPEC] loop-run ABORTED by spec gate — run /harden-spec or fix the spec, then re-run" >> "$AUDIT"
+    rm -f "$PIDF" >/dev/null 2>&1
+    exit 1
+  fi
 fi
 
-iter=0; lasthash=""; noprog=0; EXIT_REASON=""
+iter=0; lasthash=""; noprog=0; GREENS=0; EXIT_REASON=""
 while true; do
-  [ -f "$STOPF" ] && { EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP (stop flag)" >> "$AUDIT"; break; }
+  [ -f "$STOPF" ] && { EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP by=$(json_str "$(cat "$STOPF" 2>/dev/null)" by)" >> "$AUDIT"; break; }
 
   R="$(remaining)"; [ -z "$R" ] && R=0
   [ "$R" -eq 0 ] && { EXIT_REASON=DONE; echo "$(date -u +%FT%TZ) [$SPEC] DONE (all tasks [x]/[~])" >> "$AUDIT"; break; }
   [ "$iter" -ge "$MAX" ] && { EXIT_REASON=MAXITER; echo "$(date -u +%FT%TZ) [$SPEC] STOP maxIterations($MAX)" >> "$AUDIT"; break; }
 
-  H="$(cat "$TASKS" "$SW/specs/$SPEC/verify-results/"*.json 2>/dev/null | cksum 2>/dev/null | awk '{print $1}')"
+  H="$(cat "$TASKS" "$SPECDIR/verify-results/"*.json 2>/dev/null | cksum 2>/dev/null | awk '{print $1}')"
   if [ -n "$H" ] && [ "$H" = "$lasthash" ]; then noprog=$((noprog + 1)); else noprog=0; lasthash="$H"; fi
   [ "$noprog" -ge "$NOPROG_MAX" ] && { EXIT_REASON=NOPROGRESS; echo "$(date -u +%FT%TZ) [$SPEC] STOP noProgress($NOPROG_MAX)" >> "$AUDIT"; break; }
 
@@ -313,15 +407,15 @@ while true; do
   BASE=""; [ "$IS_GIT" = 1 ] && BASE="$(git -C "$PWD" status --porcelain 2>/dev/null)"
 
   # 3) Implement (agent does NOT verify and does NOT touch task markers).
-  FIXNOTE=""; [ -f "$SW/.fixnote-$TASKID" ] && FIXNOTE="$(cat "$SW/.fixnote-$TASKID")"
-  JUDGENOTE=""; [ -f "$SW/.judgenote-$TASKID" ] && JUDGENOTE="$(cat "$SW/.judgenote-$TASKID")"
+  FIXNOTE=""; [ -f "$RUN/fixnote-$TASKID" ] && FIXNOTE="$(cat "$RUN/fixnote-$TASKID")"
+  JUDGENOTE=""; [ -f "$RUN/judgenote-$TASKID" ] && JUDGENOTE="$(cat "$RUN/judgenote-$TASKID")"
   claude -p "Autonomous Phase 4 loop — ONE iteration — spec '$SPEC', task $TASKID, in this project. Call the spec-workflow-guide tool first if you have not this session. Implement EXACTLY task $TASKID (Claude implements by default; offload to Codex only if the task is tagged _Engine: codex) and WRITE its tests. The harness runs the tests and records the verdict — do NOT call verify-task, and do NOT edit task markers in tasks.md (no [x]/[-]/[~]). If you genuinely cannot complete it, output a single line starting 'BLOCKER:' with the reason and stop. Otherwise call log-implementation when done.${FIXNOTE:+ A previous attempt failed; fix these failures: $FIXNOTE}${JUDGENOTE:+ A previous attempt had its TESTS judged inadequate: $JUDGENOTE — strengthen the tests to assert real behavior and cover the requirements; do not just make them pass again.}" \
-    > "$SW/.iter-out" 2>&1
-  cat "$SW/.iter-out" >> "$LOG"
-  rm -f "$SW/.fixnote-$TASKID" "$SW/.judgenote-$TASKID" >/dev/null 2>&1
+    > "$RUN/iter-out" 2>&1
+  cat "$RUN/iter-out" >> "$LOG"
+  rm -f "$RUN/fixnote-$TASKID" "$RUN/judgenote-$TASKID" >/dev/null 2>&1
 
   # 3b) Agent-reported blocker → record [~] (script writes state, not the agent).
-  BLOCKER="$(grep -m1 '^BLOCKER:' "$SW/.iter-out" | sed 's/^BLOCKER:[[:space:]]*//')"
+  BLOCKER="$(grep -m1 '^BLOCKER:' "$RUN/iter-out" | sed 's/^BLOCKER:[[:space:]]*//')"
   if [ -n "$BLOCKER" ]; then
     $SWMCP verify "$SPEC" --task "$TASKID" --signal blocked --note "$BLOCKER" $TG --project "$PWD" >> "$LOG" 2>&1
     echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID BLOCKED (agent): $BLOCKER" >> "$AUDIT"
@@ -365,8 +459,8 @@ while true; do
   fi
 
   CMD="${TEST_CMD//\{tests\}/$SCOPE}"
-  bash -c "$CMD" > "$SW/.testout" 2>&1; EC=$?
-  TAIL="$(tail -c 600 "$SW/.testout" | tr '\n' ' ')"
+  bash -c "$CMD" > "$RUN/testout" 2>&1; EC=$?
+  TAIL="$(tail -c 600 "$RUN/testout" | tr '\n' ' ')"
   if [ "$EC" -eq 0 ]; then
     $SWMCP verify "$SPEC" --task "$TASKID" --signal green --exit-code 0 --scope "$SCOPE" $TG --project "$PWD" >> "$LOG" 2>&1
     echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID GREEN (harness exit 0)" >> "$AUDIT"
@@ -374,25 +468,34 @@ while true; do
     # 6) L1 regression: run all COMPLETED scopes once (shared fixtures intact). Flag, don't block.
     DONE_SCOPES="$($SWMCP scopes "$SPEC" --status completed --project "$PWD" 2>/dev/null)"
     if [ -n "$DONE_SCOPES" ]; then
-      bash -c "${TEST_CMD//\{tests\}/$DONE_SCOPES}" > "$SW/.regout" 2>&1
+      bash -c "${TEST_CMD//\{tests\}/$DONE_SCOPES}" > "$RUN/regout" 2>&1
       if [ $? -ne 0 ]; then
         echo "$(date -u +%FT%TZ) [$SPEC] WARN REGRESSION after task=$TASKID (a previously-green scope now fails)" | tee -a "$AUDIT" >> "$LOG"
-        touch "$SW/.regression"
+        touch "$SPECDIR/.regression"
       fi
     fi
 
     # 7) L2 cross-family adequacy judge (opt-in). Runs only on a harness-exec green; can only reopen it.
     [ "$JUDGE" = "true" ] && run_judge "$TASKID" "$SCOPE" "$ENGINE" "$VERIFYMODE"
+
+    # 8) Optional human checkpoint every N green tasks (never inside L0/L1 — ground truth doesn't wait).
+    GREENS=$((GREENS + 1))
+    if [ "$GATE_EVERY" -gt 0 ] && [ $((GREENS % GATE_EVERY)) -eq 0 ]; then
+      if ! wait_gate every-n-tasks "$GREENS tasks green so far ($(remaining) remaining). Approve to continue, reject to stop." "{\"greens\":$GREENS,\"remaining\":$(remaining)}"; then
+        EXIT_REASON=STOP; echo "$(date -u +%FT%TZ) [$SPEC] STOP by=gate (every-n-tasks rejected/timeout)" >> "$AUDIT"; break
+      fi
+    fi
   else
-    VERDICT="$($SWMCP verify "$SPEC" --task "$TASKID" --signal red --exit-code "$EC" --scope "$SCOPE" --note "$TAIL" --max-fix "$MAXFIX" $TG --project "$PWD" 2>>"$LOG")"
-    echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID RED (harness exit $EC)" >> "$AUDIT"
+    FCLASS="$(classify_failure "$EC" "$RUN/testout")"
+    VERDICT="$($SWMCP verify "$SPEC" --task "$TASKID" --signal red --exit-code "$EC" --scope "$SCOPE" --note "$TAIL" --failure-class "$FCLASS" --max-fix "$MAXFIX" $TG --project "$PWD" 2>>"$LOG")"
+    echo "$(date -u +%FT%TZ) [$SPEC] task=$TASKID RED (harness exit $EC, class=$FCLASS)" >> "$AUDIT"
     # Stash the failing output so the next attempt at this task gets the context.
-    printf '%s' "$TAIL" > "$SW/.fixnote-$TASKID"
+    printf '%s' "$TAIL" > "$RUN/fixnote-$TASKID"
   fi
 done
 
 # L4 integration terminal gate — only when the spec genuinely reached DONE and a command is configured.
 [ "$EXIT_REASON" = "DONE" ] && [ -n "$INTEG_CMD" ] && run_integration
 
-rm -f "$PIDF" "$STOPF" "$SW/.iter-out" "$SW/.testout" "$SW/.regout" >/dev/null 2>&1
-echo "$(date -u +%FT%TZ) [$SPEC] loop-run END (iterations=$iter)" >> "$AUDIT" 2>/dev/null
+rm -f "$PIDF" "$STOPF" "$RUN/iter-out" "$RUN/testout" "$RUN/regout" "$GATES"/*.pending >/dev/null 2>&1
+echo "$(date -u +%FT%TZ) [$SPEC] loop-run END reason=${EXIT_REASON:-UNKNOWN} iterations=$iter" >> "$AUDIT" 2>/dev/null

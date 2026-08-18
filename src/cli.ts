@@ -3,6 +3,7 @@
 //
 //   spec-workflow-mcp pick   <spec> [--project <path>]
 //   spec-workflow-mcp verify <spec> --task <id> --signal <green|red|blocked> [opts]
+//   spec-workflow-mcp stop|status|reset|set-status|cleanup ...   (humans / Telegram daemon)
 //
 // `pick` and `verify` are the SOLE writers of tasks.md state ([ ]→[-]→[x]/[~]).
 
@@ -10,7 +11,10 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { PathUtils } from './core/path-utils.js';
 import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskStatus } from './core/task-parser.js';
-import { recordVerification, recordJudgeVerdict, VerifySignal, VerifySource } from './core/verify-core.js';
+import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, VerifySource, FailureClass, ManualTaskStatus } from './core/verify-core.js';
+import { getLoopStatus, requestLoopStop } from './core/run-state.js';
+import { cleanupSpecs } from './core/cleanup.js';
+import { SpecParser } from './core/parser.js';
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -56,7 +60,7 @@ export async function runVerifyCli(args: string[]): Promise<number> {
   const taskId = flag(args, '--task');
   const signal = flag(args, '--signal') as VerifySignal | undefined;
   if (!spec || !taskId || !signal || !['green', 'red', 'blocked'].includes(signal)) {
-    console.error('usage: verify <spec> --task <id> --signal <green|red|blocked> [--project p] [--exit-code n] [--scope glob] [--note text] [--max-fix n] [--engine e]');
+    console.error('usage: verify <spec> --task <id> --signal <green|red|blocked> [--project p] [--exit-code n] [--scope glob] [--note text] [--max-fix n] [--engine e] [--failure-class c]');
     return 2;
   }
   const projectPath = resolveProject(args);
@@ -91,6 +95,7 @@ export async function runVerifyCli(args: string[]): Promise<number> {
     exitCode: exitCodeRaw !== undefined ? Number(exitCodeRaw) : undefined,
     testScope: scope,
     tamperGateOff: args.includes('--tamper-gate-off'),
+    failureClass: flag(args, '--failure-class') as FailureClass | undefined,
   });
 
   // Machine-readable line for the loop script + human message on stderr.
@@ -139,6 +144,64 @@ export async function runJudgeRecordCli(args: string[]): Promise<number> {
   return result.ok ? 0 : 1;
 }
 
+
+/** stop: request a running loop to stop (writes specs/<spec>/.run/stop, JSON with by/at/nonce). */
+export async function runStopCli(args: string[]): Promise<number> {
+  const spec = args[0];
+  if (!spec) { console.error('usage: stop <spec> [--by who] [--project p]'); return 2; }
+  const projectPath = resolveProject(args);
+  const status = await getLoopStatus(projectPath, spec);
+  const req = await requestLoopStop(projectPath, spec, flag(args, '--by') || 'cli');
+  console.log(JSON.stringify({ requested: true, running: status.running, pid: status.pid ?? null, nonce: req.nonce }));
+  console.error(status.running ? `Stop requested for '${spec}' (pid ${status.pid}); it exits after the current iteration.` : `No loop running for '${spec}' (stop file written; the next run clears it at START).`);
+  return 0;
+}
+
+/** status: loop + task progress for one spec, or all specs of the project. */
+export async function runStatusCli(args: string[]): Promise<number> {
+  const projectPath = resolveProject(args);
+  const parser = new SpecParser(projectPath);
+  const specs = args[0] && !args[0].startsWith('--') ? [await parser.getSpec(args[0])] : await parser.getAllSpecs();
+  const out = [];
+  for (const s of specs) {
+    if (!s) continue;
+    const loop = await getLoopStatus(projectPath, s.name);
+    out.push({ spec: s.name, tasks: s.taskProgress ?? null, loop });
+  }
+  console.log(JSON.stringify(out, null, 2));
+  return 0;
+}
+
+/** reset / set-status: manual task-state transition through verify-core (refused while loop runs). */
+export async function runSetStatusCli(args: string[], fixed?: ManualTaskStatus): Promise<number> {
+  const spec = args[0];
+  const taskId = flag(args, '--task');
+  const status = (fixed || flag(args, '--status')) as ManualTaskStatus | undefined;
+  if (!spec || !taskId || !status || !['pending', 'in-progress', 'completed', 'blocked'].includes(status)) {
+    console.error('usage: set-status <spec> --task <id> --status <pending|in-progress|completed|blocked> [--reason r] [--by who] [--force] [--project p]\n       reset <spec> --task <id>   (= --status pending)');
+    return 2;
+  }
+  const r = await setTaskStatus({
+    projectPath: resolveProject(args), specName: spec, taskId, status,
+    reason: flag(args, '--reason'), by: flag(args, '--by') || 'cli', force: args.includes('--force'),
+  });
+  console.log(JSON.stringify({ ok: r.ok, previous: r.previous ?? null }));
+  console.error(r.message);
+  return r.ok ? 0 : 1;
+}
+
+/** cleanup: delete specs older than N days (active or --archived). Dry-run by default unless --yes. */
+export async function runCleanupCli(args: string[]): Promise<number> {
+  const daysRaw = flag(args, '--older-than');
+  const days = daysRaw ? Number(String(daysRaw).replace(/d$/i, '')) : NaN;
+  if (!Number.isFinite(days) || days < 0) { console.error('usage: cleanup --older-than <days> [--archived] [--yes] [--project p]'); return 2; }
+  const r = await cleanupSpecs(resolveProject(args), { daysOld: days, archived: args.includes('--archived'), dryRun: !args.includes('--yes') });
+  console.log(JSON.stringify(r, null, 2));
+  if (r.dryRun) console.error(`Dry run: ${r.candidates.length} of ${r.processed} spec(s) would be deleted. Add --yes to delete.`);
+  else console.error(`Deleted ${r.deleted.length}, failed ${r.failed.length}.`);
+  return r.failed.length ? 1 : 0;
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
@@ -146,5 +209,10 @@ export async function runSubcommand(argv: string[]): Promise<number | null> {
   if (cmd === 'verify') return runVerifyCli(rest);
   if (cmd === 'scopes') return runScopesCli(rest);
   if (cmd === 'judge-record') return runJudgeRecordCli(rest);
+  if (cmd === 'stop') return runStopCli(rest);
+  if (cmd === 'status') return runStatusCli(rest);
+  if (cmd === 'set-status') return runSetStatusCli(rest);
+  if (cmd === 'reset') return runSetStatusCli(rest, 'pending');
+  if (cmd === 'cleanup') return runCleanupCli(rest);
   return null;
 }

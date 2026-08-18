@@ -91,6 +91,8 @@ export interface VerifyResult {
   // 'off' = this task was verified while the L1 tamper gate was DEGRADED (non-git project): the
   // "modified pre-existing scoped test" check could not run. Durable audit flag, not just a log line.
   tamperGate?: 'off';
+  // Harness-authored classification of the last red (only present while lastSignal === 'red').
+  failureClass?: 'test-fail' | 'build-fail' | 'env' | 'timeout';
   // L2 cross-family adequacy judge verdict (only present when [loop].judge is enabled). The judge
   // runs AFTER harness-green and can only downgrade a green (reopen), never override a red.
   judge?: {
