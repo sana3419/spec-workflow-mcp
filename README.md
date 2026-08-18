@@ -138,7 +138,7 @@ You can also just tell Claude **"run the loop in the background"** and it launch
 
 ```
 Claude Code (orchestrator)
-├── spec-workflow-mcp     — workflow management (5 tools)
+├── spec-workflow-mcp     — workflow management (6 tools)
 ├── codex (MCP server)    — coding dispatch
 │   ├── codex(prompt, sandbox, approval-policy, model)  → new session (threadId)
 │   └── codex-reply(threadId, prompt)                   → reuse session
@@ -151,6 +151,7 @@ Claude Code (orchestrator)
 | Server | Tool | Purpose |
 |--------|------|---------|
 | spec-workflow-mcp | `spec-workflow-guide` | Full workflow guide (call first each session) |
+| | `review-route` | Deterministic reviewer selection for a diff (used by `/review`) |
 | | `steering-guide` | Project steering documents |
 | | `spec-status` | Progress + next-task dispatch hint |
 | | `verify-task` | Traffic-light verification (green→done, red→fix/blocked) |
@@ -192,14 +193,22 @@ Human-only CLI equivalents: `spec-workflow-mcp status|stop|reset|set-status|clea
 | `/design-review` | Claude | Visual/interaction audit (multimodal) |
 | `/tdd` | Codex | TDD red-green-refactor + worktree isolation |
 
-## Subagents (auto-installed to .claude/agents/)
+## Reviewer agents (auto-installed to .claude/agents/) — routed on demand
 
-| Agent | Focus |
-|-------|-------|
-| `security-reviewer` | Injection, auth flaws, hardcoded secrets, CVE |
-| `logic-reviewer` | Edge cases, race conditions, resource leaks |
-| `performance-reviewer` | N+1 queries, memory leaks, blocking ops |
-| `api-reviewer` | Naming, HTTP semantics, versioning, validation |
+18 read-only review lenses, each a short house-format agent (BLOCK/WARN/PASSED contract, `tier` /
+`tags` / `triggers` frontmatter). `/review` calls the `review-route` MCP tool first, which picks the set
+**deterministically** from the agents' own frontmatter + the project profile + the diff, with a reason per
+agent — no LLM guessing, same diff → same set.
+
+| Tier | Agents | When |
+|------|--------|------|
+| 0 · always | security · logic · performance · api · **test-adequacy-judge** (the L2 rubric) · **spec-drift-detector** | every review |
+| 1 · triggered | concurrency · error-handling · data-migration · backward-compat · dependency-license · config-secrets · observability · i18n · accessibility · ux-copy · cost · architecture | changed path matches (`**/migrations/**`, `package.json`, `*.tsx`…), an added diff line matches (`ALTER TABLE`, `await`, `process.env`…), or the project profile says so (LLM SDK → cost, UI → a11y) |
+
+Overrides: `/review --agents a,b` (exact) · `--add/--skip` · `--full` (no cap) · tasks.md `_Review: security, concurrency`
+· `.spec-workflow/review.config.json` (`always` / `never` / `maxAgents`, default 8). Dry run:
+`spec-workflow-mcp route --base HEAD~1` prints the selection and reasons. The loop's `_Verify: panel` reuses
+the same routing for its extra lenses (the cross-family judge remains the anchor).
 
 ## Statusline
 

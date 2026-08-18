@@ -108,8 +108,13 @@ run_judge() {
     verdict="fail"; reasons="[$opp] $(parse_reasons "$out")"
   fi
   if [ "$mode" = "panel" ]; then
-    local lens lout lv
-    for lens in security-reviewer logic-reviewer; do
+    # Panel lenses: same-family reviewers that can only ADD a fail (the cross-family judge above is
+    # the anchor and always runs first). Names come from the routed agent set for the task's scope
+    # (tier-0 minus the judge itself), falling back to the classic security+logic pair.
+    local lens lout lv lenses
+    lenses="$($SWMCP route --files "$scope" --json --project "$PWD" 2>/dev/null | grep -oE '"name": *"[a-z0-9-]+-reviewer"' | sed 's/.*"\([a-z0-9-]*\)"$/\1/' | head -4 | tr '\n' ' ')"
+    [ -z "$lenses" ] && lenses="security-reviewer logic-reviewer"
+    for lens in $lenses; do
       lout="$(timeout 300 claude -p --agent "$lens" "$rubric" 2>/dev/null)"
       lv="$(parse_verdict "$lout")"
       [ "$lv" = "fail" ] && { verdict="fail"; reasons="$reasons [$lens] $(parse_reasons "$lout")"; }

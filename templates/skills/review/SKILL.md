@@ -1,21 +1,38 @@
 # /review — Code Review
 
-Engine: Claude (subagents + MCP verification)
+Engine: Claude (routed subagents + MCP verification)
 
 ## Trigger
 - User says "review code", "check for issues", "审查代码", "全面审查"
 
 ## Execution
 
+### Phase 0: Route (deterministic — no guessing which reviewers to run)
+
+Call `mcp__spec-workflow__review-route` first. It reads the reviewer agents' own frontmatter
+(`.claude/agents/*.md`: tier / tags / triggers), the project profile and the diff, and returns the
+agents to launch **with a reason each**. Defaults: Tier 0 always (`security-reviewer`,
+`logic-reviewer`, `performance-reviewer`, `api-reviewer`, `test-adequacy-judge`, `spec-drift-detector`);
+Tier 1 lenses (concurrency, error-handling, data-migration, backward-compat, dependency-license,
+config-secrets, observability, i18n, accessibility, ux-copy, cost, architecture) when a changed path or an
+added diff line matches their triggers; cap 8.
+
+Map what the user said onto the tool arguments:
+- "review" / "全面审查"                → `{}` (working-tree diff) or `{ base: "HEAD~1" }` for the last commit
+- "review security only" / a list       → `{ agents: ["security-reviewer"] }`
+- "also check i18n" / "skip perf"        → `{ add: [...] }` / `{ skip: [...] }`
+- "everything" / "full review"           → `{ full: true }`
+- a task with `_Review: security, concurrency` → `{ tags: ["security","concurrency"] }`
+- "what would you run?" (dry run)        → call the tool and STOP — print the selection + reasons only
+
+Show the user the selected list + reasons in one line each before launching (they can adjust).
+
 ### Phase 1: Subagent Review (parallel)
 
-Launch all 4 review subagents in parallel via the subagent tool (Task):
-- `security-reviewer` — injection, auth flaws, hardcoded secrets
-- `logic-reviewer` — edge cases, race conditions, resource leaks
-- `performance-reviewer` — N+1 queries, memory leaks, blocking ops
-- `api-reviewer` — naming, HTTP semantics, versioning, validation
-
-Each subagent writes report to `.spec-workflow/reports/agent-<type>-<YYYYMMDD-HHMMSS>.md`
+Launch **exactly** the routed agents in parallel via the Agent tool (one call per name, `subagent_type`
+= the agent name). Give each: the changed file list, the base ref, the spec name if any, and the
+instruction to write its report to `.spec-workflow/reports/agent-<name>-<YYYYMMDD-HHMMSS>.md`.
+Reviewers are read-only lenses (Read/Grep/Glob/Bash) — never let one edit files.
 
 ### Phase 2: MCP Verification (main context)
 
@@ -40,13 +57,14 @@ After subagents complete, run MCP-based verification in main context. Use the RE
 
 ### Phase 3: Consolidate
 
-1. Read all subagent reports from `.spec-workflow/reports/agent-*.md`
+1. Read all subagent reports from `.spec-workflow/reports/agent-*.md` (only this run's timestamps)
 2. Merge with MCP verification findings
 3. Deduplicate and classify: BLOCK / WARN / NOTE
 4. Output consolidated review report
 
 Summary: any BLOCK → fail, WARN/NOTE only → pass.
 
-For targeted review (e.g. "review security only"), launch only the relevant subagent + skip MCP phase.
+For targeted review the router already narrowed the set; skip the MCP phase when only 1–2 agents ran.
+If `test-adequacy-judge` ends with `VERDICT: fail`, treat that as a BLOCK on the tests, not the code.
 
 After review, call verify-task with green/red signal if applicable.

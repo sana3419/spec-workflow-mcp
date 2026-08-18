@@ -11,6 +11,7 @@ Claude-led collaborative development framework. Claude plans, implements, review
 | | `spec-status` | Progress + next-task dispatch hint |
 | | `verify-task` | Traffic-light verification (green/red signal) |
 | | `log-implementation` | Record implementation logs and artifacts |
+| | `review-route` | Pick reviewer agents for a diff deterministically (call before launching review subagents) |
 | codex | `mcp__codex__codex` | Start a new Codex session; returns a `threadId` |
 | | `mcp__codex__codex-reply` | Continue an existing Codex session by `threadId` |
 

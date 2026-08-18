@@ -15,6 +15,8 @@ import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, Ve
 import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
 import { SpecParser } from './core/parser.js';
+import { routeReview } from './core/review-router.js';
+import { templateAgentsDir } from './tools/review-route.js';
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -202,6 +204,25 @@ export async function runCleanupCli(args: string[]): Promise<number> {
   return r.failed.length ? 1 : 0;
 }
 
+/** route: dry-run reviewer selection for a diff (deterministic; prints agents + reasons). */
+export async function runRouteCli(args: string[]): Promise<number> {
+  const list = (n: string) => flag(args, n)?.split(',').map(s => s.trim()).filter(Boolean);
+  const r = await routeReview({
+    projectPath: resolveProject(args),
+    base: flag(args, '--base'),
+    changedFiles: list('--files'),
+    agents: list('--agents'), add: list('--add'), skip: list('--skip'), tags: list('--tags'),
+    full: args.includes('--full'),
+    maxAgents: flag(args, '--max-agents') ? Number(flag(args, '--max-agents')) : undefined,
+  }, templateAgentsDir());
+  if (args.includes('--json')) { console.log(JSON.stringify(r, null, 2)); return 0; }
+  console.log(`changed files: ${r.changedFiles.length}${r.docsOnly ? ' (docs only)' : ''} · profile: ${[...r.profile.languages, ...r.profile.frameworks].join(',') || '-'}${r.profile.hasLlmSdk ? ',llm' : ''}${r.profile.hasMigrations ? ',migrations' : ''}${r.profile.hasIac ? ',iac' : ''} · agents dir: ${r.agentsDir}`);
+  for (const s of r.selected) console.log(`  ✓ ${s.name.padEnd(28)} T${s.tier}  ${s.reasons.join('; ')}`);
+  for (const s of r.skipped) console.log(`  – ${s.name.padEnd(28)}     ${s.why}`);
+  if (!r.selected.length) console.log('  (nothing selected)');
+  return 0;
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
@@ -214,5 +235,6 @@ export async function runSubcommand(argv: string[]): Promise<number | null> {
   if (cmd === 'set-status') return runSetStatusCli(rest);
   if (cmd === 'reset') return runSetStatusCli(rest, 'pending');
   if (cmd === 'cleanup') return runCleanupCli(rest);
+  if (cmd === 'route') return runRouteCli(rest);
   return null;
 }
