@@ -2,7 +2,7 @@ import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { promises as fs } from 'fs';
 import { ToolContext, ToolResponse, ImplementationLogEntry } from '../types.js';
 import { PathUtils } from '../core/path-utils.js';
-import { ImplementationLogManager } from '../dashboard/implementation-log-manager.js';
+import { ImplementationLogManager } from '../core/implementation-log-manager.js';
 import { parseTasksFromMarkdown } from '../core/task-parser.js';
 
 export const logImplementationTool: Tool = {
@@ -82,7 +82,7 @@ Example:
 {
   "name": "searchLogs",
   "purpose": "Search implementation logs by keyword",
-  "location": "src/dashboard/implementation-log-manager.ts:156",
+  "location": "src/core/implementation-log-manager.ts:156",
   "signature": "(searchTerm: string) => Promise<ImplementationLogEntry[]>",
   "isExported": true
 }
@@ -101,7 +101,7 @@ Example:
 {
   "name": "ImplementationLogManager",
   "purpose": "Manages CRUD operations for implementation logs",
-  "location": "src/dashboard/implementation-log-manager.ts",
+  "location": "src/core/implementation-log-manager.ts",
   "methods": ["loadLog", "addLogEntry", "getAllLogs", "searchLogs", "getTaskStats"],
   "isExported": true
 }
@@ -157,7 +157,7 @@ Task: "Implemented logs dashboard with real-time updates"
       {
         "name": "ImplementationLogManager",
         "purpose": "Manages CRUD operations for implementation logs",
-        "location": "src/dashboard/implementation-log-manager.ts",
+        "location": "src/core/implementation-log-manager.ts",
         "methods": ["loadLog", "addLogEntry", "getAllLogs", "searchLogs", "getTaskStats"],
         "isExported": true
       }

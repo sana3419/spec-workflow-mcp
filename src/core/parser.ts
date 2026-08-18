@@ -1,137 +1,287 @@
-import { readdir, readFile, stat } from 'fs/promises';
+import { readFile, readdir, access, stat } from 'fs/promises';
 import { join } from 'path';
 import { PathUtils } from './path-utils.js';
-import { SpecData, SteeringStatus, PhaseStatus } from '../types.js';
+import { SpecData, SteeringStatus, TaskInfo } from '../types.js';
 import { parseTaskProgress } from './task-parser.js';
 
-export class SpecParser {
-  constructor(private projectPath: string) {}
+export interface ParsedSpec extends SpecData {
+  displayName: string;
+}
 
-  async getAllSpecs(): Promise<SpecData[]> {
-    const specs: SpecData[] = [];
-    const specsPath = PathUtils.getSpecPath(this.projectPath, '');
-    
-    try {
-      const entries = await readdir(specsPath, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const spec = await this.getSpec(entry.name);
-          if (spec) {
-            specs.push(spec);
-          }
-        }
-      }
-    } catch (error) {
-      // Directory doesn't exist yet
-      return [];
-    }
-    
-    return specs;
+
+export class SpecParser {
+  private projectPath: string;
+  private specsPath: string;
+  private archiveSpecsPath: string;
+  private steeringPath: string;
+
+  constructor(projectPath: string) {
+    // Path should already be translated by caller (ProjectManager)
+    this.projectPath = projectPath;
+    this.specsPath = PathUtils.getSpecPath(projectPath, '');
+    this.archiveSpecsPath = PathUtils.getArchiveSpecsPath(projectPath);
+    this.steeringPath = PathUtils.getSteeringPath(projectPath);
   }
 
-  async getSpec(name: string): Promise<SpecData | null> {
-    const specPath = PathUtils.getSpecPath(this.projectPath, name);
-    
+  async getAllSpecs(): Promise<ParsedSpec[]> {
     try {
-      const stats = await stat(specPath);
-      if (!stats.isDirectory()) {
-        return null;
-      }
+      await access(this.specsPath);
+      const entries = await readdir(this.specsPath, { withFileTypes: true });
+      const specDirs = entries.filter(entry => entry.isDirectory());
       
-      // Read all phase files
-      const requirements = await this.getPhaseStatus(specPath, 'requirements.md');
-      const design = await this.getPhaseStatus(specPath, 'design.md');
-      const tasks = await this.getPhaseStatus(specPath, 'tasks.md');
-      
-      // Parse task progress using unified parser
-      let taskProgress = undefined;
-      if (tasks.exists) {
-        try {
-          const tasksContent = await readFile(join(specPath, 'tasks.md'), 'utf-8');
-          taskProgress = parseTaskProgress(tasksContent);
-        } catch {
-          // Error reading tasks file
+      const specs: ParsedSpec[] = [];
+      for (const dir of specDirs) {
+        const spec = await this.getSpec(dir.name);
+        if (spec) {
+          specs.push(spec);
         }
       }
       
-      return {
+      return specs.sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      return [];
+    }
+  }
+
+  async getAllArchivedSpecs(): Promise<ParsedSpec[]> {
+    try {
+      await access(this.archiveSpecsPath);
+      const entries = await readdir(this.archiveSpecsPath, { withFileTypes: true });
+      const specDirs = entries.filter(entry => entry.isDirectory());
+      
+      const specs: ParsedSpec[] = [];
+      for (const dir of specDirs) {
+        const spec = await this.getArchivedSpec(dir.name);
+        if (spec) {
+          specs.push(spec);
+        }
+      }
+      
+      return specs.sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      return [];
+    }
+  }
+
+  async getSpec(name: string): Promise<ParsedSpec | null> {
+    try {
+      const specDir = PathUtils.getSpecPath(this.projectPath, name);
+      await access(specDir);
+
+      const spec: ParsedSpec = {
         name,
-        createdAt: stats.birthtime.toISOString(),
-        lastModified: stats.mtime.toISOString(),
+        displayName: this.formatDisplayName(name),
+        createdAt: '',
+        lastModified: '',
         phases: {
-          requirements,
-          design,
-          tasks,
-          implementation: {
-            exists: taskProgress ? taskProgress.completed > 0 : false
-          }
-        },
-        taskProgress
+          requirements: { exists: false },
+          design: { exists: false },
+          tasks: { exists: false },
+          implementation: { exists: false }
+        }
       };
-    } catch (error) {
+
+      // Get directory stats
+      const dirStats = await stat(specDir);
+      spec.createdAt = dirStats.birthtime.toISOString();
+      spec.lastModified = dirStats.mtime.toISOString();
+
+      // Check each phase
+      const requirementsPath = join(specDir, 'requirements.md');
+      const designPath = join(specDir, 'design.md');
+      const tasksPath = join(specDir, 'tasks.md');
+
+      // Check requirements
+      try {
+        await access(requirementsPath);
+        spec.phases.requirements.exists = true;
+        const reqStats = await stat(requirementsPath);
+        spec.phases.requirements.lastModified = reqStats.mtime.toISOString();
+        
+        // Update overall last modified if this is newer
+        if (reqStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = reqStats.mtime.toISOString();
+        }
+      } catch {}
+
+      // Check design
+      try {
+        await access(designPath);
+        spec.phases.design.exists = true;
+        const designStats = await stat(designPath);
+        spec.phases.design.lastModified = designStats.mtime.toISOString();
+        
+        if (designStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = designStats.mtime.toISOString();
+        }
+      } catch {}
+
+      // Check tasks
+      try {
+        await access(tasksPath);
+        spec.phases.tasks.exists = true;
+        const tasksStats = await stat(tasksPath);
+        spec.phases.tasks.lastModified = tasksStats.mtime.toISOString();
+        
+        if (tasksStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = tasksStats.mtime.toISOString();
+        }
+
+        // Parse tasks to get progress
+        const tasksContent = await readFile(tasksPath, 'utf-8');
+        const taskProgress = parseTaskProgress(tasksContent);
+        spec.taskProgress = {
+          total: taskProgress.total,
+          completed: taskProgress.completed,
+          pending: taskProgress.pending
+        };
+      } catch {}
+
+      // Implementation phase is always considered "exists" since it's ongoing manual work
+      spec.phases.implementation.exists = true;
+
+      // Derive overall status from task progress (consumed by the dashboard for completed styling)
+      const tp = spec.taskProgress;
+      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
+
+      return spec;
+    } catch {
+      return null;
+    }
+  }
+
+  async getArchivedSpec(name: string): Promise<ParsedSpec | null> {
+    try {
+      const specDir = PathUtils.getArchiveSpecPath(this.projectPath, name);
+      await access(specDir);
+
+      const spec: ParsedSpec = {
+        name,
+        displayName: this.formatDisplayName(name),
+        createdAt: '',
+        lastModified: '',
+        phases: {
+          requirements: { exists: false },
+          design: { exists: false },
+          tasks: { exists: false },
+          implementation: { exists: false }
+        }
+      };
+
+      // Get directory stats
+      const dirStats = await stat(specDir);
+      spec.createdAt = dirStats.birthtime.toISOString();
+      spec.lastModified = dirStats.mtime.toISOString();
+
+      // Check each phase
+      const requirementsPath = join(specDir, 'requirements.md');
+      const designPath = join(specDir, 'design.md');
+      const tasksPath = join(specDir, 'tasks.md');
+
+      // Check requirements
+      try {
+        await access(requirementsPath);
+        spec.phases.requirements.exists = true;
+        const reqStats = await stat(requirementsPath);
+        spec.phases.requirements.lastModified = reqStats.mtime.toISOString();
+        
+        // Update overall last modified if this is newer
+        if (reqStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = reqStats.mtime.toISOString();
+        }
+      } catch {}
+
+      // Check design
+      try {
+        await access(designPath);
+        spec.phases.design.exists = true;
+        const designStats = await stat(designPath);
+        spec.phases.design.lastModified = designStats.mtime.toISOString();
+        
+        if (designStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = designStats.mtime.toISOString();
+        }
+      } catch {}
+
+      // Check tasks
+      try {
+        await access(tasksPath);
+        spec.phases.tasks.exists = true;
+        const tasksStats = await stat(tasksPath);
+        spec.phases.tasks.lastModified = tasksStats.mtime.toISOString();
+        
+        if (tasksStats.mtime > new Date(spec.lastModified)) {
+          spec.lastModified = tasksStats.mtime.toISOString();
+        }
+
+        // Parse tasks to get progress
+        const tasksContent = await readFile(tasksPath, 'utf-8');
+        const taskProgress = parseTaskProgress(tasksContent);
+        spec.taskProgress = {
+          total: taskProgress.total,
+          completed: taskProgress.completed,
+          pending: taskProgress.pending
+        };
+      } catch {}
+
+      // Implementation phase is always considered "exists" since it's ongoing manual work
+      spec.phases.implementation.exists = true;
+
+      // Derive overall status from task progress (consumed by the dashboard for completed styling)
+      const tp = spec.taskProgress;
+      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
+
+      return spec;
+    } catch {
       return null;
     }
   }
 
 
   async getProjectSteeringStatus(): Promise<SteeringStatus> {
-    const steeringPath = PathUtils.getSteeringPath(this.projectPath);
-    
-    try {
-      const stats = await stat(steeringPath);
-      
-      const productExists = await this.fileExists(join(steeringPath, 'product.md'));
-      const techExists = await this.fileExists(join(steeringPath, 'tech.md'));
-      const structureExists = await this.fileExists(join(steeringPath, 'structure.md'));
-      
-      return {
-        exists: stats.isDirectory(),
-        documents: {
-          product: productExists,
-          tech: techExists,
-          structure: structureExists
-        },
-        lastModified: stats.mtime.toISOString()
-      };
-    } catch (error) {
-      return {
-        exists: false,
-        documents: {
-          product: false,
-          tech: false,
-          structure: false
-        }
-      };
-    }
-  }
+    const status: SteeringStatus = {
+      exists: false,
+      documents: {
+        product: false,
+        tech: false,
+        structure: false
+      }
+    };
 
-  private async getPhaseStatus(basePath: string, filename: string): Promise<PhaseStatus> {
-    const filePath = join(basePath, filename);
-    
     try {
-      const stats = await stat(filePath);
-      const content = await readFile(filePath, 'utf-8');
-      
-      return {
-        exists: true,
-        lastModified: stats.mtime.toISOString(),
-        content
-      };
-    } catch (error) {
-      return {
-        exists: false
-      };
-    }
+      await access(this.steeringPath);
+      status.exists = true;
+
+      // Check each steering document
+      try {
+        await access(join(this.steeringPath, 'product.md'));
+        status.documents.product = true;
+      } catch {}
+
+      try {
+        await access(join(this.steeringPath, 'tech.md'));
+        status.documents.tech = true;
+      } catch {}
+
+      try {
+        await access(join(this.steeringPath, 'structure.md'));
+        status.documents.structure = true;
+      } catch {}
+
+      // Get last modified time for steering directory
+      const steeringStats = await stat(this.steeringPath);
+      status.lastModified = steeringStats.mtime.toISOString();
+
+    } catch {}
+
+    return status;
   }
 
 
-  private async fileExists(filePath: string): Promise<boolean> {
-    try {
-      await stat(filePath);
-      return true;
-    } catch {
-      return false;
-    }
+  private formatDisplayName(kebabCase: string): string {
+    return kebabCase
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   }
 }

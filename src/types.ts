@@ -100,6 +100,14 @@ export interface VerifyResult {
     attempts: number;                       // judge-fail rounds so far (persists across reopen)
     timestamp: string;
   };
+  // Last manual (human) transition made through verify-core.setTaskStatus (Telegram / CLI).
+  manual?: {
+    by: string;
+    from: 'pending' | 'in-progress' | 'completed' | 'blocked';
+    to: 'pending' | 'in-progress' | 'completed' | 'blocked';
+    reason?: string;
+    timestamp: string;
+  };
 }
 
 export interface SpecData {

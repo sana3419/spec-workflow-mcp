@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import chokidar from 'chokidar';
 import { stat } from 'fs/promises';
 import { PathUtils } from '../core/path-utils.js';
-import { SpecParser, ParsedSpec } from './parser.js';
+import { SpecParser, ParsedSpec } from '../core/parser.js';
 
 export interface SpecChangeEvent {
   type: 'spec' | 'steering';

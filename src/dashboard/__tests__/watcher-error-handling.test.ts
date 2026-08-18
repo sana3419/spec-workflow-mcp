@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SpecWatcher } from '../watcher.js';
-import { SpecParser } from '../parser.js';
+import { SpecParser } from '../../core/parser.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';

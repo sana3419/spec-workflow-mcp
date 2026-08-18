@@ -235,3 +235,81 @@ async function appendUsageLog(projectPath: string, entry: UsageEntry): Promise<v
     await fs.writeFile(logFile, JSON.stringify(log, null, 2), 'utf-8');
   } catch { /* non-critical */ }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Manual task-state transitions (Telegram /task buttons, `spec-workflow-mcp reset`, humans).
+// Kept here so verify-core stays the SOLE writer of task state. Refused while the loop runner
+// owns the spec (its .run/pid is alive) — the harness must never race a human edit.
+// ---------------------------------------------------------------------------------------------
+
+export type ManualTaskStatus = 'pending' | 'in-progress' | 'completed' | 'blocked';
+
+export interface SetTaskStatusArgs {
+  projectPath: string;
+  specName: string;
+  taskId: string;
+  status: ManualTaskStatus;
+  /** Required when status === 'blocked'. */
+  reason?: string;
+  /** Who did it (telegram user id, 'cli', ...). Recorded in verify-results.manual. */
+  by: string;
+  /** Skip the loop-running guard (only for the runner itself / tests). */
+  force?: boolean;
+}
+
+export interface SetTaskStatusResult {
+  ok: boolean;
+  message: string;
+  previous?: ManualTaskStatus;
+}
+
+export async function setTaskStatus(args: SetTaskStatusArgs): Promise<SetTaskStatusResult> {
+  const { projectPath, specName, taskId, status, reason, by, force } = args;
+  if (!/^\d+(\.\d+)*$/.test(taskId)) {
+    return { ok: false, message: `Invalid taskId format: '${taskId}'` };
+  }
+  if (status === 'blocked' && !reason?.trim()) {
+    return { ok: false, message: 'A reason is required to block a task' };
+  }
+
+  if (!force) {
+    const { getLoopStatus } = await import('./run-state.js');
+    const loop = await getLoopStatus(projectPath, specName);
+    if (loop.running) {
+      return { ok: false, message: `Loop is running for '${specName}' (pid ${loop.pid}); stop it first (/stop) before changing task state by hand` };
+    }
+  }
+
+  const translatedPath = PathUtils.translatePath(projectPath);
+  const specPath = PathUtils.getSpecPath(translatedPath, specName);
+  const tasksFile = join(specPath, 'tasks.md');
+  let tasksContent: string;
+  try {
+    tasksContent = await fs.readFile(tasksFile, 'utf-8');
+  } catch {
+    return { ok: false, message: `Tasks file not found for spec '${specName}'` };
+  }
+  const task = getTaskById(parseTasksFromMarkdown(tasksContent).tasks, taskId);
+  if (!task) return { ok: false, message: `Task '${taskId}' not found in spec '${specName}'` };
+  const previous = task.status as ManualTaskStatus;
+
+  await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, status, reason), 'utf-8');
+
+  // Journal the manual transition next to the harness verdicts (never overwrite them).
+  try {
+    const verifyDir = join(specPath, 'verify-results');
+    await fs.mkdir(verifyDir, { recursive: true });
+    const verifyFile = join(verifyDir, `task-${taskId.replace(/\./g, '-')}.json`);
+    let verifyData: VerifyResult;
+    try {
+      verifyData = JSON.parse(await fs.readFile(verifyFile, 'utf-8'));
+    } catch {
+      verifyData = { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
+    }
+    if (status === 'pending') verifyData.fixAttempts = 0; // same recovery semantics as the old kanban drag-back
+    verifyData.manual = { by, from: previous, to: status, reason, timestamp: new Date().toISOString() };
+    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+  } catch { /* non-critical */ }
+
+  return { ok: true, message: `Task '${taskId}' ${previous} → ${status} (by ${by})`, previous };
+}

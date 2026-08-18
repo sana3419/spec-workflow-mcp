@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import chokidar from 'chokidar';
-import { SpecParser } from './parser.js';
+import { SpecParser } from '../core/parser.js';
 import { SpecWatcher } from './watcher.js';
 import { SpecArchiveService } from '../core/archive-service.js';
 import { ProjectRegistry, ProjectRegistryEntry, ProjectInstance } from '../core/project-registry.js';
