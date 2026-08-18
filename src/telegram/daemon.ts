@@ -295,10 +295,11 @@ class Daemon {
   async tick(): Promise<void> {
     if (Date.now() - this.lastDiscover > 60_000) await this.discoverProjects();
     for (const p of this.projects) {
-      const off = this.state.auditOffsets[p] ?? 0;
-      const { events, offset } = await readNewEvents(p, off);
-      // First run on an existing log: don't replay history — just remember the end.
-      if (off === 0 && events.length > 50) {
+      const seen = this.state.auditOffsets[p];
+      const { events, offset } = await readNewEvents(p, seen ?? 0);
+      // Never-seen project: don't replay its whole history into Telegram — remember the end and
+      // only report what happens from now on. (Gates are scanned regardless, below.)
+      if (seen === undefined) {
         this.state.auditOffsets[p] = offset; this.dirty = true;
       } else if (events.length) {
         this.state.auditOffsets[p] = offset; this.dirty = true;
