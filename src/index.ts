@@ -1,89 +1,46 @@
 #!/usr/bin/env node
 
 import { SpecWorkflowMCPServer } from './server.js';
-import { MultiProjectDashboardServer } from './dashboard/multi-server.js';
-import { DashboardSessionManager } from './core/dashboard-session.js';
 import { homedir } from 'os';
 import { resolveGitRoot, resolveGitWorkspaceRoot } from './core/git-utils.js';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { realpathSync } from 'fs';
 
-// Default dashboard port
-const DEFAULT_DASHBOARD_PORT = 5000;
-
 function showHelp() {
   console.error(`
-Spec Workflow MCP Server - A Model Context Protocol server for spec-driven development
+Spec Workflow MCP Server - spec-driven development with harness-owned verification
 
 USAGE:
   spec-workflow-mcp [path] [options]
+  spec-workflow-mcp <subcommand> ...
 
 ARGUMENTS:
-  path                    Project path (defaults to current directory)
-                         Supports ~ for home directory
+  path                    Project path (defaults to current directory). Supports ~.
 
 OPTIONS:
   --help                  Show this help message
-  --dashboard             Run dashboard-only mode (no MCP server)
-  --port <number>         Specify dashboard port (1024-65535)
-                         Default: 5000
-                         Only use if port 5000 is unavailable
-  --no-open               Don't automatically open browser when starting dashboard
-                         Useful in restricted environments where browser launch is blocked
+  --telegram              Run the Telegram loop_bot daemon (ONE per machine, no MCP server).
+                          Config: ~/.spec-workflow/telegram.env
+                            TELEGRAM_BOT_TOKEN=...      TELEGRAM_ALLOW_FROM=<numeric user ids>
+                            [TELEGRAM_NOTIFY=...] [TELEGRAM_PROJECTS=/abs/a,/abs/b] [TELEGRAM_SEND_ONLY=true]
+  --telegram-once         One watcher tick (push events, post gate cards) then exit — for cron.
   --no-shared-worktree-specs
-                         Disable shared .spec-workflow in git worktrees
-                         Use workspace-local .spec-workflow instead of main repo
+                          Disable shared .spec-workflow in git worktrees
 
-IMPORTANT:
-  Only ONE dashboard instance runs at a time. All MCP servers connect to the
-  same dashboard. The dashboard runs on port 5000 by default.
+SUBCOMMANDS (humans & the loop runner — the harness owns task state):
+  status [spec] [--project p]                       progress + loop state (JSON)
+  stop <spec> [--by who] [--project p]              ask a running loop to stop
+  reset <spec> --task <id> [--project p]            task → pending (refused while loop runs)
+  set-status <spec> --task <id> --status <s> [--reason r] [--force]
+  cleanup --older-than <days> [--archived] [--yes]  delete old specs (dry-run without --yes)
+  pick | verify | scopes | judge-record             used by spec-loop-run.sh
 
-MODES OF OPERATION:
-
-1. MCP Server Only (default):
-   spec-workflow-mcp
-   spec-workflow-mcp ~/my-project
-
-   Starts MCP server without dashboard. Dashboard can be started separately.
-
-2. Dashboard Only Mode:
-   spec-workflow-mcp --dashboard
-   spec-workflow-mcp --dashboard --port 8080
-   spec-workflow-mcp --dashboard --no-open
-
-   Runs only the web dashboard without MCP server (default port: 5000).
-   Projects will automatically appear in the dashboard as MCP servers register.
-   Only one dashboard instance is needed for all your projects.
-   Use --no-open to prevent automatic browser launch (useful in restricted environments).
-
-EXAMPLES:
-  # Start MCP server in current directory (no dashboard)
-  spec-workflow-mcp
-
-  # Start MCP server in a specific project directory
-  spec-workflow-mcp ~/projects/my-app
-
-  # Run dashboard (default port 5000) - START THIS FIRST
-  spec-workflow-mcp --dashboard
-
-  # Run dashboard on custom port (if 5000 is unavailable)
-  spec-workflow-mcp --dashboard --port 8080
-
-TYPICAL WORKFLOW:
-  1. Start the dashboard once:
-     spec-workflow-mcp --dashboard
-
-  2. Start MCP servers for your projects (in separate terminals):
-     spec-workflow-mcp ~/project1
-     spec-workflow-mcp ~/project2
-     spec-workflow-mcp ~/project3
-
-  All projects will appear in the same dashboard at http://localhost:5000
-
-PARAMETER FORMATS:
-  --port 3456             Space-separated format
-  --port=3456             Equals format
+MODES:
+  1. MCP server (default):      spec-workflow-mcp ~/my-project
+  2. Telegram daemon (global):  spec-workflow-mcp --telegram
+     Every project whose MCP server has registered (or listed in TELEGRAM_PROJECTS)
+     is watched; loop progress, gates and commands go through the bot.
 `);
 }
 
@@ -98,102 +55,35 @@ export function parseArguments(args: string[]): {
   workspacePath: string;
   workflowRootPath: string;
   expandedPath: string;
-  isDashboardMode: boolean;
+  isTelegramMode: boolean;
   noSharedWorktreeSpecs: boolean;
-  port?: number;
   lang?: string;
-  noOpen?: boolean;
 } {
-  const isDashboardMode = args.includes('--dashboard');
-  const noOpen = args.includes('--no-open');
+  const isTelegramMode = args.includes('--telegram') || args.includes('--telegram-once');
   const noSharedWorktreeSpecs = args.includes('--no-shared-worktree-specs');
-  let customPort: number | undefined;
 
-  // Check for invalid flags
-  const validFlags = ['--dashboard', '--telegram', '--telegram-once', '--port', '--help', '-h', '--no-open', '--no-shared-worktree-specs'];
+  const validFlags = ['--telegram', '--telegram-once', '--help', '-h', '--no-shared-worktree-specs'];
   for (const arg of args) {
-    if (arg.startsWith('--') && !arg.includes('=')) {
-      if (!validFlags.includes(arg)) {
-        throw new Error(`Unknown option: ${arg}\nUse --help to see available options.`);
-      }
-    } else if (arg.startsWith('--') && arg.includes('=')) {
-      const flagName = arg.split('=')[0];
+    if (arg.startsWith('--')) {
+      const flagName = arg.includes('=') ? arg.split('=')[0] : arg;
       if (!validFlags.includes(flagName)) {
         throw new Error(`Unknown option: ${flagName}\nUse --help to see available options.`);
       }
     }
   }
 
-  // Parse --port parameter (supports --port 3000 and --port=3000 formats)
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg.startsWith('--port=')) {
-      // Handle --port=3000 format
-      const portStr = arg.split('=')[1];
-      if (portStr) {
-        const parsed = parseInt(portStr, 10);
-        if (isNaN(parsed)) {
-          throw new Error(`Invalid port number: ${portStr}. Port must be a number.`);
-        }
-        if (parsed < 1024 || parsed > 65535) {
-          throw new Error(`Port ${parsed} is out of range. Port must be between 1024 and 65535.`);
-        }
-        customPort = parsed;
-      } else {
-        throw new Error('--port parameter requires a value (e.g., --port=3000)');
-      }
-    } else if (arg === '--port' && i + 1 < args.length) {
-      // Handle --port 3000 format
-      const portStr = args[i + 1];
-      const parsed = parseInt(portStr, 10);
-      if (isNaN(parsed)) {
-        throw new Error(`Invalid port number: ${portStr}. Port must be a number.`);
-      }
-      if (parsed < 1024 || parsed > 65535) {
-        throw new Error(`Port ${parsed} is out of range. Port must be between 1024 and 65535.`);
-      }
-      customPort = parsed;
-      i++; // Skip the next argument as it's the port value
-    } else if (arg === '--port') {
-      throw new Error('--port parameter requires a value (e.g., --port 3000)');
-    }
-  }
-
-  // Get project path (filter out flags and their values)
-  const filteredArgs = args.filter((arg, index) => {
-    if (arg === '--dashboard') return false;
-    if (arg.startsWith('--port=')) return false;
-    if (arg === '--port') return false;
-    if (arg === '--no-open') return false;
-    if (arg === '--no-shared-worktree-specs') return false;
-    // Check if this arg is a value following --port
-    if (index > 0 && args[index - 1] === '--port') return false;
-    return true;
-  });
-
-  // For dashboard-only mode, use cwd as default (dashboard doesn't need it)
+  const filteredArgs = args.filter(arg => !arg.startsWith('--'));
   const rawProjectPath = filteredArgs[0] || process.cwd();
   const expandedPath = expandTildePath(rawProjectPath);
   const workspacePath = resolveGitWorkspaceRoot(expandedPath);
   const workflowRootPath = noSharedWorktreeSpecs ? workspacePath : resolveGitRoot(workspacePath);
 
-  // Warn if no explicit path was provided and we're using cwd (but only for MCP server mode)
-  if (!filteredArgs[0] && !isDashboardMode) {
+  if (!filteredArgs[0] && !isTelegramMode) {
     console.warn(`Warning: No project path specified, using current directory: ${workspacePath}`);
     console.warn('Consider specifying an explicit path for better clarity.');
   }
 
-  return {
-    workspacePath,
-    workflowRootPath,
-    expandedPath,
-    isDashboardMode,
-    noSharedWorktreeSpecs,
-    port: customPort,
-    lang: undefined,
-    noOpen
-  };
+  return { workspacePath, workflowRootPath, expandedPath, isTelegramMode, noSharedWorktreeSpecs, lang: undefined };
 }
 
 async function main() {
@@ -237,157 +127,16 @@ async function main() {
       console.error(`workspacePath=${workspacePath}`);
     }
 
-    // Apply configuration from CLI args
-    const isDashboardMode = cliArgs.isDashboardMode || false;
-    const port = cliArgs.port;
-    const lang = cliArgs.lang;
-    const noOpen = cliArgs.noOpen || false;
+    // MCP server mode
+    console.error(`Starting Spec Workflow MCP Server for project: ${workflowRootPath}`);
+    console.error(`Workspace path: ${workspacePath}`);
+    console.error(`Working directory: ${process.cwd()}`);
 
-    if (isDashboardMode) {
-      // Check if a dashboard is already running (always check, regardless of port)
-      const sessionManager = new DashboardSessionManager();
-      const existingSession = await sessionManager.getDashboardSession();
+    const server = new SpecWorkflowMCPServer();
+    await server.initialize(workflowRootPath, workspacePath, cliArgs.lang);
 
-      if (existingSession) {
-        console.error(`Dashboard is already running at: ${existingSession.url}`);
-        console.error('');
-        console.error('You can:');
-        console.error(`  1. Use the existing dashboard at: ${existingSession.url}`);
-        console.error(`  2. Stop it first (Ctrl+C or kill ${existingSession.pid}), then start a new one`);
-        console.error('');
-        console.error('Note: Only one dashboard instance is needed for all your projects.');
-        process.exit(1);
-      }
-
-      // Use specified port or default
-      const dashboardPort = port || DEFAULT_DASHBOARD_PORT;
-
-      // Dashboard only mode - use new multi-project dashboard
-      console.error(`Starting Unified Multi-Project Dashboard`);
-      if (port) {
-        console.error(`Using custom port: ${port}`);
-      } else {
-        console.error(`Using default port: ${DEFAULT_DASHBOARD_PORT}`);
-      }
-      if (noOpen) {
-        console.error(`Browser auto-open disabled (--no-open)`);
-      }
-
-      // Load configuration from environment variables
-      let bindAddress: string | undefined;
-      let allowExternalAccess: boolean | undefined;
-      const securityConfig: any = {};
-      
-      // Network binding configuration
-      if (process.env.SPEC_WORKFLOW_BIND_ADDRESS) {
-        bindAddress = process.env.SPEC_WORKFLOW_BIND_ADDRESS;
-      }
-      
-      // External access opt-in (only override if explicitly set to true or false)
-      if (process.env.SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS !== undefined) {
-        const allowExternal = process.env.SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS.toLowerCase();
-        if (allowExternal === 'true') {
-          allowExternalAccess = true;
-        } else if (allowExternal === 'false') {
-          allowExternalAccess = false;
-        }
-        // If invalid value, ignore and use default
-      }
-      
-      // Security features configuration
-      
-      // Rate limiting toggle (only override if explicitly set to true or false)
-      if (process.env.SPEC_WORKFLOW_RATE_LIMIT_ENABLED !== undefined) {
-        const rateLimitEnabled = process.env.SPEC_WORKFLOW_RATE_LIMIT_ENABLED.toLowerCase();
-        if (rateLimitEnabled === 'true') {
-          securityConfig.rateLimitEnabled = true;
-        } else if (rateLimitEnabled === 'false') {
-          securityConfig.rateLimitEnabled = false;
-        }
-        // If invalid value, ignore and use default
-      }
-      
-      // CORS toggle (only override if explicitly set to true or false)
-      if (process.env.SPEC_WORKFLOW_CORS_ENABLED !== undefined) {
-        const corsEnabled = process.env.SPEC_WORKFLOW_CORS_ENABLED.toLowerCase();
-        if (corsEnabled === 'true') {
-          securityConfig.corsEnabled = true;
-        } else if (corsEnabled === 'false') {
-          securityConfig.corsEnabled = false;
-        }
-        // If invalid value, ignore and use default
-      }
-
-      // Create dashboard server (network binding validation happens in constructor)
-      let dashboardServer: MultiProjectDashboardServer;
-      try {
-        dashboardServer = new MultiProjectDashboardServer({
-          autoOpen: !noOpen,
-          port: dashboardPort,
-          bindAddress,
-          allowExternalAccess,
-          security: securityConfig
-        });
-      } catch (error: any) {
-        // Provide user-friendly error message with environment variable names
-        if (error.message.includes('SECURITY ERROR') || error.message.includes('non-localhost')) {
-          console.error('');
-          console.error('❌ Security Configuration Error:');
-          console.error(error.message);
-          console.error('');
-          console.error('To fix this, either:');
-          console.error('  1. Use localhost binding (secure):');
-          console.error('     export SPEC_WORKFLOW_BIND_ADDRESS=127.0.0.1');
-          console.error('');
-          console.error('  2. Explicitly allow external access (insecure):');
-          console.error('     export SPEC_WORKFLOW_ALLOW_EXTERNAL_ACCESS=true');
-          console.error('');
-          process.exit(1);
-        }
-        throw error; // Re-throw other errors
-      }
-
-      try {
-        const dashboardUrl = await dashboardServer.start();
-        console.error(`Dashboard started at: ${dashboardUrl}`);
-        console.error('Projects will automatically appear as MCP servers register.');
-        console.error('Press Ctrl+C to stop the dashboard');
-      } catch (error: any) {
-        console.error(`Failed to start dashboard: ${error.message}`);
-        process.exit(1);
-      }
-
-      // Handle graceful shutdown
-      const shutdown = async () => {
-        console.error('\nShutting down dashboard...');
-        await dashboardServer.stop();
-        process.exit(0);
-      };
-
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
-
-    } else {
-      // MCP server mode
-      console.error(`Starting Spec Workflow MCP Server for project: ${workflowRootPath}`);
-      console.error(`Workspace path: ${workspacePath}`);
-      console.error(`Working directory: ${process.cwd()}`);
-
-      const server = new SpecWorkflowMCPServer();
-
-      await server.initialize(workflowRootPath, workspacePath, lang);
-
-      // Handle graceful shutdown
-      process.on('SIGINT', async () => {
-        await server.stop();
-        process.exit(0);
-      });
-
-      process.on('SIGTERM', async () => {
-        await server.stop();
-        process.exit(0);
-      });
-    }
+    process.on('SIGINT', async () => { await server.stop(); process.exit(0); });
+    process.on('SIGTERM', async () => { await server.stop(); process.exit(0); });
 
   } catch (error: any) {
     console.error('Error:', error.message);

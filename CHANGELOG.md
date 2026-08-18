@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] (fork)
+## [3.0.0] — 2026-08-18 (fork)
+
+### Removed
+- **The entire web dashboard** (`--dashboard`, `--port`, `--no-open`, fastify/WebSocket backend, React frontend, job scheduler, settings, i18n, dashboard session file, `bindAddress` / `[security]` config, Playwright e2e). Dependencies drop from ~740 packages to ~175. Legacy keys in `config.toml` are ignored.
+
+### Added
+- **Telegram control** (`spec-workflow-mcp --telegram`, `src/telegram/`): one `loop_bot` daemon per machine watches every registered project — live board per loop run, event pushes, gate cards, 20 commands (`/status /projects /use /specs /spec /tasks /task /steering /logs /logstats /find /prompt /gates /runlog /start /stop /archive /unarchive /cleanup /about`). Zero framework: native `fetch` Bot API client. Allowlist-only access, hash-chained audit log, HTML rendering with an "untrusted" wrapper for any repo/agent text. See `docs/TELEGRAM.md`.
+- **Human gates in the loop runner**: `[loop] gateOnSpecGateFail`, `gateOnIntegrationFail`, `gateEveryTasks`, `gateTimeoutMin`. Runner writes `specs/<spec>/.run/gates/<id>.pending`; the daemon writes HMAC-signed decisions to `~/.spec-workflow/gates/<hash>/`; the runner verifies with `openssl`. Approve on L3 = override-and-proceed (audited); on L4 = one more bounded fix round; timeout = reject.
+- **Per-spec run state** `specs/<spec>/.run/{pid,stop,gates/,…}` and per-spec `loop-run.log`, `spec-gate-result.json`, `integration-result.json`; concurrent specs no longer clobber each other. Runner refuses to double-start.
+- **Failure classification** on red verdicts (`failureClass: test-fail | build-fail | env | timeout` in `verify-results/`).
+- **CLI subcommands for humans**: `status`, `stop`, `reset`, `set-status`, `cleanup` (dry-run by default). `verify-core.setTaskStatus` journals manual transitions (`verify-results.manual`) and refuses while a loop runs.
+- `core/cleanup.ts` (old spec cleanup as a pure library — schedule it with your own cron), `core/run-watcher.ts`, `core/gates.ts`, `core/run-state.ts`.
+
+### Changed
+- `init.sh` writes a **restrictive** project `settings.json`: no blanket `Bash(*)`/`Write(*)` allows (they bypass Claude Code auto mode's classifier); only the MCP servers are pre-allowed, plus deny rules for `~/.spec-workflow/**`, `.run/**`, the audit log and `api.telegram.org`.
+- Tool/prompt text no longer references the dashboard; `verify-task` points to `spec-workflow-mcp reset` / Telegram.
+- Stop protocol: `touch .spec-workflow/.loop-stop` → `spec-workflow-mcp stop <spec>` (JSON stop file with `by`/`nonce`, audited).
+
+## [Unreleased] (fork, pre-3.0)
 
 ### Changed
 - **Claude-led, Codex-auxiliary engine model.** Removed the DeepSeek (Crush), Gemini, and `ai-cli-mcp` dispatch layer. Claude is the primary engine (plans, implements, reviews, verifies). The default engine is `claude` (`[engine] default`); Claude offloads a task to OpenAI Codex only when it is tagged `_Engine: codex` — via Codex's own MCP server (`mcp__codex__codex` / `mcp__codex__codex-reply`).

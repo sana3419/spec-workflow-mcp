@@ -152,8 +152,9 @@ nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &
 
 也可以直接跟 Claude 说**"在后台跑循环"**,它会帮你拉起 runner,然后继续和你聊。
 
-- **看进展:** `tail -f .spec-workflow/loop-run.log`,或 `spec-status`,或开 dashboard —— 你的会话全程保持可交互。
-- **停止:** `touch .spec-workflow/.loop-stop`(或 `kill "$(cat .spec-workflow/.loop-run.pid)"`)。
+- **看进展:** Telegram `/status <spec>`（实时看板 + 推送）、`tail -f .spec-workflow/specs/<spec>/loop-run.log`，或 `spec-workflow-mcp status <spec>` —— 你的会话全程保持可交互。
+- **停止:** `spec-workflow-mcp stop <spec>` 或 Telegram `/stop <spec>`（写入 `specs/<spec>/.run/stop`，runner 跑完当前迭代后退出并记录是谁停的）。
+- **人工闸门:** `gateOnSpecGateFail` / `gateOnIntegrationFail` / `gateEveryTasks` 会让 loop 暂停并在 Telegram 发出 Approve/Reject 卡片；决定带 HMAC 签名、存放在项目目录之外，实现 agent 无法给自己放行。见 [docs/TELEGRAM.zh.md](docs/TELEGRAM.zh.md)。
 - **护栏:** `maxIterations`(默认 50)硬性封顶;`noProgressStop`(默认 3)在连续 N 轮 `tasks.md`/`verify-results` 无变化后停止。每轮迭代与停止原因记入 `.spec-workflow/loop-audit.log`。
 - **原理:** runner 每个任务起一个全新 headless `claude` 去实现并写测试;之后由 **harness(不是 agent)** 跑这些测试、用 exit code 记录判据,共享状态都落在磁盘上——经典的 agentic loop 模式。
 - **验证阶梯:** 循环把"这个任务做完了"从 agent 嘴里拿走,靠一条分层、opt-in 的对抗验证链——spec 门(L3)→ harness 执行(L0)→ 防篡改/回归(L1)→ 跨家族 adequacy 判官(L2)→ 集成终判(L4)。这是 **fork 当前行为**;每层守什么、怎么开,见 **[docs/VERIFICATION-LADDER.zh.md](docs/VERIFICATION-LADDER.zh.md)**([English](docs/VERIFICATION-LADDER.md))。
@@ -198,23 +199,17 @@ MCP 工具会被自动调用。也可以用自然语言触发：
 "全面审查一下"                       → 并行启动 4 个审查子代理
 ```
 
-## Dashboard
+## Telegram 控制（取代 Dashboard）
 
 ```bash
-node /path/to/spec-workflow-mcp/dist/index.js --dashboard
-# → http://localhost:5000
+# 每台机器一个守护进程 —— 需要 ~/.spec-workflow/telegram.env 里有 TELEGRAM_BOT_TOKEN + TELEGRAM_ALLOW_FROM
+node /path/to/spec-workflow-mcp/dist/index.js --telegram
 ```
 
-仅用于监控：Kanban 看板、specs、tasks、实现日志、统计、设置。（审批在对话内完成，不在 Dashboard。）
+一个 `loop_bot` 守护进程盯所有项目：每次 loop 一条就地更新的看板消息；blocked / 篡改 / 回归 / judge / 集成等事件推送；带 **Approve / Reject** 按钮的闸门卡片；命令
+（`/status /specs /spec /tasks /task /logs /steering /start /stop /archive /cleanup …`）。spec 文档以 `.md` 附件发送，不在聊天里贴长文。它与你用来跟 orchestrator 会话对话的 Claude Code Telegram *channel* 插件是**两个不同的 bot**。完整说明：[docs/TELEGRAM.zh.md](docs/TELEGRAM.zh.md)。
 
-| 功能 | 说明 |
-|------|------|
-| Kanban 看板 | 查看任务在 pending/in-progress/completed/blocked 之间的状态 |
-| specs / tasks | 浏览 requirements/design/tasks 文档与任务进度 |
-| 实现日志 | 查看每个任务的 artifacts 记录 |
-| 统计 / 设置 | 用量统计与 Dashboard 设置 |
-
-部署配置（绑定地址、CORS、systemd）见 [docs/DASHBOARD-DEPLOYMENT.md](docs/DASHBOARD-DEPLOYMENT.md)。
+命令行等价物：`spec-workflow-mcp status|stop|reset|set-status|cleanup`。
 
 ## 审查子代理（4 个，并行独立上下文）
 
@@ -286,7 +281,7 @@ your-project/
 |------|---------|
 | MCP 工具不可用 | 重启 Claude Code 会话。首次使用需审批 MCP server |
 | Codex 调度失败 | 运行 `codex login`。检查 `codex --version`。检查 `.mcp.json` 是否包含 codex server |
-| Dashboard 启动失败 | 检查 5000 端口是否被占用：`lsof -i :5000` |
+| Telegram bot 不响应 | 检查 `~/.spec-workflow/telegram.env`（token + `TELEGRAM_ALLOW_FROM` 数字 id）和守护进程日志；`409 Conflict` 说明两个进程在轮询同一个 token —— 给 loop_bot 单独建一个 bot |
 | `spec-status` 报错 | 确认 `.mcp.json` 中 args 的项目路径正确 |
 | 重置 MCP server 授权 | `claude mcp reset-project-choices` |
 

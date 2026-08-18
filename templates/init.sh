@@ -179,6 +179,11 @@ else
 fi
 
 # 7. Create project .claude/settings.json
+# v3: NO blanket allows. Claude Code auto mode (default since 2026-08-14) already gates ordinary
+# tool calls; blanket "Bash(*)"/"Write(*)" allows would BYPASS its classifier — dangerous in the
+# headless loop where the agent is fed untrusted spec/test output. Only the MCP servers are
+# pre-allowed. The deny list protects the Telegram token, gate decisions, run-state and audit log
+# from the implementing agent (it must not approve its own gates or rewrite the audit trail).
 SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
 if [ ! -f "$SETTINGS_FILE" ]; then
   echo "[7/11] Creating project settings.json..."
@@ -187,21 +192,23 @@ if [ ! -f "$SETTINGS_FILE" ]; then
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Write(*)",
-      "Edit(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
-      "Agent(*)",
-      "NotebookEdit(*)",
-      "Skill(*)",
       "mcp__spec-workflow__*",
       "mcp__codex__*",
       "mcp__code-review-graph__*",
       "mcp__gitnexus__*"
+    ],
+    "deny": [
+      "Read(~/.spec-workflow/**)",
+      "Read(~/.claude/channels/**)",
+      "Write(~/.spec-workflow/**)",
+      "Edit(~/.spec-workflow/**)",
+      "Write(.spec-workflow/specs/*/.run/**)",
+      "Edit(.spec-workflow/specs/*/.run/**)",
+      "Write(.spec-workflow/loop-audit.log)",
+      "Edit(.spec-workflow/loop-audit.log)",
+      "Bash(*api.telegram.org*)",
+      "Bash(*/.spec-workflow/telegram.env*)",
+      "Bash(*/.spec-workflow/gates*)"
     ]
   }
 }
@@ -210,6 +217,7 @@ else
   echo "[7/11] Project settings.json exists, skipping"
 fi
 
+SWMCP_CMD="spec-workflow-mcp"
 # 7b. Install the background Phase 4 loop runner into the project.
 # The loop runs in a SEPARATE headless `claude` process, so your interactive session stays free.
 RUNNER_SRC="$SCRIPT_DIR/spec-loop-run.sh"
@@ -221,7 +229,8 @@ if [ -f "$RUNNER_SRC" ]; then
   LOOP_DIST="$SCRIPT_DIR/../dist/index.js"
   if [ -f "$LOOP_DIST" ]; then
     LOOP_DIST_ABS="$(cd "$(dirname "$LOOP_DIST")" && pwd)/index.js"
-    sed -i "s|@@SWMCP_CMD@@|node \"$LOOP_DIST_ABS\"|g" "$RUNNER_DST"
+    SWMCP_CMD="node \"$LOOP_DIST_ABS\""
+    sed -i "s|@@SWMCP_CMD@@|$SWMCP_CMD|g" "$RUNNER_DST"
   else
     echo "       NOTE: dist/ not built — run 'npm run build'; loop's harness verdict needs it"
   fi
@@ -355,8 +364,14 @@ else
   echo "    Enable it with [loop].autoLoop = true in .spec-workflow/config.toml, then start (from the project root):"
 fi
 echo "      nohup bash .spec-workflow/spec-loop-run.sh <spec-name> >/dev/null 2>&1 &"
-echo "    Or just ask Claude to 'run the loop in the background'. Watch: .spec-workflow/loop-run.log"
-echo "    Stop: touch .spec-workflow/.loop-stop"
+echo "    Or just ask Claude to 'run the loop in the background', or Telegram /start <spec>."
+echo "    Watch: .spec-workflow/specs/<spec>/loop-run.log · Telegram /status <spec>"
+echo "    Stop:  $SWMCP_CMD stop <spec>   (or Telegram /stop <spec>)"
+echo ""
+echo "  Telegram control (replaces the old web dashboard, one daemon per machine):"
+echo "    1. @BotFather → /newbot  → token for the loop bot"
+echo "    2. printf 'TELEGRAM_BOT_TOKEN=...\nTELEGRAM_ALLOW_FROM=<your numeric id>\n' > ~/.spec-workflow/telegram.env && chmod 600 ~/.spec-workflow/telegram.env"
+echo "    3. nohup $SWMCP_CMD --telegram >/dev/null 2>&1 &     then DM the bot /help"
 echo ""
 echo "  Recommended: add to your shell profile:"
 echo "    export SPEC_WORKFLOW_HOME=$SPEC_WORKFLOW_HOME"

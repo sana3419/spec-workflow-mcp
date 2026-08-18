@@ -63,7 +63,7 @@ SH
 AUD(){ cat "$SC_DIR/.spec-workflow/loop-audit.log" 2>/dev/null; }
 TKS(){ cat "$SC_DIR/.spec-workflow/specs/s/tasks.md" 2>/dev/null; }
 JLOG(){ cat "$SC_DIR/.judgelog" 2>/dev/null; }
-RES(){ cat "$SC_DIR/.spec-workflow/spec-gate-result.json" 2>/dev/null; }
+RES(){ cat "$SC_DIR/.spec-workflow/specs/s/spec-gate-result.json" 2>/dev/null; }
 
 run_scenario A true "SPEC_VERDICT=pass"
 AUD | grep -q "SPEC-GATE pass (codex)" && JLOG | grep -q "codex:specgate" && TKS | grep -q '\[x\] 1' && RES | grep -q '"status": "pass"' \
@@ -71,7 +71,7 @@ AUD | grep -q "SPEC-GATE pass (codex)" && JLOG | grep -q "codex:specgate" && TKS
 
 run_scenario B true "SPEC_VERDICT=fail"
 AUD | grep -q "SPEC-GATE fail" && AUD | grep -q "ABORTED by spec gate" && TKS | grep -q '\[ \] 1' && ! AUD | grep -q "GREEN" \
-  && [ -f "$SC_DIR/.spec-workflow/.spec-gate-failed" ] && RES | grep -q '"status": "fail"' \
+  && [ -f "$SC_DIR/.spec-workflow/specs/s/.spec-gate-failed" ] && RES | grep -q '"status": "fail"' \
   && ok "B spec gate fail -> loop ABORTS before implementing (task untouched, marker + result)" || no "B"; rm -rf "$SC_DIR"
 
 run_scenario C true "SPEC_EMPTY=1"

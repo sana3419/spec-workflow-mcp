@@ -17,5 +17,5 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/dashboard_frontend/**"]
+  "exclude": ["node_modules", "dist"]
 }

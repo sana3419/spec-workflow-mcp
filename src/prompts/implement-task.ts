@@ -5,7 +5,7 @@ import { ToolContext } from '../types.js';
 const prompt: Prompt = {
   name: 'implement-task',
   title: 'Implement Specification Task',
-  description: 'Guide for implementing a specific task from the tasks.md document. Provides comprehensive instructions for task execution, including reading _Prompt fields, marking progress, completion criteria, and logging implementation details for the dashboard.',
+  description: 'Guide for implementing a specific task from the tasks.md document. Provides comprehensive instructions for task execution, including reading _Prompt fields, marking progress, completion criteria, and logging implementation details.',
   arguments: [
     {
       name: 'specName',
@@ -41,7 +41,6 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
 - Project: ${context.projectPath}
 - Feature: ${specName}
 ${taskId ? `- Task ID: ${taskId}` : ''}
-${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
 > **This is the MANUAL / interactive path.** Verification here is **self-reported by you** (verifiedBy: "agent") and is **NOT independent** — it carries none of the harness (L0) execution, tamper (L1), or cross-family-judge (L2) guarantees. It exists so a human can drive one task at a time. For independent verification, run the background loop (\`.spec-workflow/spec-loop-run.sh\`), where the harness runs the tests and a cross-family judge checks adequacy.
 

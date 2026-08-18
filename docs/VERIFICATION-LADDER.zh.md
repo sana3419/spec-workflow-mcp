@@ -33,7 +33,7 @@
 下游谁都抓不到的唯一洞:如果**验收标准本身**就模糊,agent 写出的代码和 `_Tests` 会忠实地验错东西,于是*每一道*门都绿(garbage-in)。
 
 - **`harden-spec` prompt**(人手动调,写 spec 阶段):对抗式自我批判——"如果我钻空子实现,哪里能让 requirements/`_Tests` 通过却偏离意图?"它标出不可观测的模糊需求、一个水测试就能满足的 `_Tests`、缺失的对抗/边界/安全需求、requirements↔tasks 缺口,然后**提议**硬化编辑给你审。它不改文件。
-- **pre-flight spec 门**(`specGate = true`):开工前,一个独立的**跨家族**审计员(`[engine].default` 的反家族)批判 spec。判 `fail` → 落 `spec-gate-result.json` + `.spec-gate-failed`,记 `SPEC-GATE fail`,循环**在碰任何任务之前中止**。无可读判据 / 反引擎不可用 → advisory pass(软的 pre-flight 不能因 infra 故障卡死所有活)。propose-only——门绝不改 spec;去跑 `harden-spec` 或手改,再重跑。
+- **pre-flight spec 门**(`specGate = true`):开工前,一个独立的**跨家族**审计员(`[engine].default` 的反家族)批判 spec。判 `fail` → 落 `specs/<spec>/spec-gate-result.json` + `.spec-gate-failed`,记 `SPEC-GATE fail`,循环**在碰任何任务之前中止**（若 `gateOnSpecGateFail = true`,人可在 Telegram 上 Approve 以*越过并继续*,记为 `overriddenBy: "gate"`,绝不算 pass;见 [TELEGRAM.zh.md](TELEGRAM.zh.md)）。无可读判据 / 反引擎不可用 → advisory pass(软的 pre-flight 不能因 infra 故障卡死所有活)。propose-only——门绝不改 spec;去跑 `harden-spec` 或手改,再重跑。
 
 ## L0 — 执行 ground truth
 
@@ -65,7 +65,7 @@ L0 证明 agent 的测试跑过;L1 阻止 agent 做局。所有检查都在循�
 
 - 失败时:一次**有界自动修复**(一遍 claude,喂入失败输出,禁止削弱测试),再重跑;超过 `integrationFixAttempts` 仍失败 → 报告并停。
 - build 绿后,若 `integrationJudge = true`,一个跨模块判官读 boot 输出 + 各任务 Implementation Log,找绿 build 抓不住的契约洞(API↔前端字段不匹配、中间件顺序、bootstrap/secret 要求)。判官明确 `fail` → 拦 + 触发有界修复;判官读不出 → **不**推翻通过的 build(ground-truth-first)。
-- 结果落 `integration-result.json`(失败再加 `.integration-failed` 标记),`incompleteBlocked` 标出任何 `[~]` 任务。
+- 结果落 `specs/<spec>/integration-result.json`(失败再加 `.integration-failed` 标记;`gateOnIntegrationFail = true` 时人可从 Telegram 批准**一轮**额外的有界修复,闸门永远不能把失败的构建翻成 pass),`incompleteBlocked` 标出任何 `[~]` 任务。
 
 ---
 

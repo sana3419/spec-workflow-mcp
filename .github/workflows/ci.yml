@@ -1,0 +1,20 @@
+name: ci
+on:
+  push:
+    branches: [main, v3-telegram]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: bash -n templates/spec-loop-run.sh && bash -n templates/init.sh
+      - run: for l in l1 l2 l3 l4 l5-gates; do bash scripts/test-loop-$l.sh; done

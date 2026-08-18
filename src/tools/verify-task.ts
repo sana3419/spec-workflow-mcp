@@ -123,7 +123,7 @@ export async function verifyTaskHandler(
         data: { signal: 'red', blocked: true, fixAttempts: result.fixAttempts },
         nextSteps: [
           'Task blocked - requires manual intervention',
-          'Drag task back to pending in dashboard to reset and retry'
+          'Reset the task with `spec-workflow-mcp reset <spec> --task <id>` (or Telegram /task <spec> <id> reset) to retry'
         ]
       };
     }

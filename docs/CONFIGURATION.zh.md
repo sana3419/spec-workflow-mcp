@@ -1,5 +1,7 @@
 # 配置指南
 
+> **v3 说明：** Web Dashboard（`--dashboard`、`--port`、`bindAddress`、`[security]`、dashboard session 文件）已移除，改为 Telegram 控制。下文仍描述 dashboard 的段落是上游遗留，已不适用；见 [TELEGRAM.zh.md](TELEGRAM.zh.md)。
+
 本指南涵盖 Spec Workflow MCP 的所有配置选项。
 
 ## 命令行选项
@@ -205,7 +207,7 @@ noProgressStop = 3       # 连续 N 轮 tasks.md / verify-results 无变化则�
 - **启动**(项目根目录):`nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &`
   ——或直接跟 Claude 说"在后台跑循环"。
 - **查看 / 停止**:`tail .spec-workflow/loop-run.log`(或 `spec-status` / dashboard);
-  停止用 `touch .spec-workflow/.loop-stop` 或 `kill "$(cat .spec-workflow/.loop-run.pid)"`。
+  停止用 `spec-workflow-mcp stop <spec>` 或 Telegram `/stop <spec>`；人工闸门（`gateOnSpecGateFail` / `gateOnIntegrationFail` / `gateEveryTasks` / `gateTimeoutMin`）见 [TELEGRAM.zh.md](TELEGRAM.zh.md)。
 
 #### 语言选项
 

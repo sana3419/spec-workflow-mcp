@@ -2,14 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as toml from 'toml';
 import { homedir } from 'os';
-import { isLocalhostAddress } from './core/security-utils.js';
 
 export interface SpecWorkflowConfig {
   projectDir?: string;
-  port?: number;
-  bindAddress?: string; // IP address to bind to (e.g., '127.0.0.1', '0.0.0.0')
-  allowExternalAccess?: boolean; // Explicit opt-in for non-localhost binding
-  dashboardOnly?: boolean;
   lang?: string;
 
   // Engine configuration for Codex dispatch
@@ -48,15 +43,6 @@ export interface SpecWorkflowConfig {
   };
 
   // Security features
-  security?: {
-    rateLimitEnabled?: boolean;
-    rateLimitPerMinute?: number;
-    auditLogEnabled?: boolean;
-    auditLogPath?: string;
-    auditLogRetentionDays?: number;
-    corsEnabled?: boolean;
-    allowedOrigins?: string[];
-  };
 }
 
 export interface ConfigLoadResult {
@@ -72,20 +58,7 @@ function expandTilde(filepath: string): string {
   return filepath;
 }
 
-function validatePort(port: number): boolean {
-  return Number.isInteger(port) && port >= 1024 && port <= 65535;
-}
-
 function validateConfig(config: any): { valid: boolean; error?: string } {
-  if (config.port !== undefined) {
-    if (!validatePort(config.port)) {
-      return { 
-        valid: false, 
-        error: `Invalid port: ${config.port}. Port must be between 1024 and 65535.` 
-      };
-    }
-  }
-
   if (config.projectDir !== undefined && typeof config.projectDir !== 'string') {
     return {
       valid: false,
@@ -93,40 +66,10 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     };
   }
 
-  if (config.dashboardOnly !== undefined && typeof config.dashboardOnly !== 'boolean') {
-    return { 
-      valid: false, 
-      error: `Invalid dashboardOnly: must be a boolean.` 
-    };
-  }
-
   if (config.lang !== undefined && typeof config.lang !== 'string') {
     return { 
       valid: false, 
       error: `Invalid lang: must be a string.` 
-    };
-  }
-
-  // Validate network configuration
-  if (config.bindAddress !== undefined && typeof config.bindAddress !== 'string') {
-    return {
-      valid: false,
-      error: `Invalid bindAddress: must be a valid IP address string.`
-    };
-  }
-
-  if (config.allowExternalAccess !== undefined && typeof config.allowExternalAccess !== 'boolean') {
-    return {
-      valid: false,
-      error: `Invalid allowExternalAccess: must be a boolean.`
-    };
-  }
-
-  // Network security validation: if binding to non-localhost address, require explicit allowExternalAccess
-  if (config.bindAddress !== undefined && !isLocalhostAddress(config.bindAddress) && !config.allowExternalAccess) {
-    return {
-      valid: false,
-      error: `Network security: binding to '${config.bindAddress}' (non-localhost) requires explicit allowExternalAccess = true. This exposes your dashboard to network access.`
     };
   }
 
@@ -196,25 +139,6 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     }
   }
 
-  // Validate security features
-  if (config.security !== undefined) {
-    const sec = config.security;
-
-    if (sec.rateLimitPerMinute !== undefined && (typeof sec.rateLimitPerMinute !== 'number' || sec.rateLimitPerMinute < 1)) {
-      return {
-        valid: false,
-        error: `Invalid security.rateLimitPerMinute: must be a positive number.`
-      };
-    }
-
-    if (sec.auditLogRetentionDays !== undefined && (typeof sec.auditLogRetentionDays !== 'number' || sec.auditLogRetentionDays < 1)) {
-      return {
-        valid: false,
-        error: `Invalid security.auditLogRetentionDays: must be a positive number.`
-      };
-    }
-  }
-
   return { valid: true };
 }
 
@@ -248,28 +172,9 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
       config.projectDir = expandTilde(parsedConfig.projectDir);
     }
     
-    if (parsedConfig.port !== undefined) {
-      config.port = parsedConfig.port;
-    }
-
-    if (parsedConfig.bindAddress !== undefined) {
-      config.bindAddress = parsedConfig.bindAddress;
-    }
-
-    if (parsedConfig.allowExternalAccess !== undefined) {
-      config.allowExternalAccess = parsedConfig.allowExternalAccess;
-    }
-
-    if (parsedConfig.dashboardOnly !== undefined) {
-      config.dashboardOnly = parsedConfig.dashboardOnly;
-    }
     
     if (parsedConfig.lang !== undefined) {
       config.lang = parsedConfig.lang;
-    }
-
-    if (parsedConfig.security !== undefined) {
-      config.security = parsedConfig.security;
     }
 
     if (parsedConfig.engine !== undefined) {

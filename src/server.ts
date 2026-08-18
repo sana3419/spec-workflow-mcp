@@ -13,7 +13,6 @@ import { registerPrompts, handlePromptList, handlePromptGet } from './prompts/in
 import { validateProjectPath } from './core/path-utils.js';
 import { WorkspaceInitializer } from './core/workspace-initializer.js';
 import { ProjectRegistry } from './core/project-registry.js';
-import { DashboardSessionManager } from './core/dashboard-session.js';
 import { ToolContext } from './types.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -80,18 +79,6 @@ export class SpecWorkflowMCPServer {
       });
       console.error(`Project registered: ${projectId}`);
 
-      // Try to get the dashboard URL from session manager
-      let dashboardUrl: string | undefined = undefined;
-      try {
-        const sessionManager = new DashboardSessionManager();
-        const dashboardSession = await sessionManager.getDashboardSession();
-        if (dashboardSession) {
-          dashboardUrl = dashboardSession.url;
-        }
-      } catch (error) {
-        // Dashboard not running, continue without it
-      }
-
       // Load engine config
       let engineConfig = {
         default: 'claude',
@@ -117,7 +104,6 @@ export class SpecWorkflowMCPServer {
       // Create context for tools
       const context = {
         projectPath: this.projectPath,
-        dashboardUrl: dashboardUrl,
         lang: this.lang,
         engineConfig
       };

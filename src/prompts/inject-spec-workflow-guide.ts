@@ -15,7 +15,6 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
   
   // Extract the guide content from the tool response
   const guide = toolResponse.data?.guide || '';
-  const dashboardUrl = toolResponse.data?.dashboardUrl;
   const nextSteps = toolResponse.nextSteps || [];
 
   const messages: PromptMessage[] = [
@@ -29,7 +28,7 @@ ${guide}
 
 **Current Context:**
 - Project: ${context.projectPath}
-${dashboardUrl ? `- Dashboard: ${dashboardUrl}` : '- Dashboard: Please start the dashboard or use VS Code extension "Spec Workflow MCP"'}
+- Monitoring: Telegram loop_bot (spec-workflow-mcp --telegram) or "spec-workflow-mcp status"
 
 **Next Steps:**
 ${nextSteps.map(step => `- ${step}`).join('\n')}

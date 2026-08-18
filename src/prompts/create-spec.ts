@@ -50,7 +50,6 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
 - Feature: ${specName}
 - Document type: ${documentType}
 ${description ? `- Description: ${description}` : ''}
-${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
 **Instructions:**
 1. First, read the template at: .spec-workflow/templates/${documentType}-template.md

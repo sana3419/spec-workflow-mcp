@@ -92,7 +92,7 @@ else
   echo "module.exports={add:(a,b)=>a-b,mul:(a,b)=>a*b}" > src/lib.js
   echo "const t=require(\"node:test\"),a=require(\"node:assert\");t(\"mul\",()=>{a.strictEqual(require(\"../src/lib\").mul(2,3),6)});" > tests/task2.test.js
 fi'
-AUD | grep -q "REGRESSION after task=2" && TKS | grep -q '\[x\] 2' && [ -f "$SC_DIR/.spec-workflow/.regression" ] \
+AUD | grep -q "REGRESSION after task=2" && TKS | grep -q '\[x\] 2' && [ -f "$SC_DIR/.spec-workflow/specs/s/.regression" ] \
   && ok "C cross-task regression flagged, task2 keeps green" || no "C"; rm -rf "$SC_DIR"
 
 run_scenario D 1 "$T1" 'echo "BLOCKER: external dependency missing"'
@@ -109,7 +109,7 @@ run_scenario F 1 "$T1" '
 echo "module.exports={add:(a,b)=>a+b}" > src/lib.js
 echo "const t=require(\"node:test\");t(\"trivial\",()=>{});" > tests/task1.test.js' nogit
 AUD | grep -q "TAMPER-GATE OFF" \
-  && [ -f "$SC_DIR/.spec-workflow/.tamper-gate-off" ] \
+  && [ -f "$SC_DIR/.spec-workflow/specs/s/.tamper-gate-off" ] \
   && grep -q '"tamperGate": "off"' "$SC_DIR/.spec-workflow/specs/s/verify-results/task-1.json" \
   && ok "F non-git: tamper undetectable BUT durably flagged (tamperGate:off + marker)" || no "F"; rm -rf "$SC_DIR"
 

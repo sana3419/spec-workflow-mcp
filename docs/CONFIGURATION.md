@@ -1,5 +1,7 @@
 # Configuration Guide
 
+> **v3 note:** the web dashboard (`--dashboard`, `--port`, `bindAddress`, `[security]`, dashboard session files) was removed in favour of Telegram control. Sections below that still describe the dashboard are upstream leftovers and no longer apply; see [TELEGRAM.md](TELEGRAM.md).
+
 This guide covers all configuration options for Spec Workflow MCP.
 
 ## Command-Line Options
@@ -15,9 +17,9 @@ npx -y spec-workflow-mcp@latest [project-path] [options]
 | Option | Description | Example |
 |--------|-------------|---------|
 | `--help` | Show comprehensive usage information | `npx -y spec-workflow-mcp@latest --help` |
-| `--dashboard` | Run dashboard-only mode (default port: 5000) | `npx -y spec-workflow-mcp@latest --dashboard` |
-| `--port <number>` | Specify custom dashboard port (1024-65535) | `npx -y spec-workflow-mcp@latest --dashboard --port 8080` |
-| `--no-open` | Don't auto-open browser when starting dashboard | `npx -y spec-workflow-mcp@latest --dashboard --no-open` |
+| `--telegram` | Run the Telegram loop_bot daemon (one per machine) — see [TELEGRAM.md](TELEGRAM.md) | `spec-workflow-mcp --telegram` |
+| `--telegram-once` | One watcher tick (pushes + gate cards) then exit | `spec-workflow-mcp --telegram-once` |
+| `status`, `stop`, `reset`, `set-status`, `cleanup` | Human/loop subcommands (see `--help`) | `spec-workflow-mcp stop auth` |
 | `--no-shared-worktree-specs` | Disable shared `.spec-workflow` in git worktrees (use workspace-local instead) | `npx -y spec-workflow-mcp@latest ~/worktree --no-shared-worktree-specs` |
 
 ### Important Notes
@@ -290,6 +292,10 @@ interactive session stays free to chat and check progress.
 | `autoLoop` | boolean | `true`, `false` | `false` | Master on/off. The runner refuses to run unless this is `true`. Opt-in. |
 | `maxIterations` | number | ≥ 1 | `50` | Hard cap on loop iterations; the primary safety valve that guarantees the loop terminates. |
 | `noProgressStop` | number | ≥ 1 | `3` | Stop the loop after this many consecutive iterations with no change to `tasks.md` or the verify-results, to avoid spinning on a stuck task. |
+| `gateOnSpecGateFail` | boolean | | `false` | L3 spec gate failed → ask a human on Telegram; approve = override-and-proceed (audited), reject/timeout = stop. |
+| `gateOnIntegrationFail` | boolean | | `false` | L4 integration failed → approve = one more bounded fix round; never flips the result to pass. |
+| `gateEveryTasks` | number | ≥ 0 | `0` | > 0: pause for a human checkpoint after every N green tasks. |
+| `gateTimeoutMin` | number | ≥ 1 | `60` | Minutes to wait for a gate decision before treating it as reject. |
 
 #### How These Are Generated and Used
 
@@ -299,8 +305,10 @@ interactive session stays free to chat and check progress.
   `--auto-loop` to `init.sh`, or just ask Claude to enable it.
 - **Starting** (from the project root): `nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &`
   — or ask Claude to "run the loop in the background".
-- **Watching / stopping**: tail `.spec-workflow/loop-run.log` (or use `spec-status` / the dashboard);
-  stop with `touch .spec-workflow/.loop-stop` or `kill "$(cat .spec-workflow/.loop-run.pid)"`.
+- **Watching / stopping**: Telegram `/status <spec>`, tail `.spec-workflow/specs/<spec>/loop-run.log`, or
+  `spec-workflow-mcp status <spec>`; stop with `spec-workflow-mcp stop <spec>` / Telegram `/stop <spec>`.
+- **Human gates** (`gateOnSpecGateFail`, `gateOnIntegrationFail`, `gateEveryTasks`, `gateTimeoutMin`):
+  pause for an Approve/Reject on Telegram — see [TELEGRAM.md](TELEGRAM.md).
 
 #### Language Options
 

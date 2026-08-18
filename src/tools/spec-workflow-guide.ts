@@ -19,25 +19,21 @@ Call this tool FIRST when users request spec creation, feature development, or m
 };
 
 export async function specWorkflowGuideHandler(args: any, context: ToolContext): Promise<ToolResponse> {
-  // Dashboard URL is populated from registry in server.ts
-  const dashboardMessage = context.dashboardUrl ?
-    `Monitor progress on dashboard: ${context.dashboardUrl}` :
-    'Please start the dashboard with: spec-workflow-mcp --dashboard';
+  const monitorMessage = 'Monitor progress via Telegram (spec-workflow-mcp --telegram, /status <spec>) or `spec-workflow-mcp status <spec>`';
 
   return {
     success: true,
     message: 'Complete spec workflow guide loaded - follow this workflow exactly',
     data: {
       guide: getSpecWorkflowGuide(),
-      dashboardUrl: context.dashboardUrl,
-      dashboardAvailable: !!context.dashboardUrl
+      monitor: 'telegram'
     },
     nextSteps: [
       'Follow sequence: Requirements → Design → Tasks → Implementation',
       'Read templates from .spec-workflow/templates/ with the Read tool first',
       'Present each document to the user and get their approval in chat',
       'Use MCP tools only',
-      dashboardMessage
+      monitorMessage
     ]
   };
 }
@@ -265,7 +261,7 @@ Before implementing, optionally run **harden-spec** (Specification Self-Correcti
 
 - **Background runner (optional, hands-off)**: \`.spec-workflow/spec-loop-run.sh <spec>\` (requires \`[loop].autoLoop = true\` in config.toml). If \`[loop].specGate = true\`, the runner first has a **cross-family auditor** check the spec is sound enough to implement autonomously — if it would let wrong-but-green outcomes through, the loop refuses to start and reports (it does not rewrite the spec; run harden-spec). It launches a SEPARATE headless \`claude\` per task and drives the spec to completion, so the **interactive session stays free** to chat / check progress. Here the **harness owns verification**: the per-task agent only implements + writes the task's \`_Tests\`; the script runs those tests, records the verdict from the exit code, and marks \`[x]\`/\`[~]\` — the agent does NOT call verify-task or edit markers. If \`[loop].judge = true\`, each harness-green task then gets a **cross-family adequacy judge** (codex judges claude's work and vice versa; \`_Verify: panel\` adds the security/logic reviewers) that checks whether the tests are actually adequate — an inadequate verdict reopens the task to strengthen the tests (bounded by \`judgeMaxAttempts\`). Finally, if \`[loop].integrationCommand\` is set, once the whole spec is DONE the loop runs an **integration terminal gate** — the real build + boot smoke of the assembled system (the \`tsc\`/whole build that per-task verification skips), with a bounded auto-fix on failure and an optional cross-module judge (\`integrationJudge\`); the result is recorded in \`integration-result.json\`. Start it in the background:
   \`nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &\`
-  Watch \`.spec-workflow/loop-run.log\`; stop with \`touch .spec-workflow/.loop-stop\` (or kill the PID in \`.spec-workflow/.loop-run.pid\`). Guardrails: \`maxIterations\` + \`noProgressStop\` (config \`[loop]\`); audit in \`.spec-workflow/loop-audit.log\`.
+  Watch \`.spec-workflow/specs/<spec>/loop-run.log\` or Telegram \`/status <spec>\`; stop with \`spec-workflow-mcp stop <spec>\` (Telegram \`/stop <spec>\`). Human checkpoints (\`gateOnSpecGateFail\` / \`gateOnIntegrationFail\` / \`gateEveryTasks\`) pause the loop and post an Approve/Reject card on Telegram. Guardrails: \`maxIterations\` + \`noProgressStop\` (config \`[loop]\`); audit in \`.spec-workflow/loop-audit.log\`.
 
 **When the user asks to "run/start the loop"**: launch the background runner with \`nohup … &\` (set \`[loop].autoLoop = true\` first if needed), report the PID, and keep chatting — do NOT loop in this interactive session yourself. Each background iteration is autonomous: do NOT pause to ask the user; if a task genuinely needs a human decision, mark it \`[~]\` blocked with a reason and move on.
 

@@ -20,6 +20,8 @@ Ordered by the failure they catch, from "the spec is wrong" down to "the parts d
 | **L2** Adequacy judge | Tests pass but are trivial / miss intent | **Opposite-engine** judge (codex↔claude) scores test adequacy | `judge` · `_Verify: panel` |
 | **L4** Integration gate | Every part green, the assembled system won't build/boot | Real build+boot once at DONE; bounded auto-fix; optional cross-module judge | `integrationCommand` |
 
+Red verdicts also carry a harness-authored `failureClass` (`test-fail | build-fail | env | timeout`) in `verify-results/`, and every human intervention (Telegram gate decisions, manual task-state changes via `verify-core.setTaskStatus`) is journaled next to the harness verdicts.
+
 Two principles run through all of it:
 - **Execution ground truth comes first.** An LLM judge is always a *second* gate behind a deterministic exit code — never the sole arbiter (LLM judges are not uniformly reliable). A soft layer that produces no readable verdict degrades to advisory, never to a hard block on good work.
 - **The human owns the spec.** Nothing auto-rewrites `requirements.md`/`tasks.md`. L3 proposes; the human approves.
@@ -31,7 +33,7 @@ Two principles run through all of it:
 The one hole nothing downstream can catch: if the **acceptance criteria themselves** are vague, the agent writes code and `_Tests` that faithfully verify the wrong thing and *every* gate goes green (garbage-in).
 
 - **`harden-spec` prompt** (human-invoked, during authoring): an adversarial self-critique — "if I implemented this to my own advantage, where could I satisfy the requirements/`_Tests` while missing intent?" It flags vague non-observable requirements, `_Tests` a trivial test would satisfy, missing adversarial/edge/security requirements, and requirements↔tasks gaps, then **proposes** hardening edits for you to approve. It does not edit files.
-- **Pre-flight spec gate** (`specGate = true`): before implementing, an independent **cross-family** auditor (opposite of `[engine].default`) critiques the spec. On `fail` it writes `spec-gate-result.json` + `.spec-gate-failed`, logs `SPEC-GATE fail`, and the loop **aborts before touching any task**. No readable verdict / opposite engine unavailable → advisory pass (a soft pre-flight must not block all work on infra failure). Propose-only — the gate never edits the spec; run `harden-spec` or fix by hand, then re-run.
+- **Pre-flight spec gate** (`specGate = true`): before implementing, an independent **cross-family** auditor (opposite of `[engine].default`) critiques the spec. On `fail` it writes `specs/<spec>/spec-gate-result.json` + `.spec-gate-failed`, logs `SPEC-GATE fail`, and the loop **aborts before touching any task** — unless `gateOnSpecGateFail = true`, in which case a human can Approve on Telegram to *override-and-proceed* (recorded as `overriddenBy: "gate"`, never as a pass; see [TELEGRAM.md](TELEGRAM.md)). No readable verdict / opposite engine unavailable → advisory pass (a soft pre-flight must not block all work on infra failure). Propose-only — the gate never edits the spec; run `harden-spec` or fix by hand, then re-run.
 
 ## L0 — Execution ground truth
 
@@ -63,7 +65,7 @@ Per-task green ≠ the assembled system works. Once the spec reaches **DONE** (a
 
 - On failure: a **bounded auto-fix** (one claude pass keyed on the failure output, forbidden from weakening tests), then re-run; still failing after `integrationFixAttempts` → report and stop.
 - On a green build, if `integrationJudge = true`, a cross-module judge reads the boot output + every task's Implementation Log for contract holes a green build can't catch (API↔frontend field mismatches, middleware order, bootstrap/secret requirements). An explicit judge `fail` gates and triggers a bounded fix; an unreadable judge does **not** override the passing build (ground-truth-first).
-- Result is recorded durably in `integration-result.json` (+ `.integration-failed` marker on fail), with `incompleteBlocked` flagging any `[~]` tasks.
+- Result is recorded durably in `specs/<spec>/integration-result.json` (+ `.integration-failed` marker on fail), with `incompleteBlocked` flagging any `[~]` tasks. With `gateOnIntegrationFail = true` a human may approve **one** extra bounded fix round from Telegram; a gate can never turn a failed build into a pass.
 
 ---
 
@@ -108,7 +110,7 @@ Each layer is independent. A reasonable adoption order: `testCommand` (L0/L1, th
 
 ## How it's verified
 
-Each loop layer has a deterministic harness that installs fake `claude`/`codex` shims (the shim is the adversary, since real models can't be reliably made to misbehave) and runs the **real** `spec-loop-run.sh`, asserting on the audit log + task state. The shims validate the **gate logic**; real engines were validated separately on the happy path and on real adversarial inputs.
+Each loop layer has a deterministic harness (`scripts/test-loop-l1..l4.sh`, plus `test-loop-l5-gates.sh` for remote gates / stop / run-state) that installs fake `claude`/`codex` shims (the shim is the adversary, since real models can't be reliably made to misbehave) and runs the **real** `spec-loop-run.sh`, asserting on the audit log + task state. The shims validate the **gate logic**; real engines were validated separately on the happy path and on real adversarial inputs.
 
 | Suite | Command | Covers |
 |---|---|---|

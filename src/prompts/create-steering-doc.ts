@@ -43,7 +43,6 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
 - Project: ${context.projectPath}
 - Steering document type: ${docType}
 ${scope ? `- Scope: ${scope}` : ''}
-${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
 **Instructions:**
 1. First, read the template at: .spec-workflow/templates/${docType}-template.md

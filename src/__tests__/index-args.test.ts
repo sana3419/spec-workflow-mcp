@@ -41,15 +41,19 @@ describe('index argument parsing (worktree/shared root)', () => {
     expect(mockedResolveGitRoot).toHaveBeenCalledWith('/tmp/specwf-wt-b');
   });
 
-  it('accepts --no-shared-worktree-specs in dashboard mode without treating it as project path', () => {
-    mockedResolveGitWorkspaceRoot.mockReturnValue('/tmp/specwf-wt-dashboard');
+  it('accepts --no-shared-worktree-specs in telegram mode without treating it as project path', () => {
+    mockedResolveGitWorkspaceRoot.mockReturnValue('/tmp/specwf-wt-telegram');
 
-    const parsed = parseArguments(['--dashboard', '--port', '6001', '--no-shared-worktree-specs']);
+    const parsed = parseArguments(['--telegram', '--no-shared-worktree-specs']);
 
-    expect(parsed.isDashboardMode).toBe(true);
-    expect(parsed.port).toBe(6001);
+    expect(parsed.isTelegramMode).toBe(true);
     expect(parsed.noSharedWorktreeSpecs).toBe(true);
-    expect(parsed.workspacePath).toBe('/tmp/specwf-wt-dashboard');
-    expect(parsed.workflowRootPath).toBe('/tmp/specwf-wt-dashboard');
+    expect(parsed.workspacePath).toBe('/tmp/specwf-wt-telegram');
+    expect(parsed.workflowRootPath).toBe('/tmp/specwf-wt-telegram');
+  });
+
+  it('rejects the removed dashboard flags', () => {
+    expect(() => parseArguments(['--dashboard'])).toThrow(/Unknown option: --dashboard/);
+    expect(() => parseArguments(['--port', '5000'])).toThrow(/Unknown option: --port/);
   });
 });

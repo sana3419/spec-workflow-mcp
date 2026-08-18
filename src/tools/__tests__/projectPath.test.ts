@@ -5,8 +5,7 @@ import { ToolContext } from '../../types.js';
 
 describe('Tool projectPath fallback behavior', () => {
   const mockContext: ToolContext = {
-    projectPath: '/test/project/from/context',
-    dashboardUrl: 'http://localhost:5000'
+    projectPath: '/test/project/from/context'
   };
 
   describe('spec-status tool', () => {

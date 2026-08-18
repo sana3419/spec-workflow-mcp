@@ -168,7 +168,6 @@ export async function specStatusHandler(args: any, context: ToolContext): Promis
         projectPath,
         workflowRoot: PathUtils.getWorkflowRoot(translatedPath),
         currentPhase,
-        dashboardUrl: context.dashboardUrl
       }
     };
 

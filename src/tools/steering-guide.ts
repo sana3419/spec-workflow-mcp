@@ -24,14 +24,13 @@ export async function steeringGuideHandler(args: any, context: ToolContext): Pro
     message: 'Steering workflow guide loaded - follow this workflow exactly to avoid errors',
     data: {
       guide: getSteeringGuide(),
-      dashboardUrl: context.dashboardUrl
     },
     nextSteps: [
       'Only proceed if user requested steering docs',
       'Create product.md first',
       'Then tech.md and structure.md',
       'Reference in future specs',
-      context.dashboardUrl ? `Dashboard: ${context.dashboardUrl}` : 'Start the dashboard with: spec-workflow-mcp --dashboard'
+'Progress and gates are reported through the Telegram loop_bot (spec-workflow-mcp --telegram) or `spec-workflow-mcp status`'
     ]
   };
 }

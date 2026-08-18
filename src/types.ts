@@ -16,24 +16,8 @@ export interface AutomationJob {
   createdAt: string; // ISO timestamp
 }
 
-export interface SecurityConfig {
-  // Rate limiting configuration
-  rateLimitEnabled: boolean;
-  rateLimitPerMinute: number; // Requests per minute per client
-  
-  // Audit logging configuration
-  auditLogEnabled: boolean;
-  auditLogPath?: string; // Path for audit logs
-  auditLogRetentionDays: number;
-  
-  // CORS configuration
-  corsEnabled: boolean;
-  allowedOrigins: string[]; // List of allowed origins for CORS
-}
-
 export interface GlobalSettings {
   automationJobs: AutomationJob[];
-  security?: SecurityConfig; // Optional for backwards compatibility
   createdAt?: string;
   lastModified?: string;
 }
@@ -69,7 +53,6 @@ export interface EngineConfig {
 
 export interface ToolContext {
   projectPath: string;
-  dashboardUrl?: string; // Optional for backwards compatibility
   lang?: string; // Language code for i18n (e.g., 'en', 'ja')
   engineConfig?: EngineConfig;
 }
@@ -231,7 +214,6 @@ export interface ToolResponse {
     workflowRoot: string;
     specName?: string;
     currentPhase?: string;
-    dashboardUrl?: string; // Optional for backwards compatibility
   };
 }
 

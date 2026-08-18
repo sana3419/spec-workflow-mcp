@@ -55,7 +55,7 @@ Per task — verify→fix closed loop:
 ```bash
 nohup bash .spec-workflow/spec-loop-run.sh <spec> >/dev/null 2>&1 &   # needs [loop].autoLoop = true
 ```
-Watch `.spec-workflow/loop-run.log` (or `spec-status` / dashboard). Stop: `touch .spec-workflow/.loop-stop`. Guardrails: `maxIterations` + `noProgressStop` (config `[loop]`), audit in `.spec-workflow/loop-audit.log`. **When the user says "run the loop", launch this background runner and keep chatting — do NOT loop in this session yourself.**
+Watch `.spec-workflow/specs/<spec>/loop-run.log`, `spec-status`, or Telegram `/status <spec>`. Stop: `spec-workflow-mcp stop <spec>` (Telegram `/stop <spec>`) — never edit `.run/` files by hand. Guardrails: `maxIterations` + `noProgressStop` (config `[loop]`), audit in `.spec-workflow/loop-audit.log`. **When the user says "run the loop", launch this background runner and keep chatting — do NOT loop in this session yourself.**
 
 ### Research Report phase (optional)
 1. Claude writes Markdown report → `docs/report/report.md`

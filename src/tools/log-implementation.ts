@@ -44,7 +44,7 @@ Example:
   "purpose": "Retrieve implementation logs with optional filtering",
   "requestFormat": "Query params: taskId (string, optional), search (string, optional)",
   "responseFormat": "{ entries: ImplementationLogEntry[] }",
-  "location": "src/dashboard/server.ts:245"
+  "location": "src/api/server.ts:245"
 }
 \`\`\`
 
@@ -62,7 +62,7 @@ Example:
 {
   "name": "LogsPage",
   "type": "React",
-  "purpose": "Main dashboard page for viewing implementation logs with search and filtering",
+  "purpose": "Main page for viewing implementation logs with search and filtering",
   "location": "src/modules/pages/LogsPage.tsx",
   "props": "{ specs: any[], selectedSpec: string, onSelect: (value: string) => void }",
   "exports": ["LogsPage (default)"]
@@ -126,12 +126,12 @@ Example:
 
 # GOOD EXAMPLE (Include ALL relevant artifacts)
 
-Task: "Implemented logs dashboard with real-time updates"
+Task: "Implemented logs page with real-time updates"
 
 \`\`\`json
 {
   "taskId": "2.3",
-  "summary": "Implemented real-time implementation logs dashboard with filtering, search, and WebSocket updates",
+  "summary": "Implemented real-time implementation logs page with filtering, search, and WebSocket updates",
   "artifacts": {
     "apiEndpoints": [
       {
@@ -140,14 +140,14 @@ Task: "Implemented logs dashboard with real-time updates"
         "purpose": "Retrieve implementation logs with optional filtering",
         "requestFormat": "Query params: taskId (string, optional), search (string, optional)",
         "responseFormat": "{ entries: ImplementationLogEntry[] }",
-        "location": "src/dashboard/server.ts:245"
+        "location": "src/api/server.ts:245"
       }
     ],
     "components": [
       {
         "name": "LogsPage",
         "type": "React",
-        "purpose": "Main dashboard page for viewing implementation logs with search and filtering",
+        "purpose": "Main page for viewing implementation logs with search and filtering",
         "location": "src/modules/pages/LogsPage.tsx",
         "props": "None (uses React Router params)",
         "exports": ["LogsPage (default)"]
@@ -171,7 +171,7 @@ Task: "Implemented logs dashboard with real-time updates"
       }
     ]
   },
-  "filesModified": ["src/dashboard/server.ts"],
+  "filesModified": ["src/api/server.ts"],
   "filesCreated": ["src/modules/pages/LogsPage.tsx"],
   "statistics": { "linesAdded": 650, "linesRemoved": 15, "filesChanged": 2 }
 }
@@ -394,18 +394,16 @@ export async function logImplementationHandler(
         entryId: createdEntry.id,
         entry: createdEntry,
         taskStats,
-        dashboardUrl: `${context.dashboardUrl}/logs?spec=${encodeURIComponent(specName)}&task=${taskId}`
       },
       nextSteps: [
         'Mark task as completed in tasks.md by changing [-] to [x]',
-        'View implementation log in dashboard under Logs tab',
+        'View implementation logs via Telegram /logs <spec> or the Implementation Logs folder',
         'Continue with next pending task'
       ],
       projectContext: {
         projectPath,
         workflowRoot: PathUtils.getWorkflowRoot(projectPath),
         specName,
-        dashboardUrl: context.dashboardUrl
       }
     };
   } catch (error) {
@@ -416,7 +414,7 @@ export async function logImplementationHandler(
       nextSteps: [
         'Verify all required parameters are provided',
         'Check that the spec and task exist',
-        'View dashboard logs to see previous entries'
+        'Use Telegram /logs <spec> to see previous entries'
       ]
     };
   }

@@ -73,7 +73,7 @@ SH
   SC_DIR="$T"
 }
 AUD(){ cat "$SC_DIR/.spec-workflow/loop-audit.log" 2>/dev/null; }
-RES(){ cat "$SC_DIR/.spec-workflow/integration-result.json" 2>/dev/null; }
+RES(){ cat "$SC_DIR/.spec-workflow/specs/s/integration-result.json" 2>/dev/null; }
 TKS(){ cat "$SC_DIR/.spec-workflow/specs/s/tasks.md" 2>/dev/null; }
 
 T1='- [ ] 1. t1
@@ -96,7 +96,7 @@ AUD | grep -q "auto-fix 1/1" && AUD | grep -q "INTEGRATION pass" && RES | grep -
   && ok "B integration fails -> bounded auto-fix repairs -> pass (attempts=1)" || no "B"; rm -rf "$SC_DIR"
 
 run_scenario C 1 1 false true "$T1" "INTEG_MODE=needfix INTEG_FIXABLE=0"
-AUD | grep -q "INTEGRATION fail" && [ -f "$SC_DIR/.spec-workflow/.integration-failed" ] && RES | grep -q '"status": "fail"' \
+AUD | grep -q "INTEGRATION fail" && [ -f "$SC_DIR/.spec-workflow/specs/s/.integration-failed" ] && RES | grep -q '"status": "fail"' \
   && ok "C integration fails + fix exhausted -> INTEGRATION fail + marker" || no "C"; rm -rf "$SC_DIR"
 
 run_scenario D 1 1 true true "$T1" "INTEG_MODE=pass INTEG_JUDGE_VERDICT=fail"
@@ -104,11 +104,11 @@ AUD | grep -q "INTEGRATION judge fail" && RES | grep -q '"judgeVerdict": "fail"'
   && ok "D build green + cross-module judge FAIL -> status fail (cross-family codex judge ran)" || no "D"; rm -rf "$SC_DIR"
 
 run_scenario E 1 1 false true "$T2" "INTEG_MODE=pass"
-! AUD | grep -q "INTEGRATION" && [ ! -f "$SC_DIR/.spec-workflow/integration-result.json" ] && AUD | grep -q "maxIterations" \
+! AUD | grep -q "INTEGRATION" && [ ! -f "$SC_DIR/.spec-workflow/specs/s/integration-result.json" ] && AUD | grep -q "maxIterations" \
   && ok "E not DONE (maxIterations, task remains) -> integration NOT run" || no "E"; rm -rf "$SC_DIR"
 
 run_scenario F 1 1 false false "$T1" "INTEG_MODE=pass"
-! AUD | grep -q "INTEGRATION" && [ ! -f "$SC_DIR/.spec-workflow/integration-result.json" ] \
+! AUD | grep -q "INTEGRATION" && [ ! -f "$SC_DIR/.spec-workflow/specs/s/integration-result.json" ] \
   && ok "F no integrationCommand -> no integration stage" || no "F"; rm -rf "$SC_DIR"
 
 echo ""

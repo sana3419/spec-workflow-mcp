@@ -37,7 +37,6 @@ async function handler(args: Record<string, any>, context: ToolContext): Promise
 - Project: ${context.projectPath}
 ${specName ? `- Feature: ${specName}` : '- Scope: All specifications'}
 - Detail level: ${detailLevel}
-${context.dashboardUrl ? `- Dashboard: ${context.dashboardUrl}` : ''}
 
 **Instructions:**
 ${specName ? 
