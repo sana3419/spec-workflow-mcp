@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash
 tier: 1
 tags: ['compat']
 triggers:
-  paths: ['**/api/**', '**/public/**', '**/openapi*', '**/*.proto', '**/schema*', '**/config*', '**/cli*', '**/bin/**', '**/index.ts', '**/index.js']
+  paths: ['**/api/**', '**/public/**', '**/openapi*', '**/*.proto', '**/schema/**', '**/*.schema.*', '**/config/**', '**/*.config.*', '**/cli.*', '**/cli/**', '**/bin/**', '**/index.ts', '**/index.js']
   content: ['\bexport (default |const |function |class |interface |type )', '\bdeprecated\b', '\bversion\b', '\bBREAKING\b']
 ---
 You are a compatibility gatekeeper. Review ONLY through this lens; be concrete and evidence-based.

@@ -46,7 +46,7 @@ body`);
 
   it('every shipped agent has valid frontmatter, output contract and unique name', async () => {
     const { agents } = await loadAgents('/nonexistent-project', TEMPLATES);
-    expect(agents.length).toBeGreaterThanOrEqual(18);
+    expect(agents.length).toBeGreaterThanOrEqual(38);
     const names = new Set<string>();
     for (const a of agents) {
       expect(names.has(a.name)).toBe(false); names.add(a.name);

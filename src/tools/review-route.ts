@@ -27,7 +27,7 @@ Call this BEFORE launching review subagents (the /review skill does). Routing re
       skip: { type: 'array', items: { type: 'string' } },
       tags: { type: 'array', items: { type: 'string' }, description: "Tags from the task's _Review: field, e.g. ['security','concurrency']" },
       full: { type: 'boolean', description: 'Select everything that triggers; ignore maxAgents' },
-      maxAgents: { type: 'number', description: 'Cap (default 8 or review.config.json maxAgents)' },
+      maxAgents: { type: 'number', description: 'Cap (default 10 or review.config.json maxAgents)' },
     },
   },
   annotations: { title: 'Review Route', readOnlyHint: true },

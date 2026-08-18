@@ -189,7 +189,7 @@ Human-only CLI equivalents: `spec-workflow-mcp status|stop|reset|set-status|clea
 
 ## Reviewer agents (auto-installed to .claude/agents/) — routed on demand
 
-18 read-only review lenses, each a short house-format agent (BLOCK/WARN/PASSED contract, `tier` /
+38 read-only review lenses, each a short house-format agent (BLOCK/WARN/PASSED contract, `tier` /
 `tags` / `triggers` frontmatter). `/review` calls the `review-route` MCP tool first, which picks the set
 **deterministically** from the agents' own frontmatter + the project profile + the diff, with a reason per
 agent — no LLM guessing, same diff → same set.
@@ -197,10 +197,16 @@ agent — no LLM guessing, same diff → same set.
 | Tier | Agents | When |
 |------|--------|------|
 | 0 · always | security · logic · performance · api · **test-adequacy-judge** (the L2 rubric) · **spec-drift-detector** | every review |
-| 1 · triggered | concurrency · error-handling · data-migration · backward-compat · dependency-license · config-secrets · observability · i18n · accessibility · ux-copy · cost · architecture | changed path matches (`**/migrations/**`, `package.json`, `*.tsx`…), an added diff line matches (`ALTER TABLE`, `await`, `process.env`…), or the project profile says so (LLM SDK → cost, UI → a11y) |
+| 1 · cross-cutting | concurrency · error-handling · data-migration · backward-compat · dependency-license · config-secrets · observability · i18n · accessibility · ux-copy · cost · architecture | changed path matches (`**/migrations/**`, `package.json`, `*.tsx`…), an added diff line matches (`ALTER TABLE`, `await`, `process.env`…), or the project profile says so (LLM SDK → cost, UI → a11y) |
+| 2 · spec phase | spec-hardener (L3 rubric) · requirements-analyst · assumption-mapper · plan-risk-reviewer · acceptance-criteria-judge | `.spec-workflow/specs/**/*.md` changed |
+| 3 · language / stack | typescript · python · go · rust · react · node-backend · sql · shell-script · mobile | project language / file extensions |
+| 4 · infra | iac · cicd · deployment-safety | Dockerfile / k8s / terraform / workflows / deploy files |
+| 5 · LLM apps | prompt-injection · prompt-quality · llm-eval | LLM SDK in deps or prompt/tool-call code in the diff |
+
+38 agents total; a typical diff routes 8–10.
 
 Overrides: `/review --agents a,b` (exact) · `--add/--skip` · `--full` (no cap) · tasks.md `_Review: security, concurrency`
-· `.spec-workflow/review.config.json` (`always` / `never` / `maxAgents`, default 8). Dry run:
+· `.spec-workflow/review.config.json` (`always` / `never` / `maxAgents`, default 10). Dry run:
 `spec-workflow-mcp route --base HEAD~1` prints the selection and reasons. The loop's `_Verify: panel` reuses
 the same routing for its extra lenses (the cross-family judge remains the anchor).
 

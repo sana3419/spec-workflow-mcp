@@ -15,7 +15,7 @@ agents to launch **with a reason each**. Defaults: Tier 0 always (`security-revi
 `logic-reviewer`, `performance-reviewer`, `api-reviewer`, `test-adequacy-judge`, `spec-drift-detector`);
 Tier 1 lenses (concurrency, error-handling, data-migration, backward-compat, dependency-license,
 config-secrets, observability, i18n, accessibility, ux-copy, cost, architecture) when a changed path or an
-added diff line matches their triggers; cap 8.
+added diff line matches their triggers; Tier 2 (spec docs), Tier 3 (language/stack), Tier 4 (infra), Tier 5 (LLM apps) likewise; cap 10.
 
 Map what the user said onto the tool arguments:
 - "review" / "全面审查"                → `{}` (working-tree diff) or `{ base: "HEAD~1" }` for the last commit

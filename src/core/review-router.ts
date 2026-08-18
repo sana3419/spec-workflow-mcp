@@ -257,7 +257,7 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
   const { agents, dir } = await loadAgents(input.projectPath, fallbackAgentsDir);
   const known = new Map(agents.map(a => [a.name, a]));
   const cfg = await loadReviewConfig(input.projectPath);
-  const maxAgents = input.full ? Infinity : (input.maxAgents ?? cfg.maxAgents ?? 8);
+  const maxAgents = input.full ? Infinity : (input.maxAgents ?? cfg.maxAgents ?? 10);
   const profile = await detectProfile(input.projectPath);
 
   let changedFiles = input.changedFiles;
