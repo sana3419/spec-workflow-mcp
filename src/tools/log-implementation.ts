@@ -331,10 +331,9 @@ export async function logImplementationHandler(
     }
 
     // Translate path at tool entry point (components expect pre-translated paths)
-    const translatedPath = PathUtils.translatePath(projectPath);
 
     // Validate task exists
-    const specTasksPath = PathUtils.getSpecPath(translatedPath, specName);
+    const specTasksPath = PathUtils.getSpecPath(projectPath, specName);
     const tasksFile = `${specTasksPath}/tasks.md`;
 
     try {

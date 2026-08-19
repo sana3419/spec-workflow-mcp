@@ -288,7 +288,7 @@ const LANG_EXT: Record<string, RegExp> = {
 
 export async function loadReviewConfig(projectPath: string): Promise<ReviewConfig> {
   try {
-    return JSON.parse(await fs.readFile(join(PathUtils.getWorkflowRoot(PathUtils.translatePath(projectPath)), 'review.config.json'), 'utf-8'));
+    return JSON.parse(await fs.readFile(join(PathUtils.getWorkflowRoot(projectPath), 'review.config.json'), 'utf-8'));
   } catch { return {}; }
 }
 

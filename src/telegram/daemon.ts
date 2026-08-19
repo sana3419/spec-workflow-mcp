@@ -119,7 +119,7 @@ class Daemon {
     } catch (e) { this.log(`registry read failed: ${(e as Error).message}`); }
     const alive: string[] = [];
     for (const p of found) {
-      try { await fs.access(PathUtils.getWorkflowRoot(PathUtils.translatePath(p))); alive.push(p); } catch { /* not a spec-workflow project (yet) */ }
+      try { await fs.access(PathUtils.getWorkflowRoot(p)); alive.push(p); } catch { /* not a spec-workflow project (yet) */ }
     }
     this.projects = alive.sort();
     this.lastDiscover = Date.now();
@@ -337,7 +337,7 @@ class Daemon {
     // tasks.md on every refresh just to throw the parse away.
     let names: string[];
     try {
-      const root = PathUtils.getSpecPath(PathUtils.translatePath(project), '');
+      const root = PathUtils.getSpecPath(project, '');
       names = (await fs.readdir(root, { withFileTypes: true }))
         .filter(e => e.isDirectory())
         .map(e => e.name)

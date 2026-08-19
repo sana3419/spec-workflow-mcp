@@ -98,7 +98,7 @@ function resolveProjectRef(ctx: CommandCtx, token?: string): string | undefined 
 }
 
 async function specExists(project: string, spec: string): Promise<'active' | 'archived' | 'missing'> {
-  const svc = new SpecArchiveService(PathUtils.translatePath(project));
+  const svc = new SpecArchiveService(project);
   const loc = await svc.getSpecLocation(spec);
   return loc === 'not-found' ? 'missing' : loc;
 }
@@ -145,7 +145,7 @@ async function cmdProjects(ctx: CommandCtx): Promise<Reply[]> {
   if (!ctx.projects.length) return [{ text: 'no projects known. Start an MCP session in a project (it registers itself) or set TELEGRAM_PROJECTS.' }];
   const lines: string[] = [];
   for (const p of ctx.projects) {
-    const specs = await new SpecParser(PathUtils.translatePath(p)).getAllSpecs();
+    const specs = await new SpecParser(p).getAllSpecs();
     const running = (await Promise.all(specs.map(s => getLoopStatus(p, s.name)))).filter(l => l.running).length;
     lines.push(`${p === ctx.currentProject ? '▶️' : '•'} ${b(projectLabel(p))} ${code(shortPath(p))} · ${specs.length} specs${running ? ` · 🔄 ${running} loop` : ''}`);
   }
@@ -168,7 +168,7 @@ async function cmdStatus(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
     if (!ctx.projects.length) return cmdProjects(ctx);
     const out: string[] = ['<b>Overview</b>'];
     for (const p of ctx.projects) {
-      const specs = await new SpecParser(PathUtils.translatePath(p)).getAllSpecs();
+      const specs = await new SpecParser(p).getAllSpecs();
       let tot = 0, done = 0, loops = 0;
       for (const s of specs) { tot += s.taskProgress?.total ?? 0; done += s.taskProgress?.completed ?? 0; if ((await getLoopStatus(p, s.name)).running) loops++; }
       out.push(`${b(projectLabel(p))}: ${specs.length} specs · tasks ${done}/${tot} ${bar(done, tot)}${loops ? ` · 🔄 ${loops} running` : ''}`);
@@ -185,14 +185,14 @@ async function cmdStatus(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
 }
 
 export async function specStatusText(project: string, spec: string): Promise<string> {
-  const parser = new SpecParser(PathUtils.translatePath(project));
+  const parser = new SpecParser(project);
   const active = await parser.getSpec(spec);
   const s = active || (await parser.getArchivedSpec(spec));
   if (!s) return `spec ${code(spec)} not found in ${esc(projectLabel(project))}`;
   const archived = !active;
   const loop = archived ? { running: false } as Awaited<ReturnType<typeof getLoopStatus>> : await getLoopStatus(project, spec);
   const tp = s.taskProgress;
-  const specDir = archived ? PathUtils.getArchiveSpecPath(PathUtils.translatePath(project), spec) : PathUtils.getSpecPath(PathUtils.translatePath(project), spec);
+  const specDir = archived ? PathUtils.getArchiveSpecPath(project, spec) : PathUtils.getSpecPath(project, spec);
   const tasksFile = join(specDir, 'tasks.md');
   let counts = { completed: 0, inProgress: 0, blocked: 0, pending: 0, total: 0 };
   try {
@@ -222,7 +222,7 @@ async function cmdSpecs(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const q = (archived ? args.slice(1) : args).join(' ').toLowerCase();
   const project = resolveProjectRef(ctx);
   if (!project) return [{ text: 'which project? /use <proj> or /projects' }];
-  const parser = new SpecParser(PathUtils.translatePath(project));
+  const parser = new SpecParser(project);
   let specs = archived ? await parser.getAllArchivedSpecs() : await parser.getAllSpecs();
   if (q) specs = specs.filter(s => s.name.toLowerCase().includes(q) || s.displayName.toLowerCase().includes(q));
   specs.sort((a, b2) => (b2.lastModified || '').localeCompare(a.lastModified || ''));
@@ -255,9 +255,9 @@ async function cmdSpec(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
 /** Send one of the spec documents as a file attachment. */
 export async function specDocument(project: string, spec: string, which: 'r' | 'd' | 't'): Promise<Reply> {
   const name = which === 'r' ? 'requirements.md' : which === 'd' ? 'design.md' : 'tasks.md';
-  const svc = new SpecArchiveService(PathUtils.translatePath(project));
+  const svc = new SpecArchiveService(project);
   const loc = await svc.getSpecLocation(spec);
-  const dir = loc === 'archived' ? PathUtils.getArchiveSpecPath(PathUtils.translatePath(project), spec) : PathUtils.getSpecPath(PathUtils.translatePath(project), spec);
+  const dir = loc === 'archived' ? PathUtils.getArchiveSpecPath(project, spec) : PathUtils.getSpecPath(project, spec);
   try {
     const content = await fs.readFile(join(dir, name), 'utf-8');
     return { text: '', files: [{ name: `${spec}-${name}`, content, caption: `${spec} · ${name} · ${content.length} chars` }] };
@@ -267,7 +267,7 @@ export async function specDocument(project: string, spec: string, which: 'r' | '
 }
 
 async function loadTasks(project: string, spec: string) {
-  const file = join(PathUtils.getSpecPath(PathUtils.translatePath(project), spec), 'tasks.md');
+  const file = join(PathUtils.getSpecPath(project, spec), 'tasks.md');
   const content = await fs.readFile(file, 'utf-8');
   return parseTasksFromMarkdown(content).tasks;
 }
@@ -294,7 +294,7 @@ async function cmdTasks(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
 async function readVerify(project: string, spec: string, taskId: string): Promise<VerifyResult | null> {
   try {
     // Path convention owned by verify-core (the journal's sole writer).
-    const f = verifyResultFile(PathUtils.getSpecPath(PathUtils.translatePath(project), spec), taskId);
+    const f = verifyResultFile(PathUtils.getSpecPath(project, spec), taskId);
     return JSON.parse(await fs.readFile(f, 'utf-8'));
   } catch { return null; }
 }
@@ -382,7 +382,7 @@ async function cmdPrompt(ctx: CommandCtx, ref?: string, taskId?: string): Promis
 async function cmdSteering(ctx: CommandCtx, token?: string): Promise<Reply[]> {
   const project = resolveProjectRef(ctx, token);
   if (!project) return [{ text: 'which project? /use <proj>' }];
-  const st = await new SpecParser(PathUtils.translatePath(project)).getProjectSteeringStatus();
+  const st = await new SpecParser(project).getProjectSteeringStatus();
   const key = await ctx.registerCallback({ kind: 'steer', project });
   const row: InlineKeyboardMarkup['inline_keyboard'][number] = [];
   const lines = [`<b>Steering · ${esc(projectLabel(project))}</b>`];
@@ -397,7 +397,7 @@ async function cmdSteering(ctx: CommandCtx, token?: string): Promise<Reply[]> {
 export async function steeringDocument(project: string, which: string): Promise<Reply> {
   const name = which === 'p' ? 'product.md' : which === 't' ? 'tech.md' : 'structure.md';
   try {
-    const content = await fs.readFile(join(PathUtils.getSteeringPath(PathUtils.translatePath(project)), name), 'utf-8');
+    const content = await fs.readFile(join(PathUtils.getSteeringPath(project), name), 'utf-8');
     return { text: '', files: [{ name: `steering-${name}`, content, caption: `steering · ${name}` }] };
   } catch { return { text: `${code(name)} not found` }; }
 }
@@ -405,7 +405,7 @@ export async function steeringDocument(project: string, which: string): Promise<
 async function cmdLogs(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const r = resolveSpecRef(ctx, args[0]);
   if ('error' in r) return [{ text: `❌ ${esc(r.error)}` }];
-  const mgr = new ImplementationLogManager(PathUtils.getSpecPath(PathUtils.translatePath(r.project), r.spec));
+  const mgr = new ImplementationLogManager(PathUtils.getSpecPath(r.project, r.spec));
   let entries;
   let title = `logs · ${r.spec}`;
   if (args[1]?.toLowerCase() === 'task' && args[2] && TASK_ID.test(args[2])) {
@@ -426,7 +426,7 @@ async function cmdLogs(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
 async function cmdLogStats(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
   const r = resolveSpecRef(ctx, ref);
   if ('error' in r) return [{ text: `❌ ${esc(r.error)}` }];
-  const mgr = new ImplementationLogManager(PathUtils.getSpecPath(PathUtils.translatePath(r.project), r.spec));
+  const mgr = new ImplementationLogManager(PathUtils.getSpecPath(r.project, r.spec));
   const all = await mgr.getAllLogs();
   if (!all.length) return [{ text: `no implementation logs for ${code(r.spec)}` }];
   const sum = all.reduce((a, e) => ({ add: a.add + e.statistics.linesAdded, rm: a.rm + e.statistics.linesRemoved, files: a.files + e.statistics.filesChanged }), { add: 0, rm: 0, files: 0 });
@@ -443,10 +443,10 @@ async function cmdFind(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const project = resolveProjectRef(ctx);
   if (!project) return [{ text: 'which project? /use <proj>' }];
   if (!type || !term) return [{ text: 'usage: /find &lt;apiEndpoints|components|functions|classes|integrations&gt; &lt;term&gt;' }];
-  const specs = await new SpecParser(PathUtils.translatePath(project)).getAllSpecs();
+  const specs = await new SpecParser(project).getAllSpecs();
   const out: string[] = [];
   for (const s of specs) {
-    const mgr = new ImplementationLogManager(PathUtils.getSpecPath(PathUtils.translatePath(project), s.name));
+    const mgr = new ImplementationLogManager(PathUtils.getSpecPath(project, s.name));
     const hits = await mgr.findArtifact(type, term);
     for (const h of hits.slice(0, 5)) out.push(`${code(s.name)} · task ${esc(h.log.taskId)} · ${untrusted(JSON.stringify(h.artifact), 200, type)}`);
     if (out.length > 15) break;
@@ -457,7 +457,7 @@ async function cmdFind(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
 async function cmdGates(ctx: CommandCtx): Promise<Reply[]> {
   const out: string[] = [];
   for (const p of ctx.projects) {
-    const specs = await new SpecParser(PathUtils.translatePath(p)).getAllSpecs();
+    const specs = await new SpecParser(p).getAllSpecs();
     for (const s of specs) {
       for (const g of await listPendingGates(p, s.name)) out.push(`⏸ ${b(projectLabel(p))}/${b(s.name)} · ${esc(g.kind)} · ${ago(g.createdAt)} ago · ${code(g.id)}`);
     }
@@ -479,6 +479,8 @@ async function cmdRunlog(ctx: CommandCtx, ref?: string, nRaw?: string): Promise<
 async function cmdStartLoop(ctx: CommandCtx, args: string[]): Promise<Reply[]> {
   const r = resolveSpecRef(ctx, args[0]);
   if ('error' in r) return [{ text: `❌ ${esc(r.error)}` }];
+  // Explicit: this is the child process's real cwd, not a .spec-workflow path,
+  // so it does not go through the translating accessors.
   const project = PathUtils.translatePath(r.project);
   const runner = join(PathUtils.getWorkflowRoot(project), 'spec-loop-run.sh');
   try { await fs.access(runner); } catch { return [{ text: `no loop runner at ${code('.spec-workflow/spec-loop-run.sh')} in ${esc(projectLabel(r.project))} — run init.sh there` }]; }
@@ -516,7 +518,7 @@ async function cmdArchive(ctx: CommandCtx, ref: string | undefined, archive: boo
 }
 
 export async function doArchive(project: string, spec: string, archive: boolean): Promise<string> {
-  const svc = new SpecArchiveService(PathUtils.translatePath(project));
+  const svc = new SpecArchiveService(project);
   if (archive) await svc.archiveSpec(spec); else await svc.unarchiveSpec(spec);
   return `${archive ? '📦 archived' : '📤 unarchived'} ${b(spec)}`;
 }

@@ -107,7 +107,15 @@ export class PathUtils {
    */
   static translatePath(hostPath: string): string {
     const config = this.getPathConfig();
-    return config ? this.remapPrefix(hostPath, config.hostPrefix, config.containerPrefix) : hostPath;
+    if (!config) return hostPath;
+    // Already a container path: nothing to do. This makes translation idempotent,
+    // which is what lets the path accessors below translate unconditionally.
+    // With nested prefixes (e.g. a "/" host prefix) a host path that genuinely sits
+    // under the container prefix is indistinguishable from an already-translated
+    // one; treating it as translated is the safe reading, since double-translation
+    // silently produces a path that exists nowhere.
+    if (this.pathMatchesPrefix(hostPath, config.containerPrefix)) return hostPath;
+    return this.remapPrefix(hostPath, config.hostPrefix, config.containerPrefix);
   }
 
   /**
@@ -194,23 +202,32 @@ export class PathUtils {
   }
   
   static getWorkflowRoot(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow');
+    return this.workflowJoin(projectPath);
+  }
+
+  /**
+   * The single door to every .spec-workflow path. Callers pass the project path as
+   * they received it — a host path in Docker mode — and translation happens here,
+   * once, so no call site can forget it.
+   */
+  private static workflowJoin(projectPath: string, ...segments: string[]): string {
+    return this.safeJoin(this.translatePath(projectPath), '.spec-workflow', ...segments);
   }
 
   static getSpecPath(projectPath: string, specName: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'specs', specName);
+    return this.workflowJoin(projectPath, 'specs', specName);
   }
 
   static getArchiveSpecPath(projectPath: string, specName: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'archive', 'specs', specName);
+    return this.workflowJoin(projectPath, 'archive', 'specs', specName);
   }
 
   static getArchiveSpecsPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'archive', 'specs');
+    return this.workflowJoin(projectPath, 'archive', 'specs');
   }
 
   static getSteeringPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'steering');
+    return this.workflowJoin(projectPath, 'steering');
   }
 
 

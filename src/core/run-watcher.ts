@@ -65,7 +65,7 @@ export function parseAuditLine(line: string): LoopEvent | null {
 }
 
 export function auditLogPath(projectPath: string): string {
-  return join(PathUtils.getWorkflowRoot(PathUtils.translatePath(projectPath)), 'loop-audit.log');
+  return join(PathUtils.getWorkflowRoot(projectPath), 'loop-audit.log');
 }
 
 /**

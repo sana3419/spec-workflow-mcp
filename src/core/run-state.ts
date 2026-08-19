@@ -25,7 +25,7 @@ export const RUN_FILES = {
 } as const;
 
 export function getRunDir(projectPath: string, specName: string): string {
-  return join(PathUtils.getSpecPath(PathUtils.translatePath(projectPath), specName), RUN_DIR);
+  return join(PathUtils.getSpecPath(projectPath, specName), RUN_DIR);
 }
 
 export function getRunFile(projectPath: string, specName: string, name: string): string {

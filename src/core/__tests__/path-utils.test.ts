@@ -455,3 +455,55 @@ describe('PathUtils root prefix edge case', () => {
     expect(PathUtils.translatePath('/app/src')).toBe('/projects/app/src');
   });
 });
+
+describe('PathUtils translation boundary', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    process.env.SPEC_WORKFLOW_HOST_PATH_PREFIX = '/Users/dev';
+    process.env.SPEC_WORKFLOW_CONTAINER_PATH_PREFIX = '/projects';
+    PathUtils.resetPathConfig();
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    PathUtils.resetPathConfig();
+  });
+
+  it('translates a host path exactly once', () => {
+    const once = PathUtils.translatePath('/Users/dev/myapp');
+    expect(once).toBe('/projects/myapp');
+    expect(PathUtils.translatePath(once)).toBe(once);
+  });
+
+  it('leaves a container path alone', () => {
+    expect(PathUtils.translatePath('/projects/myapp')).toBe('/projects/myapp');
+  });
+
+  // The accessors are the single door to every .spec-workflow path: they translate
+  // so that no call site has to remember to, which is what made `status`, `cleanup`
+  // and the usage log silently miss the container filesystem in Docker mode.
+  it('translates inside every path accessor', () => {
+    const host = '/Users/dev/myapp';
+    expect(PathUtils.getWorkflowRoot(host)).toBe('/projects/myapp/.spec-workflow');
+    expect(PathUtils.getSpecPath(host, 'demo')).toBe('/projects/myapp/.spec-workflow/specs/demo');
+    expect(PathUtils.getArchiveSpecPath(host, 'demo')).toBe('/projects/myapp/.spec-workflow/archive/specs/demo');
+    expect(PathUtils.getArchiveSpecsPath(host)).toBe('/projects/myapp/.spec-workflow/archive/specs');
+    expect(PathUtils.getSteeringPath(host)).toBe('/projects/myapp/.spec-workflow/steering');
+  });
+
+  it('gives the same answer for a host path and its translated form', () => {
+    const host = '/Users/dev/myapp';
+    const container = PathUtils.translatePath(host);
+    expect(PathUtils.getSpecPath(container, 'demo')).toBe(PathUtils.getSpecPath(host, 'demo'));
+    expect(PathUtils.getWorkflowRoot(container)).toBe(PathUtils.getWorkflowRoot(host));
+  });
+
+  it('is a no-op when translation is not configured', () => {
+    delete process.env.SPEC_WORKFLOW_HOST_PATH_PREFIX;
+    delete process.env.SPEC_WORKFLOW_CONTAINER_PATH_PREFIX;
+    PathUtils.resetPathConfig();
+    expect(PathUtils.getSpecPath('/Users/dev/myapp', 'demo')).toBe('/Users/dev/myapp/.spec-workflow/specs/demo');
+  });
+});

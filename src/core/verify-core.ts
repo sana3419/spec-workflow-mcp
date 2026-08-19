@@ -87,8 +87,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
     return fail('testResults is required when signal is red', maxFixAttempts);
   }
 
-  const translatedPath = PathUtils.translatePath(projectPath);
-  const specPath = PathUtils.getSpecPath(translatedPath, specName);
+  const specPath = PathUtils.getSpecPath(projectPath, specName);
   const tasksFile = join(specPath, 'tasks.md');
 
   let tasksContent: string;
@@ -192,8 +191,7 @@ export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJ
     return { ok: false, message: `Invalid taskId format: '${taskId}'`, outcome: 'error', attempts: 0 };
   }
 
-  const translatedPath = PathUtils.translatePath(projectPath);
-  const specPath = PathUtils.getSpecPath(translatedPath, specName);
+  const specPath = PathUtils.getSpecPath(projectPath, specName);
   const tasksFile = join(specPath, 'tasks.md');
 
   let tasksContent: string;
@@ -294,8 +292,7 @@ export async function setTaskStatus(args: SetTaskStatusArgs): Promise<SetTaskSta
     }
   }
 
-  const translatedPath = PathUtils.translatePath(projectPath);
-  const specPath = PathUtils.getSpecPath(translatedPath, specName);
+  const specPath = PathUtils.getSpecPath(projectPath, specName);
   const tasksFile = join(specPath, 'tasks.md');
   let tasksContent: string;
   try {

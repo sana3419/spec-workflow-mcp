@@ -6,7 +6,6 @@ export class SpecArchiveService {
   private projectPath: string;
 
   constructor(projectPath: string) {
-    // Path should already be translated by caller (ProjectManager)
     this.projectPath = projectPath;
   }
 

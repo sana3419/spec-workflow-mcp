@@ -37,7 +37,7 @@ export async function runPickCli(args: string[]): Promise<number> {
   const spec = args[0];
   if (!spec) { console.error('usage: pick <spec> [--project <path>]'); return 2; }
   const projectPath = resolveProject(args);
-  const tasksFile = join(PathUtils.getSpecPath(PathUtils.translatePath(projectPath), spec), 'tasks.md');
+  const tasksFile = join(PathUtils.getSpecPath(projectPath, spec), 'tasks.md');
 
   let content: string;
   try { content = await fs.readFile(tasksFile, 'utf-8'); }
@@ -117,7 +117,7 @@ export async function runScopesCli(args: string[]): Promise<number> {
   if (!spec) { console.error('usage: scopes <spec> [--status completed] [--project p]'); return 2; }
   const status = flag(args, '--status') || 'completed';
   const projectPath = resolveProject(args);
-  const tasksFile = join(PathUtils.getSpecPath(PathUtils.translatePath(projectPath), spec), 'tasks.md');
+  const tasksFile = join(PathUtils.getSpecPath(projectPath, spec), 'tasks.md');
   let content: string;
   try { content = await fs.readFile(tasksFile, 'utf-8'); } catch { return 0; }
   const { tasks } = parseTasksFromMarkdown(content);

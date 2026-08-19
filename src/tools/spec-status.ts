@@ -47,8 +47,7 @@ export async function specStatusHandler(args: any, context: ToolContext): Promis
 
   try {
     // Translate path at tool entry point (components expect pre-translated paths)
-    const translatedPath = PathUtils.translatePath(projectPath);
-    const parser = new SpecParser(translatedPath);
+    const parser = new SpecParser(projectPath);
     const spec = await parser.getSpec(specName);
     
     if (!spec) {
@@ -161,12 +160,12 @@ export async function specStatusHandler(args: any, context: ToolContext): Promis
           completed: 0,
           pending: 0
         },
-        ...(await getNextTaskInfo(translatedPath, specName, context))
+        ...(await getNextTaskInfo(projectPath, specName, context))
       },
       nextSteps,
       projectContext: {
         projectPath,
-        workflowRoot: PathUtils.getWorkflowRoot(translatedPath),
+        workflowRoot: PathUtils.getWorkflowRoot(projectPath),
         currentPhase,
       }
     };
