@@ -66,6 +66,8 @@ export interface RouteResult {
 }
 
 export interface ProjectProfile {
+  /** the diff touches only documentation files (computed per route call) */
+  docsOnly?: boolean;
   /** .spec-workflow/specs has at least one spec */
   hasSpecs: boolean;
   languages: string[];
@@ -134,9 +136,11 @@ function parseScalar(v: string): unknown {
 }
 
 export async function loadAgents(projectPath: string, fallbackDir?: string): Promise<{ agents: AgentSpec[]; dir: string }> {
-  const candidates = [join(PathUtils.translatePath(projectPath), '.claude', 'agents')];
-  if (fallbackDir) candidates.push(fallbackDir);
-  for (const dir of candidates) {
+  // Project agents override built-ins BY NAME; built-ins still fill in the rest, so a project that
+  // ships one unrelated subagent does not end up with zero reviewers.
+  const projectDir = join(PathUtils.translatePath(projectPath), '.claude', 'agents');
+  const merged = new Map<string, AgentSpec>();
+  for (const dir of [fallbackDir, projectDir].filter((d): d is string => !!d)) {
     let names: string[] = [];
     try { names = (await fs.readdir(dir)).filter(n => n.endsWith('.md')); } catch { continue; }
     const files = await Promise.all(names.map(n => fs.readFile(join(dir, n), 'utf-8')));
@@ -160,9 +164,10 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
         file: join(dir, names[i]),
       });
     }
-    if (agents.length) return { agents: agents.sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name)), dir };
+    for (const a of agents) merged.set(a.name, a);
   }
-  return { agents: [], dir: candidates[0] };
+  const agents = [...merged.values()].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+  return { agents, dir: agents.some(a => a.file.startsWith(projectDir)) ? projectDir : (fallbackDir ?? projectDir) };
 }
 
 // ------------------------------------------------------------------ profile
@@ -311,6 +316,7 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
   // prompt files are markdown but are code for LLM apps — never treat them as docs
   const isDoc = (f: string) => DOC_EXT.test(f) && !/(^|\/)prompts?\//i.test(f) && !/\.prompt\.md$/i.test(f);
   const docsOnly = changedFiles.length > 0 && changedFiles.every(isDoc);
+  profile.docsOnly = docsOnly;
 
   const skipped: RouteResult['skipped'] = [];
   const reasons = new Map<string, string[]>();
@@ -331,14 +337,14 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
     if (input.tags?.length) {
       for (const a of agents) if (a.tags.some(t => input.tags!.includes(t))) push(a.name, `_Review tag ${a.tags.filter(t => input.tags!.includes(t)).join('/')}`);
     }
-    // 4) triggers (docs-only diffs take a fast path: drift + copy only, no profile nudges)
-    if (docsOnly) {
-      push('spec-drift-detector', 'docs-only fast path');
-      push('ux-copy-reviewer', 'docs-only fast path');
-    }
+    // 4) triggers. Docs-only diffs take a fast path: only agents that declare `profile: ['docsOnly']`
+    //    run (the agent files decide — nothing is hard-coded here).
     for (const a of agents) {
       const t = a.triggers;
-      if (docsOnly) break;
+      if (docsOnly) {
+        if (t.profile?.includes('docsOnly')) push(a.name, 'docs-only fast path');
+        continue;
+      }
       if (t.always) { push(a.name, a.tier === 0 ? 'tier 0 (always)' : 'always'); continue; }
       if (t.paths?.length && changedFiles.length) {
         const res = t.paths.map(globToRegExp);
@@ -363,9 +369,6 @@ export async function routeReview(input: RouteInput, fallbackAgentsDir?: string)
         if (hits.length) push(a.name, `profile ${hits.join('/')}`);
       }
     }
-    // profile-driven nudges (still deterministic)
-    if (!docsOnly && profile.hasLlmSdk) push('cost-reviewer', 'profile: LLM SDK present');
-    if (!docsOnly && profile.hasUi && changedFiles.some(f => /\.(tsx|jsx|vue|svelte|html|css|scss)$/i.test(f))) push('accessibility-reviewer', 'profile: UI files changed');
     for (const n of input.add ?? []) push(n, '--add');
   }
   for (const n of input.skip ?? []) { if (reasons.delete(n)) skipped.push({ name: n, why: '--skip' }); }

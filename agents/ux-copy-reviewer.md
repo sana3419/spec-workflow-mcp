@@ -5,6 +5,7 @@ tools: Read, Grep, Glob, Bash
 tier: 1
 tags: ['ux', 'copy']
 triggers:
+  profile: ['docsOnly']
   content: ['throw new Error\(["\'']', '\bmessage:\s*["\'']', 'console\.(log|error)\(["\'']', 'reply\(|sendMessage\(|toast\(|alert\(', 'placeholder=|label=|title=']
 ---
 You are a UX writer with an engineering background. Review ONLY through this lens; be concrete and evidence-based.

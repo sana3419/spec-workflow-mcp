@@ -118,3 +118,15 @@ export function entryToMarkdown(entry: ImplementationLogEntry): string {
 
   return markdown;
 }
+
+/**
+ * On-disk file name for one log entry: task-<id>_<YYYYMMDDHHmmss>_<id8>.md. Single definition so the
+ * manager (new entries) and the migrator (legacy JSON → markdown) can never drift apart; the timestamp
+ * is the ENTRY's, not "now", so migrated and fresh files sort identically.
+ */
+export function logFileName(taskId: string, id: string, timestamp: string | Date): string {
+  const sanitizedTaskId = taskId.replace(/[/.]/g, '-');
+  const iso = (timestamp instanceof Date ? timestamp : new Date(timestamp)).toISOString();
+  const stamp = iso.replace(/[-:T.Z]/g, '').slice(0, 14); // YYYYMMDDHHmmss
+  return `task-${sanitizedTaskId}_${stamp}_${id.substring(0, 8)}.md`;
+}

@@ -125,6 +125,7 @@ export interface ParsedTask {
   engine?: string;                     // Execution engine (e.g., 'codex', 'claude')
   tests?: string;                      // Scoped test selector for the harness verdict (from _Tests: glob_)
   verify?: string;                     // L2 judge mode (from _Verify: panel_); default single cross-family judge
+  review?: string[];                   // reviewer tags (from _Review: security, concurrency_) — routed deterministically
 
   // For backward compatibility
   completed: boolean;                  // true if status === 'completed'
@@ -215,6 +216,7 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
     let engine: string | undefined;
     let tests: string | undefined;
     let verify: string | undefined;
+    let review: string[] | undefined;
 
     for (let lineIdx = lineNumber + 1; lineIdx < endLine; lineIdx++) {
       const contentLine = lines[lineIdx].trim();
@@ -286,6 +288,11 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
         if (testsMatch) {
           tests = testsMatch[1].trim();
         }
+      } else if (contentLine.includes('_Review:') && !contentLine.includes('_Prompt:')) {
+        const reviewMatch = contentLine.match(/_Review:\s*([^_]+?)_/);
+        if (reviewMatch) {
+          review = reviewMatch[1].split(/[,\s]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
+        }
       } else if (contentLine.includes('_Verify:') && !contentLine.includes('_Prompt:')) {
         const verifyMatch = contentLine.match(/_Verify:\s*([^_]+?)_/);
         if (verifyMatch) {
@@ -350,6 +357,7 @@ export function parseTasksFromMarkdown(content: string): TaskParserResult {
       ...(blockedReason && { blockedReason }),
       ...(engine && { engine }),
       ...(tests && { tests }),
+      ...(review && review.length > 0 && { review }),
       ...(verify && { verify })
     };
     tasks.push(task);

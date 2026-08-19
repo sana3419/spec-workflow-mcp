@@ -24,7 +24,7 @@ export function untrusted(text: string, maxChars = 1200, label?: string): string
   // Cap AFTER escaping so HTML entity inflation can never push a message past Telegram's 4096 limit.
   const cap = Math.min(maxChars, 3000);
   let body = esc(cleaned);
-  if (body.length > cap) body = body.slice(0, cap).replace(/&[^;]{0,6}$/, '') + `\n… (+${cleaned.length - cap} chars)`;
+  if (body.length > cap) { const shown = body.slice(0, cap).replace(/&[^;]{0,6}$/, ''); body = shown + `\n… (+${Math.max(0, body.length - shown.length)} chars)`; }
   return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${body}</pre>`;
 }
 

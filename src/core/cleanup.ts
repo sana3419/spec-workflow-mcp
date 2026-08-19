@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { PathUtils } from './path-utils.js';
 import { SpecParser } from './parser.js';
+import { getLoopStatus } from './run-state.js';
 
 /**
  * Spec cleanup — pure library extracted from the former dashboard JobScheduler.
@@ -76,6 +77,10 @@ export async function cleanupSpecs(projectPath: string, opts: CleanupOptions): P
 
   for (const c of candidates) {
     try {
+      if (!opts.archived && (await getLoopStatus(projectPath, c.name)).running) {
+        result.failed.push({ name: c.name, error: 'loop is running for this spec — stop it first' });
+        continue;
+      }
       await fs.rm(c.path, { recursive: true, force: true });
       result.deleted.push(c.name);
     } catch (e) {

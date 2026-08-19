@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { ImplementationLog, ImplementationLogEntry } from '../types.js';
-import { entryToMarkdown } from './implementation-log-format.js';
+import { entryToMarkdown, logFileName } from './implementation-log-format.js';
 import { randomUUID } from 'crypto';
 
 /**
@@ -285,13 +285,6 @@ export class ImplementationLogManager {
   /**
    * Generate markdown filename for a log entry
    */
-  private generateFileName(taskId: string, id: string): string {
-    const sanitizedTaskId = taskId.replace(/[/.]/g, '-');
-    const timestamp = new Date().toISOString().replace(/[:.Z]/g, '').slice(0, 15); // YYYYMMDDHHmmss
-    const idPrefix = id.substring(0, 8);
-    return `task-${sanitizedTaskId}_${timestamp}_${idPrefix}.md`;
-  }
-
   /**
    * Add a new implementation log entry
    */
@@ -303,7 +296,7 @@ export class ImplementationLogManager {
       id: randomUUID()
     };
 
-    const fileName = this.generateFileName(newEntry.taskId, newEntry.id);
+    const fileName = logFileName(newEntry.taskId, newEntry.id, newEntry.timestamp || new Date());
     const filePath = join(this.logsDir, fileName);
     const markdown = entryToMarkdown(newEntry);
 

@@ -77,27 +77,10 @@ export class SpecWorkflowMCPServer {
       });
       console.error(`Project registered: ${projectId}`);
 
-      // Load engine config
-      let engineConfig = {
-        default: 'claude',
-        maxFixAttempts: 5,
-        codex: { sandbox: 'workspace-write', approvalPolicy: 'never' as string | undefined, model: undefined as string | undefined },
-      };
-      try {
-        const { loadConfigFile } = await import('./config.js');
-        const configResult = loadConfigFile(this.projectPath);
-        if (configResult.config?.engine) {
-          engineConfig = {
-            default: configResult.config.engine.default || engineConfig.default,
-            maxFixAttempts: configResult.config.engine.maxFixAttempts || engineConfig.maxFixAttempts,
-            codex: {
-              sandbox: configResult.config.engine.codex?.sandbox || engineConfig.codex.sandbox,
-              approvalPolicy: configResult.config.engine.codex?.approvalPolicy || engineConfig.codex.approvalPolicy,
-              model: configResult.config.engine.codex?.model || engineConfig.codex.model,
-            },
-          };
-        }
-      } catch { /* Use defaults if config loading fails */ }
+      // Load engine config — defaults are resolved once, in config.ts
+      const { loadConfigFile, resolveEngineConfig } = await import('./config.js');
+      let engineConfig = resolveEngineConfig(undefined);
+      try { engineConfig = resolveEngineConfig(loadConfigFile(this.projectPath).config?.engine); } catch { /* defaults */ }
 
       // Create context for tools
       const context = {

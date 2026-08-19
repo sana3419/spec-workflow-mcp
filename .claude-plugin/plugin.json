@@ -1,8 +1,10 @@
 {
   "name": "spec-workflow",
-  "description": "Spec-driven development with harness-owned verification (Verification Ladder L3→L0→L1→L2→L4), 18 routed reviewer agents, background loop runner and Telegram control. Claude leads, Codex is an optional worker.",
-  "version": "3.1.0",
-  "author": { "name": "sana3419" },
+  "description": "Spec-driven development with harness-owned verification (Verification Ladder L3\u2192L0\u2192L1\u2192L2\u2192L4), 18 routed reviewer agents, background loop runner and Telegram control. Claude leads, Codex is an optional worker.",
+  "version": "3.1.1",
+  "author": {
+    "name": "sana3419"
+  },
   "homepage": "https://github.com/sana3419/spec-workflow-mcp",
   "license": "GPL-3.0"
 }

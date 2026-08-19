@@ -1,5 +1,6 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { ToolContext, ToolResponse } from '../types.js';
+import { ENGINE_DEFAULTS } from '../config.js';
 import { PathUtils } from '../core/path-utils.js';
 import { SpecParser } from '../core/parser.js';
 import { parseTasksFromMarkdown, findNextPendingTask } from '../core/task-parser.js';
@@ -196,7 +197,7 @@ async function getNextTaskInfo(
     const next = findNextPendingTask(parsed.tasks);
     if (!next) return {};
 
-    const defaultEngine = context.engineConfig?.default || 'claude';
+    const defaultEngine = context.engineConfig?.default || ENGINE_DEFAULTS.default;
     const engine = next.engine || defaultEngine;
 
     return {

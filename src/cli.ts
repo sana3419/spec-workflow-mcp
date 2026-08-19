@@ -56,6 +56,7 @@ export async function runPickCli(args: string[]): Promise<number> {
     engine: task.engine || null,
     tests: task.tests || null,
     verify: task.verify || null,
+    review: task.review || null,
   }));
   return 0;
 }
@@ -218,7 +219,7 @@ export async function runRouteCli(args: string[]): Promise<number> {
     changedFiles: list('--files'),
     agents: list('--agents'), add: list('--add'), skip: list('--skip'), tags: list('--tags'),
     full: args.includes('--full'),
-    maxAgents: flag(args, '--max-agents') ? Number(flag(args, '--max-agents')) : undefined,
+    maxAgents: (() => { const v = flag(args, '--max-agents'); if (v === undefined) return undefined; const n = Number(v); if (!Number.isInteger(n) || n < 1) { console.error(`--max-agents must be a positive integer (got ${v})`); process.exit(2); } return n; })(),
   }, templateAgentsDir());
   if (args.includes('--json')) { console.log(JSON.stringify(r, null, 2)); return 0; }
   if (args.includes('--names')) { for (const s of r.selected) console.log(s.name); return 0; }

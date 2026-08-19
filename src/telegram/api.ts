@@ -122,19 +122,31 @@ export function chunk(text: string, max: number): string[] {
   if (text.length <= max) return [text];
   const out: string[] = [];
   let rest = text;
-  let openPre = false;
-  const budget = max - 12; // room for </pre> / <pre> wrappers
+  let openTags: string[] = [];
+  const budget = max - 40; // room for reopen/close wrappers
   while (rest.length > max) {
     let cut = rest.lastIndexOf('\n', budget);
     if (cut < budget * 0.5) cut = budget;
     let piece = rest.slice(0, cut);
     rest = rest.slice(cut).replace(/^\n/, '');
-    if (openPre) piece = '<pre>' + piece;
-    const opens = (piece.match(/<pre>/g) || []).length, closes = (piece.match(/<\/pre>/g) || []).length;
-    openPre = opens > closes;
-    if (openPre) piece += '</pre>';
+    piece = reopenTags(openTags) + piece;
+    openTags = unclosedTags(piece);
+    piece += closeTags(openTags);
     out.push(piece);
   }
-  if (rest) out.push((openPre ? '<pre>' : '') + rest);
+  if (rest) out.push(reopenTags(openTags) + rest);
   return out;
 }
+
+// Minimal tag balancing for the HTML subset we emit (pre, code, b, i). Entities are never split
+// because cuts happen at newlines where possible and `untrusted()` already trims dangling entities.
+const TAGS = ['pre', 'code', 'b', 'i'];
+function unclosedTags(html: string): string[] {
+  const stack: string[] = [];
+  for (const m of html.matchAll(/<(\/?)(pre|code|b|i)>/g)) {
+    if (m[1]) { const i = stack.lastIndexOf(m[2]); if (i >= 0) stack.splice(i, 1); } else stack.push(m[2]);
+  }
+  return stack.filter(t => TAGS.includes(t));
+}
+const reopenTags = (tags: string[]) => tags.map(t => `<${t}>`).join('');
+const closeTags = (tags: string[]) => [...tags].reverse().map(t => `</${t}>`).join('');

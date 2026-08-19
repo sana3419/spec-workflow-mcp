@@ -193,7 +193,7 @@ class Daemon {
     const { userId, chatId, messageId, data } = acc;
     const [kind, key, arg] = data.split(':');
     const ctx = this.ctx(userId, chatId);
-    const ack = (t?: string) => this.api.answerCallbackQuery(cb.id, t).catch(() => {});
+    const ack = (t?: string, alert = false) => this.api.answerCallbackQuery(cb.id, t, alert).catch(() => {});
 
     if (kind === 'g') return this.handleGateCallback(cb.id, userId, chatId, messageId, key, arg, u.update_id);
 
@@ -230,10 +230,11 @@ class Daemon {
       case 'a': { // archive confirm
         const flag = payload.flag;
         if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        if (flag === '1' && (await getLoopStatus(project, spec)).running) { await ack('loop is running — /stop first', true); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
         try {
           const msg = await doArchive(project, spec, flag === '1');
-          await this.auditCmd(userId, chatId, u.update_id, flag === '1' ? 'archive' : 'unarchive', [spec], project, spec, 'ok');
-          await ack('done'); await this.editCard(chatId, messageId, { text: msg });
+          await this.auditCmd(userId, chatId, u.update_id, flag === '1' ? 'archive' : 'unarchive', [spec], project, spec, msg);
+          await ack('done'); await this.editCard(chatId, messageId, { text: `${flag === '1' ? '📦' : '📤'} ${esc(msg)}` });
         } catch (e) { await ack('failed'); await this.send(chatId, { text: `❌ ${esc((e as Error).message)}` }); }
         return;
       }
@@ -314,10 +315,11 @@ class Daemon {
     if (Date.now() - this.lastDiscover > 60_000) await this.discoverProjects();
     for (const p of this.projects) {
       const seen = this.state.auditOffsets[p];
-      const { events, offset } = await readNewEvents(p, seen ?? 0);
-      // Never-seen project: don't replay its whole history into Telegram — remember the end and
-      // only report what happens from now on. (Gates are scanned regardless, below.)
-      if (seen === undefined) {
+      const { events, offset, truncated } = await readNewEvents(p, seen ?? 0);
+      // Never-seen project (or a rotated/truncated log): don't replay history into Telegram — remember
+      // the end and only report what happens from now on. (Gates are scanned regardless, below.)
+      if (seen === undefined || truncated) {
+        if (truncated) this.log(`audit log for ${p} was truncated/rotated — resynced to end`);
         this.state.auditOffsets[p] = offset; this.dirty = true;
       } else if (events.length) {
         this.state.auditOffsets[p] = offset; this.dirty = true;
@@ -439,8 +441,12 @@ class Daemon {
           this.log(`gate ${g.id} in ${spec}: bad or missing runner signature — ignored`);
           this.state.postedGates[pkey] = 'unsigned'; this.dirty = true; continue;
         }
-        try { await this.postGate(project, spec, g); } catch (e) { this.log(`gate post failed: ${(e as Error).message}`); }
-        this.state.postedGates[pkey] = new Date().toISOString(); this.dirty = true;
+        let delivered = 0;
+        try { delivered = await this.postGate(project, spec, g); } catch (e) { this.log(`gate post failed: ${(e as Error).message}`); }
+        // Mark posted only if at least one chat actually got a card; otherwise retry on the next tick
+        // (a transient Telegram outage must not leave a gate silently waiting for its timeout).
+        if (delivered > 0) { this.state.postedGates[pkey] = new Date().toISOString(); this.dirty = true; }
+        else this.log(`gate ${g.id}: no chat reached — will retry`);
       }
       // prune postedGates for gates no longer pending
       const ids = new Set(pending.map(g => g.id));
@@ -472,7 +478,8 @@ class Daemon {
     return lines.join('\n');
   }
 
-  private async postGate(project: string, spec: string, g: PendingGate): Promise<void> {
+  private async postGate(project: string, spec: string, g: PendingGate): Promise<number> {
+    let delivered = 0;
     // The card is HARNESS text only. Repo-derived detail (e.g. judge reasons) is sent as a
     // separate untrusted message so it can never sit next to the buttons.
     for (const chatId of this.cfg.notify) {
@@ -481,6 +488,7 @@ class Daemon {
       try {
         const id = await this.send(chatId, { text: this.gateCardText(spec, project, g.id, g.createdAt, g), keyboard });
         if (id) {
+          delivered++;
           this.state.gateKeys[key] = { project, spec, id: g.id, nonce: g.nonce, chatId, messageId: id, createdAt: g.createdAt };
           try { await updatePendingGate(project, spec, g.id, { postedMessageId: id, postedChatId: chatId }); } catch { /* runner may have consumed it */ }
         }
@@ -490,6 +498,7 @@ class Daemon {
       } catch (e) { this.log(`gate card to ${chatId} failed: ${(e as Error).message}`); }
     }
     this.dirty = true;
+    return delivered;
   }
 }
 

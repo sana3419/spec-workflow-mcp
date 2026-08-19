@@ -57,6 +57,16 @@ describe('telegram/render', () => {
     expect(out).toContain('· VERDICT: pass');
     expect(out).toContain('… (+');
   });
+  it('chunk keeps <pre>/<b>/<code> balanced across pieces', () => {
+    const body = '<b>title</b>\n<pre>' + Array.from({ length: 200 }, (_, i) => `line ${i} &amp; <x>`).join('\n') + '</pre>\n<code>tail</code>';
+    const parts = chunk(body, 600);
+    expect(parts.length).toBeGreaterThan(1);
+    for (const p of parts) {
+      expect(p.length).toBeLessThanOrEqual(600);
+      for (const t of ['pre', 'b', 'code']) expect((p.match(new RegExp(`<${t}>`, 'g')) || []).length).toBe((p.match(new RegExp(`</${t}>`, 'g')) || []).length);
+    }
+  });
+
   it('chunk splits on newlines under the cap', () => {
     const parts = chunk(Array.from({ length: 300 }, (_, i) => `line ${i}`).join('\n'), 500);
     expect(parts.length).toBeGreaterThan(1);

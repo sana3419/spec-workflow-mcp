@@ -45,6 +45,21 @@ export interface SpecWorkflowConfig {
   // Security features
 }
 
+/** The one place engine defaults live. Every consumer (server context, spec-status hints, CLI) uses this. */
+export const ENGINE_DEFAULTS = { default: 'claude', maxFixAttempts: 5, codex: { sandbox: 'workspace-write', approvalPolicy: 'never' } } as const;
+
+export function resolveEngineConfig(eng?: SpecWorkflowConfig['engine']): Required<Pick<NonNullable<SpecWorkflowConfig['engine']>, 'default' | 'maxFixAttempts'>> & { codex: { model?: string; sandbox: string; approvalPolicy: string } } {
+  return {
+    default: eng?.default || ENGINE_DEFAULTS.default,
+    maxFixAttempts: eng?.maxFixAttempts || ENGINE_DEFAULTS.maxFixAttempts,
+    codex: {
+      model: eng?.codex?.model,
+      sandbox: eng?.codex?.sandbox || ENGINE_DEFAULTS.codex.sandbox,
+      approvalPolicy: eng?.codex?.approvalPolicy || ENGINE_DEFAULTS.codex.approvalPolicy,
+    },
+  };
+}
+
 export interface ConfigLoadResult {
   config: SpecWorkflowConfig | null;
   configPath: string | null;
@@ -177,17 +192,8 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
       config.lang = parsedConfig.lang;
     }
 
-    if (parsedConfig.engine !== undefined) {
-      config.engine = {
-        default: parsedConfig.engine.default || 'claude',
-        maxFixAttempts: parsedConfig.engine.maxFixAttempts || 5,
-        codex: {
-          model: parsedConfig.engine.codex?.model,
-          sandbox: parsedConfig.engine.codex?.sandbox || 'workspace-write',
-          approvalPolicy: parsedConfig.engine.codex?.approvalPolicy || 'never',
-        },
-      };
-    }
+    // [engine] is ALWAYS filled (defaults applied here, once) so consumers never re-derive them.
+    config.engine = resolveEngineConfig(parsedConfig.engine);
 
     if (parsedConfig.loop !== undefined) {
       config.loop = {

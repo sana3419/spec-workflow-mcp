@@ -3,6 +3,7 @@ import { join } from 'path';
 import { PathUtils } from './path-utils.js';
 import { parseTasksFromMarkdown, getTaskById, updateTaskStatus } from './task-parser.js';
 import { VerifyResult } from '../types.js';
+import { ENGINE_DEFAULTS } from '../config.js';
 
 export type VerifySignal = 'green' | 'red' | 'blocked';
 export type VerifySource = 'harness-exec' | 'agent' | 'none';
@@ -78,7 +79,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
     projectPath, specName, taskId, signal, source,
     testResults = [], fixNote, engine, exitCode, testScope, tamperGateOff, usage, failureClass,
   } = args;
-  const maxFixAttempts = args.maxFixAttempts ?? 5;
+  const maxFixAttempts = args.maxFixAttempts ?? ENGINE_DEFAULTS.maxFixAttempts;
 
   if (!/^\d+(\.\d+)*$/.test(taskId)) {
     return fail(`Invalid taskId format: '${taskId}'. Must be digits and dots (e.g., '1', '1.1').`, maxFixAttempts);
@@ -222,8 +223,11 @@ export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJ
     await saveVerifyResult(verifyFile, verifyData);
     return { ok: true, message: `Task '${taskId}' BLOCKED — ${reason}`, outcome: 'blocked', attempts };
   }
-  // reopen to pending so the loop re-picks and strengthens the tests
+  // reopen to pending so the loop re-picks and strengthens the tests. The harness fix counter
+  // restarts for the new round (judge.attempts is the bounded counter here, not fixAttempts) —
+  // otherwise a reopened task that goes red once is blocked immediately.
   await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'pending'), 'utf-8');
+  verifyData.fixAttempts = 0;
   verifyData.judge = { engine, verdict: 'fail', reasons, attempts, timestamp };
   await saveVerifyResult(verifyFile, verifyData);
   return { ok: true, message: `Task '${taskId}' judge FAIL (${engine}) — reopened, attempt ${attempts}/${judgeMaxAttempts}`, outcome: 'reopened', attempts };
@@ -235,7 +239,7 @@ interface UsageEntry {
 }
 
 function usageEntry(specName: string, taskId: string, taskName: string, engine: string | undefined, signal: string, timestamp: string, usage: UsageEntry['usage'] | undefined): UsageEntry {
-  return { specName, taskId, taskName, engine: engine || 'claude', signal, timestamp, usage: usage || null };
+  return { specName, taskId, taskName, engine: engine || ENGINE_DEFAULTS.default, signal, timestamp, usage: usage || null };
 }
 
 async function appendUsageLog(projectPath: string, entry: UsageEntry): Promise<void> {

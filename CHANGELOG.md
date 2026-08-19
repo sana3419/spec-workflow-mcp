@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] — 2026-08-19 (fork)
+
+### Fixed (follow-ups to the code-review pass)
+- Daemon: a gate is marked "posted" only when at least one chat actually received the card — transient Telegram failures no longer leave a gate silently waiting for its timeout; truncated/rotated audit logs resync instead of replaying history; archive confirmation re-checks the loop state at tap time; `doArchive` returns plain text (the audit log no longer stores stripped HTML).
+- `cleanup` refuses to delete a spec whose loop is running.
+- `loadAgents` merges project `.claude/agents` with the built-in set (project overrides by name) — a project with one unrelated subagent no longer gets zero reviewers.
+- L2 judge reopen resets `fixAttempts` (a reopened task is not blocked after a single red).
+- `route --max-agents` rejects non-integers instead of silently disabling the cap; `untrusted()` reports the correct truncated count.
+- Router: no hard-coded agent names left — docs-only fast path and profile nudges come from agent frontmatter (`profile: ['docsOnly'|'hasLlmSdk'|…]`); `_Review:` is parsed deterministically by the task parser (`pick` emits `review`).
+- Telegram chunking balances `<pre>/<code>/<b>/<i>` across pieces.
+- Engine defaults resolved once (`config.ts` `ENGINE_DEFAULTS` / `resolveEngineConfig`).
+- Implementation-log file names share one definition (`logFileName`, entry timestamp, no `T`), so migrated and new files sort together.
+- Removed dead `task-validator.ts` (+ its tests; dashboard-era tasks.md format checker with no callers).
+
 ## [3.1.0] — 2026-08-18 (fork)
 
 ### Reviewer UX (from the user-perspective validation)

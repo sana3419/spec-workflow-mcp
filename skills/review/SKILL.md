@@ -22,7 +22,7 @@ Map what the user said onto the tool arguments:
 - "review security only" / a list       → `{ agents: ["security-reviewer"] }`
 - "also check i18n" / "skip perf"        → `{ add: [...] }` / `{ skip: [...] }`
 - "everything" / "full review"           → `{ full: true }`
-- a task with `_Review: security, concurrency` → `{ tags: ["security","concurrency"] }`
+- a task with `_Review: security, concurrency` (parsed deterministically by the task parser; `pick` prints it as `review`) → `{ tags: ["security","concurrency"] }`
 - "what would you run?" (dry run)        → call the tool and STOP — print the selection + reasons only
 
 Show the user the selected list + reasons in one line each **and the cost preview** ("N reviewers in parallel, ~N×30–80k tokens, a few minutes") before launching; they can say "skip X", "only X", "full". Silencing permanently: `.spec-workflow/review.config.json` `{ "never": ["i18n-reviewer"] }`.

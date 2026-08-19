@@ -1,6 +1,6 @@
 {
   "name": "spec-workflow-mcp",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "MCP server for spec-driven development with harness-owned verification and Telegram control",
   "main": "dist/index.js",
   "type": "module",

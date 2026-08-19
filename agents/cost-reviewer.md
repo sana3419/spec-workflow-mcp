@@ -5,6 +5,7 @@ tools: Read, Grep, Glob, Bash
 tier: 1
 tags: ['cost']
 triggers:
+  profile: ['hasLlmSdk']
   content: ['openai|anthropic|claude|gpt-|gemini|\bmodel:\s*["\'']', '\bembedding|completion|chat\.completions', '\bs3\.|dynamodb|bigquery|lambda\.|cloudfunctions', 'setInterval|cron|schedule', '\bmax_tokens|temperature\b']
 ---
 You are a FinOps-minded engineer. Review ONLY through this lens; be concrete and evidence-based.

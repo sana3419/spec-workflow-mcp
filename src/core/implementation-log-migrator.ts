@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { ImplementationLog, ImplementationLogEntry } from '../types.js';
-import { entryToMarkdown } from './implementation-log-format.js';
+import { entryToMarkdown, logFileName } from './implementation-log-format.js';
 import { appendFileSync, existsSync } from 'fs';
 
 /**
@@ -25,25 +25,6 @@ export class ImplementationLogMigrator {
   }
 
   /**
-   * Sanitize taskId for use in filenames (e.g., "1.2" → "1-2")
-   */
-  private sanitizeTaskId(taskId: string): string {
-    return taskId.replace(/[/.]/g, '-');
-  }
-
-  /**
-   * Generate markdown filename for a log entry
-   */
-  private generateFileName(entry: ImplementationLogEntry): string {
-    const sanitizedTaskId = this.sanitizeTaskId(entry.taskId);
-    const dateObj = new Date(entry.timestamp);
-    const timestamp = dateObj.toISOString().replace(/[:.]/g, '').split('T')[0] +
-                      dateObj.toISOString().split('T')[1].replace(/[:.Z]/g, '').substring(0, 6);
-    const idPrefix = entry.id.substring(0, 8);
-    return `task-${sanitizedTaskId}_${timestamp}_${idPrefix}.md`;
-  }
-
-  /**
    * Migrate a single JSON file to markdown files
    */
   private async migrateJsonFile(jsonPath: string, outputDir: string): Promise<{ success: boolean; count: number; error?: string }> {
@@ -58,7 +39,7 @@ export class ImplementationLogMigrator {
       // Convert each entry to a markdown file
       let count = 0;
       for (const entry of log.entries) {
-        const fileName = this.generateFileName(entry);
+        const fileName = logFileName(entry.taskId, entry.id, entry.timestamp);
         const filePath = join(outputDir, fileName);
         const markdown = entryToMarkdown(entry);
 

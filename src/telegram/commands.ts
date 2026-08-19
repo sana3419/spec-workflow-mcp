@@ -517,10 +517,11 @@ async function cmdArchive(ctx: CommandCtx, ref: string | undefined, archive: boo
   return [{ text: `${archive ? '📦 Archive' : '📤 Unarchive'} ${b(r.spec)} in ${esc(projectLabel(r.project))}?`, keyboard: { inline_keyboard: [[{ text: archive ? 'Archive' : 'Unarchive', callback_data: `a:${key}:y` }, { text: 'Cancel', callback_data: `a:${key}:n` }]] } }];
 }
 
+/** Plain-text result (no HTML) — callers render/escape; the audit log stores it verbatim. */
 export async function doArchive(project: string, spec: string, archive: boolean): Promise<string> {
   const svc = new SpecArchiveService(project);
   if (archive) await svc.archiveSpec(spec); else await svc.unarchiveSpec(spec);
-  return `${archive ? '📦 archived' : '📤 unarchived'} ${b(spec)}`;
+  return `${archive ? 'archived' : 'unarchived'} ${spec}`;
 }
 
 async function cmdCleanup(ctx: CommandCtx, args: string[]): Promise<Reply[]> {

@@ -6,7 +6,7 @@ tier: 0
 tags: ['spec', 'drift']
 triggers:
   paths: ['**/.spec-workflow/specs/**', '**/requirements.md', '**/design.md', '**/tasks.md']
-  profile: ['hasSpecs']
+  profile: ['hasSpecs', 'docsOnly']
 ---
 You are a specification auditor. Review ONLY through this lens; be concrete and evidence-based.
 

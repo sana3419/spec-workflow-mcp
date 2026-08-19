@@ -130,10 +130,29 @@ describe('review-router: routing', () => {
     expect(r.selected.find(s => s.name === 'concurrency-reviewer')?.reasons[0]).toMatch(/_Review tag/);
   });
 
-  it('prefers the project .claude/agents over the shipped templates', async () => {
+  it('merges project .claude/agents with the shipped ones (project overrides by name, never zero reviewers)', async () => {
     await fs.mkdir(join(root, '.claude', 'agents'), { recursive: true });
     await fs.writeFile(join(root, '.claude', 'agents', 'my-reviewer.md'), `---\nname: my-reviewer\ndescription: mine\ntools: Read\ntier: 0\ntriggers:\n  always: true\n---\nbody`);
+    // an override of a shipped agent by name
+    await fs.writeFile(join(root, '.claude', 'agents', 'logic-reviewer.md'), `---\nname: logic-reviewer\ndescription: project flavour\ntools: Read\ntier: 1\ntriggers:\n  paths: ['**/never/**']\n---\nbody`);
     const r = await route({ changedFiles: ['a.ts'] });
-    expect(r.selected.map(s => s.name)).toEqual(['my-reviewer']);
+    const names = r.selected.map(s => s.name);
+    expect(names).toContain('my-reviewer');
+    expect(names).toContain('security-reviewer');        // built-ins still present
+    expect(names).not.toContain('logic-reviewer');       // overridden: now path-triggered, not always
+    const { agents } = await loadAgents(root, TEMPLATES);
+    expect(agents.find(a => a.name === 'logic-reviewer')?.description).toBe('project flavour');
+  });
+
+  it('docs-only fast path is declared by the agents themselves (profile: docsOnly)', async () => {
+    const r = await route({ changedFiles: ['README.md'], diffText: '+x', full: true });
+    expect(r.docsOnly).toBe(true);
+    expect(r.selected.map(s => s.name).sort()).toEqual(['spec-drift-detector', 'ux-copy-reviewer']);
+  });
+
+  it('_Review: tags are parsed deterministically by the task parser', async () => {
+    const { parseTasksFromMarkdown } = await import('../task-parser.js');
+    const t = parseTasksFromMarkdown('- [ ] 1. x\n  - File: a.ts\n  - _Review: Security, concurrency_\n').tasks[0];
+    expect(t.review).toEqual(['security', 'concurrency']);
   });
 });
