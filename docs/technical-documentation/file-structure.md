@@ -333,4 +333,4 @@ rm -rf .spec-workflow/
 
 ---
 
-**Next**: [Dashboard System →](dashboard.md)
+**Next**: [Troubleshooting & FAQ →](troubleshooting.md)

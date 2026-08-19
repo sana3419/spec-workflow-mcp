@@ -12,7 +12,6 @@
 - **[Developer Workflow Guide](developer-guide.md)** - Step-by-step development workflows
 - **[Context Management](context-management.md)** - How context switching and caching works
 - **[File Structure](file-structure.md)** - Project organization and directory layout
-- **[Dashboard System](dashboard.md)** - Web dashboard and real-time features
 - **[Troubleshooting & FAQ](troubleshooting.md)** - Common issues and solutions
 
 ### Quick Start Guides
