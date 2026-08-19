@@ -15,9 +15,9 @@
 - **[Troubleshooting & FAQ](troubleshooting.md)** - Common issues and solutions
 
 ### Quick Start Guides
-- **[Setting Up Development Environment](setup.md)** - Get up and running quickly
+- **[Setting Up Development Environment](../DEVELOPMENT.md#setting-up-development-environment)** - Get up and running quickly
 - **[Contributing Guidelines](contributing.md)** - How to contribute to the project
-- **[Testing Guide](testing.md)** - Running tests and writing new ones
+- **[Testing Guide](../DEVELOPMENT.md#testing)** - Running tests and writing new ones
 
 ## 🚀 Quick Start
 
