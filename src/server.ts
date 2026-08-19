@@ -18,6 +18,11 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+/** Parsed once: the constructor and initialize() both need the version. */
+const packageJson = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf-8')
+);
+
 export class SpecWorkflowMCPServer {
   private server: Server;
   private projectPath!: string;   // workflowRootPath for .spec-workflow operations
@@ -26,10 +31,6 @@ export class SpecWorkflowMCPServer {
   private lang?: string;
 
   constructor() {
-    // Get version from package.json
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const packageJsonPath = join(__dirname, '..', 'package.json');
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 
     // Get all registered tools and prompts
     const tools = registerTools();
@@ -67,9 +68,6 @@ export class SpecWorkflowMCPServer {
       await validateProjectPath(this.workspacePath);
 
       // Initialize workspace
-      const __dirname = dirname(fileURLToPath(import.meta.url));
-      const packageJsonPath = join(__dirname, '..', 'package.json');
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
       const workspaceInitializer = new WorkspaceInitializer(this.projectPath, packageJson.version);
       await workspaceInitializer.initializeWorkspace();
 

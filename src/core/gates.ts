@@ -95,10 +95,15 @@ export async function ensureGateSecret(file: string = TELEGRAM_ENV): Promise<str
   return secret;
 }
 
+/** The runner's signature over a pending gate. Sole definition of the signed field order. */
+export function pendingSig(secret: string, id: string, nonce: string, kind: string, createdAt: string): string {
+  return createHmac('sha256', secret).update(`${id}:${nonce}:${kind}:${createdAt}`).digest('hex');
+}
+
 /** Verify the runner's signature on a pending gate (agent-writable location → must be signed). */
 export function verifyPendingSig(g: Pick<PendingGate, 'id' | 'nonce' | 'kind' | 'createdAt' | 'sig'>, secret: string): boolean {
   if (!g.sig) return false;
-  const expect = createHmac('sha256', secret).update(`${g.id}:${g.nonce}:${g.kind}:${g.createdAt}`).digest('hex');
+  const expect = pendingSig(secret, g.id, g.nonce, g.kind, g.createdAt);
   const a = Buffer.from(expect, 'hex'), b = Buffer.from(String(g.sig), 'hex');
   return a.length === b.length && timingSafeEqual(a, b);
 }

@@ -139,9 +139,9 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
   for (const dir of candidates) {
     let names: string[] = [];
     try { names = (await fs.readdir(dir)).filter(n => n.endsWith('.md')); } catch { continue; }
+    const files = await Promise.all(names.map(n => fs.readFile(join(dir, n), 'utf-8')));
     const agents: AgentSpec[] = [];
-    for (const n of names) {
-      const md = await fs.readFile(join(dir, n), 'utf-8');
+    for (const [i, md] of files.entries()) {
       const fm = parseFrontmatter(md);
       if (typeof fm.name !== 'string') continue;
       const trig = (fm.triggers && typeof fm.triggers === 'object') ? fm.triggers as Record<string, unknown> : {};
@@ -157,7 +157,7 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
           langs: Array.isArray(trig.langs) ? trig.langs.map(String) : undefined,
           profile: Array.isArray(trig.profile) ? trig.profile.map(String) : undefined,
         },
-        file: join(dir, n),
+        file: join(dir, names[i]),
       });
     }
     if (agents.length) return { agents: agents.sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name)), dir };
@@ -169,11 +169,24 @@ export async function loadAgents(projectPath: string, fallbackDir?: string): Pro
 
 export async function detectProfile(projectPath: string): Promise<ProjectProfile> {
   const root = PathUtils.translatePath(projectPath);
-  const exists = async (p: string) => { try { await fs.access(join(root, p)); return true; } catch { return false; } };
+  // One parallel batch: the probes are independent, and several were previously
+  // evaluated twice (requirements.txt / pyproject.toml).
+  const PROBES = [
+    'package.json', 'tsconfig.json', 'pyproject.toml', 'requirements.txt', 'setup.py',
+    'go.mod', 'Cargo.toml', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts',
+    'migrations', 'db/migrate', 'prisma/migrations', 'alembic',
+    'Dockerfile', 'docker-compose.yml', 'terraform', 'k8s', 'helm',
+  ] as const;
+  const found = new Map<string, boolean>(
+    await Promise.all(PROBES.map(async p =>
+      [p, await fs.access(join(root, p)).then(() => true, () => false)] as [string, boolean]))
+  );
+  const exists = (p: string) => found.get(p) ?? false;
+
   const languages: string[] = [], frameworks: string[] = [];
   let hasLlmSdk = false, hasUi = false;
-  if (await exists('package.json')) {
-    languages.push(await exists('tsconfig.json') ? 'typescript' : 'javascript');
+  if (exists('package.json')) {
+    languages.push(exists('tsconfig.json') ? 'typescript' : 'javascript');
     try {
       const pkg = JSON.parse(await fs.readFile(join(root, 'package.json'), 'utf-8'));
       const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
@@ -186,20 +199,24 @@ export async function detectProfile(projectPath: string): Promise<ProjectProfile
       if (has(/^openai$|^@anthropic-ai\/sdk$|^@google\/generative-ai$|^ai$|^langchain$|^@langchain\//)) hasLlmSdk = true;
     } catch { /* ignore */ }
   }
-  if (await exists('pyproject.toml') || await exists('requirements.txt') || await exists('setup.py')) {
+  if (exists('pyproject.toml') || exists('requirements.txt') || exists('setup.py')) {
     languages.push('python');
     try {
-      const txt = (await exists('requirements.txt') ? await fs.readFile(join(root, 'requirements.txt'), 'utf-8') : '') + (await exists('pyproject.toml') ? await fs.readFile(join(root, 'pyproject.toml'), 'utf-8') : '');
+      const [req, pyproject] = await Promise.all([
+        exists('requirements.txt') ? fs.readFile(join(root, 'requirements.txt'), 'utf-8') : Promise.resolve(''),
+        exists('pyproject.toml') ? fs.readFile(join(root, 'pyproject.toml'), 'utf-8') : Promise.resolve(''),
+      ]);
+      const txt = req + pyproject;
       if (/openai|anthropic|langchain|google-generativeai/i.test(txt)) hasLlmSdk = true;
       if (/django|flask|fastapi/i.test(txt)) frameworks.push('python-web');
     } catch { /* ignore */ }
   }
-  if (await exists('go.mod')) languages.push('go');
-  if (await exists('Cargo.toml')) languages.push('rust');
-  if (await exists('Gemfile')) languages.push('ruby');
-  if (await exists('pom.xml') || await exists('build.gradle') || await exists('build.gradle.kts')) languages.push('java');
-  const hasMigrations = (await exists('migrations')) || (await exists('db/migrate')) || (await exists('prisma/migrations')) || (await exists('alembic'));
-  const hasIac = (await exists('Dockerfile')) || (await exists('docker-compose.yml')) || (await exists('terraform')) || (await exists('k8s')) || (await exists('helm'));
+  if (exists('go.mod')) languages.push('go');
+  if (exists('Cargo.toml')) languages.push('rust');
+  if (exists('Gemfile')) languages.push('ruby');
+  if (exists('pom.xml') || exists('build.gradle') || exists('build.gradle.kts')) languages.push('java');
+  const hasMigrations = exists('migrations') || exists('db/migrate') || exists('prisma/migrations') || exists('alembic');
+  const hasIac = exists('Dockerfile') || exists('docker-compose.yml') || exists('terraform') || exists('k8s') || exists('helm');
   let hasSpecs = false;
   try { hasSpecs = (await fs.readdir(join(root, '.spec-workflow', 'specs'))).length > 0; } catch { /* none */ }
   return { hasSpecs, languages, frameworks, hasMigrations, hasLlmSdk, hasIac, hasUi };

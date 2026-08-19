@@ -45,6 +45,34 @@ export interface RecordVerificationResult {
  * (source: 'agent') and by the loop's `verify` CLI subcommand (source: 'harness-exec').
  * Owns ALL task-state transitions to [x]/[~] plus the verify-results journal and usage log.
  */
+/**
+ * The verify-results journal on disk. This module is the sole writer, so the file
+ * naming and the empty-record shape live here and nowhere else — `readVerifyResult`
+ * is the read-only door for other layers (e.g. the Telegram task card).
+ */
+export function verifyResultFile(specPath: string, taskId: string): string {
+  return join(specPath, 'verify-results', `task-${taskId.replace(/\./g, '-')}.json`);
+}
+
+async function openVerifyResult(specPath: string, specName: string, taskId: string): Promise<{ file: string; data: VerifyResult }> {
+  await fs.mkdir(join(specPath, 'verify-results'), { recursive: true });
+  const file = verifyResultFile(specPath, taskId);
+  return { file, data: (await readVerifyResult(specPath, specName, taskId)) };
+}
+
+/** Read a task's journal entry, or the empty record if it has none yet. */
+export async function readVerifyResult(specPath: string, specName: string, taskId: string): Promise<VerifyResult> {
+  try {
+    return JSON.parse(await fs.readFile(verifyResultFile(specPath, taskId), 'utf-8')) as VerifyResult;
+  } catch {
+    return { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
+  }
+}
+
+async function saveVerifyResult(file: string, data: VerifyResult): Promise<void> {
+  await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf-8');
+}
+
 export async function recordVerification(args: RecordVerificationArgs): Promise<RecordVerificationResult> {
   const {
     projectPath, specName, taskId, signal, source,
@@ -77,16 +105,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
   }
   const effEngine = engine || task.engine;
 
-  const verifyDir = join(specPath, 'verify-results');
-  await fs.mkdir(verifyDir, { recursive: true });
-  const verifyFile = join(verifyDir, `task-${taskId.replace(/\./g, '-')}.json`);
-
-  let verifyData: VerifyResult;
-  try {
-    verifyData = JSON.parse(await fs.readFile(verifyFile, 'utf-8'));
-  } catch {
-    verifyData = { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
-  }
+  const { file: verifyFile, data: verifyData } = await openVerifyResult(specPath, specName, taskId);
 
   // Reset fixAttempts if the task was dragged back to pending (recovery scenario)
   if (task.status === 'pending') verifyData.fixAttempts = 0;
@@ -106,7 +125,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
     await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'completed'), 'utf-8');
     verifyData.lastSignal = 'green';
     stamp();
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
     await appendUsageLog(projectPath, usageEntry(specName, taskId, task.description, effEngine, 'green', verifyData.lastTimestamp, usage));
     return { ok: true, message: `Task '${taskId}' verified GREEN (${source}) - marked completed`, outcome: 'green', blocked: false, fixAttempts: verifyData.fixAttempts, maxFixAttempts };
   }
@@ -117,7 +136,7 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
     await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'blocked', reason), 'utf-8');
     verifyData.lastSignal = 'red';
     stamp();
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
     await appendUsageLog(projectPath, usageEntry(specName, taskId, task.description, effEngine, 'blocked', verifyData.lastTimestamp, usage));
     return { ok: true, message: `Task '${taskId}' BLOCKED: ${reason}`, outcome: 'blocked', blocked: true, fixAttempts: verifyData.fixAttempts, maxFixAttempts };
   }
@@ -129,11 +148,11 @@ export async function recordVerification(args: RecordVerificationArgs): Promise<
   if (verifyData.fixAttempts >= maxFixAttempts) {
     const reason = `Verification failed ${verifyData.fixAttempts} times, manual intervention required`;
     await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'blocked', reason), 'utf-8');
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
     await appendUsageLog(projectPath, usageEntry(specName, taskId, task.description, effEngine, 'blocked', verifyData.lastTimestamp, usage));
     return { ok: true, message: `Task '${taskId}' BLOCKED after ${verifyData.fixAttempts} failed attempts`, outcome: 'blocked', blocked: true, fixAttempts: verifyData.fixAttempts, maxFixAttempts };
   }
-  await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+  await saveVerifyResult(verifyFile, verifyData);
   return { ok: true, message: `Task '${taskId}' verified RED (${source}) - attempt ${verifyData.fixAttempts}/${maxFixAttempts}`, outcome: 'red', blocked: false, fixAttempts: verifyData.fixAttempts, maxFixAttempts, testResults };
 }
 
@@ -184,16 +203,7 @@ export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJ
     return { ok: false, message: `Tasks file not found for spec '${specName}'`, outcome: 'error', attempts: 0 };
   }
 
-  const verifyDir = join(specPath, 'verify-results');
-  await fs.mkdir(verifyDir, { recursive: true });
-  const verifyFile = join(verifyDir, `task-${taskId.replace(/\./g, '-')}.json`);
-
-  let verifyData: VerifyResult;
-  try {
-    verifyData = JSON.parse(await fs.readFile(verifyFile, 'utf-8'));
-  } catch {
-    verifyData = { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
-  }
+  const { file: verifyFile, data: verifyData } = await openVerifyResult(specPath, specName, taskId);
 
   // attempts persists across the reopen (NOT reset with the harness fixAttempts), else it never caps.
   const prevAttempts = verifyData.judge?.attempts ?? 0;
@@ -201,7 +211,7 @@ export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJ
 
   if (verdict === 'pass' || verdict === 'skipped') {
     verifyData.judge = { engine, verdict, reasons, attempts: prevAttempts, timestamp };
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
     return { ok: true, message: `Task '${taskId}' judge ${verdict} (${engine})`, outcome: verdict, attempts: prevAttempts };
   }
 
@@ -211,13 +221,13 @@ export async function recordJudgeVerdict(args: RecordJudgeArgs): Promise<RecordJ
     const reason = `adequacy not met after ${attempts} judge rounds — ${reasons || 'needs human'}`;
     await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'blocked', reason), 'utf-8');
     verifyData.judge = { engine, verdict: 'fail', reasons, attempts, timestamp };
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
     return { ok: true, message: `Task '${taskId}' BLOCKED — ${reason}`, outcome: 'blocked', attempts };
   }
   // reopen to pending so the loop re-picks and strengthens the tests
   await fs.writeFile(tasksFile, updateTaskStatus(tasksContent, taskId, 'pending'), 'utf-8');
   verifyData.judge = { engine, verdict: 'fail', reasons, attempts, timestamp };
-  await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+  await saveVerifyResult(verifyFile, verifyData);
   return { ok: true, message: `Task '${taskId}' judge FAIL (${engine}) — reopened, attempt ${attempts}/${judgeMaxAttempts}`, outcome: 'reopened', attempts };
 }
 
@@ -301,18 +311,10 @@ export async function setTaskStatus(args: SetTaskStatusArgs): Promise<SetTaskSta
 
   // Journal the manual transition next to the harness verdicts (never overwrite them).
   try {
-    const verifyDir = join(specPath, 'verify-results');
-    await fs.mkdir(verifyDir, { recursive: true });
-    const verifyFile = join(verifyDir, `task-${taskId.replace(/\./g, '-')}.json`);
-    let verifyData: VerifyResult;
-    try {
-      verifyData = JSON.parse(await fs.readFile(verifyFile, 'utf-8'));
-    } catch {
-      verifyData = { taskId, specName, fixAttempts: 0, lastSignal: null, lastTestResults: [], lastFixNote: '', lastTimestamp: '' };
-    }
+    const { file: verifyFile, data: verifyData } = await openVerifyResult(specPath, specName, taskId);
     if (status === 'pending') verifyData.fixAttempts = 0; // same recovery semantics as the old kanban drag-back
     verifyData.manual = { by, from: previous, to: status, reason, timestamp: new Date().toISOString() };
-    await fs.writeFile(verifyFile, JSON.stringify(verifyData, null, 2), 'utf-8');
+    await saveVerifyResult(verifyFile, verifyData);
   } catch { /* non-critical */ }
 
   return { ok: true, message: `Task '${taskId}' ${previous} → ${status} (by ${by})`, previous };

@@ -16,8 +16,7 @@ import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
-import { gateHmac, verifyPendingSig } from './core/gates.js';
-import { createHmac } from 'crypto';
+import { gateHmac, pendingSig, verifyPendingSig } from './core/gates.js';
 
 const SPEC_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 function badSpec(spec: string | undefined): boolean { return !spec || !SPEC_NAME.test(spec) || spec === '.' || spec === '..'; }
@@ -246,7 +245,7 @@ export async function runGateHmacCli(args: string[], mode: 'decision' | 'sign' |
   if (mode === 'sign') {
     const [id, nonce, kind, at] = args;
     if (!id || !nonce || !kind || !at) { console.error('usage: gate-sign <id> <nonce> <kind> <createdAt>'); return 2; }
-    console.log(createHmac('sha256', secret).update(`${id}:${nonce}:${kind}:${at}`).digest('hex'));
+    console.log(pendingSig(secret, id, nonce, kind, at));
     return 0;
   }
   const file = args[0];

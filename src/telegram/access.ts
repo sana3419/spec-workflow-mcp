@@ -75,10 +75,19 @@ export class Audit {
     const file = this.file(rec.project);
     const prev = await lastHash(file);
     const full: AuditRecord = { ...rec, prev };
-    full.hash = createHash('sha256').update(prev + JSON.stringify({ ...full, hash: undefined })).digest('hex');
+    full.hash = chainHash(prev, full);
     await fs.appendFile(file, JSON.stringify(full) + '\n', { mode: 0o600 });
     return full;
   }
+}
+
+/**
+ * Chain link for the audit log: sha256(prevHash + the record without its own hash).
+ * Producer (`Audit.append`) and verifier (`verifyAuditChain`) must agree exactly, so
+ * this is the only place the formula is written.
+ */
+function chainHash(prev: string, rec: AuditRecord): string {
+  return createHash('sha256').update(prev + JSON.stringify({ ...rec, hash: undefined })).digest('hex');
 }
 
 async function lastHash(file: string): Promise<string> {
@@ -97,7 +106,7 @@ export async function verifyAuditChain(file: string): Promise<{ ok: boolean; rec
   let prev = '';
   for (let i = 0; i < lines.length; i++) {
     const rec = JSON.parse(lines[i]) as AuditRecord;
-    const expect = createHash('sha256').update(prev + JSON.stringify({ ...rec, hash: undefined })).digest('hex');
+    const expect = chainHash(prev, rec);
     if (rec.prev !== prev || rec.hash !== expect) return { ok: false, records: lines.length, brokenAt: i };
     prev = rec.hash!;
   }

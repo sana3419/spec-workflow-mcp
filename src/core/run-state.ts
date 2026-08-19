@@ -86,7 +86,7 @@ export async function requestLoopStop(projectPath: string, specName: string, by:
   const req: StopRequest = {
     by,
     at: new Date().toISOString(),
-    nonce: Array.from(randomBytes(16)).map(b => b.toString(16).padStart(2, '0')).join(''),
+    nonce: randomBytes(16).toString('hex'),
   };
   const target = join(dir, RUN_FILES.stop);
   const tmp = `${target}.tmp-${process.pid}`;

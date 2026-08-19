@@ -1,7 +1,7 @@
 import { readFile, readdir, access, stat } from 'fs/promises';
 import { join } from 'path';
 import { PathUtils } from './path-utils.js';
-import { SpecData, SteeringStatus, TaskInfo } from '../types.js';
+import { SpecData, SteeringStatus } from '../types.js';
 import { parseTaskProgress } from './task-parser.js';
 
 export interface ParsedSpec extends SpecData {
@@ -24,55 +24,50 @@ export class SpecParser {
   }
 
   async getAllSpecs(): Promise<ParsedSpec[]> {
-    try {
-      await access(this.specsPath);
-      const entries = await readdir(this.specsPath, { withFileTypes: true });
-      const specDirs = entries.filter(entry => entry.isDirectory());
-      
-      const specs: ParsedSpec[] = [];
-      for (const dir of specDirs) {
-        const spec = await this.getSpec(dir.name);
-        if (spec) {
-          specs.push(spec);
-        }
-      }
-      
-      return specs.sort((a, b) => a.name.localeCompare(b.name));
-    } catch {
-      return [];
-    }
+    return this.listSpecDirs(this.specsPath, name => this.getSpec(name));
   }
 
   async getAllArchivedSpecs(): Promise<ParsedSpec[]> {
+    return this.listSpecDirs(this.archiveSpecsPath, name => this.getArchivedSpec(name));
+  }
+
+  async getSpec(name: string): Promise<ParsedSpec | null> {
+    return this.readSpecDir(name, PathUtils.getSpecPath(this.projectPath, name));
+  }
+
+  async getArchivedSpec(name: string): Promise<ParsedSpec | null> {
+    return this.readSpecDir(name, PathUtils.getArchiveSpecPath(this.projectPath, name));
+  }
+
+  private async listSpecDirs(
+    root: string,
+    read: (name: string) => Promise<ParsedSpec | null>
+  ): Promise<ParsedSpec[]> {
     try {
-      await access(this.archiveSpecsPath);
-      const entries = await readdir(this.archiveSpecsPath, { withFileTypes: true });
-      const specDirs = entries.filter(entry => entry.isDirectory());
-      
+      const entries = await readdir(root, { withFileTypes: true });
       const specs: ParsedSpec[] = [];
-      for (const dir of specDirs) {
-        const spec = await this.getArchivedSpec(dir.name);
+      for (const dir of entries.filter(entry => entry.isDirectory())) {
+        const spec = await read(dir.name);
         if (spec) {
           specs.push(spec);
         }
       }
-      
+
       return specs.sort((a, b) => a.name.localeCompare(b.name));
     } catch {
       return [];
     }
   }
 
-  async getSpec(name: string): Promise<ParsedSpec | null> {
+  private async readSpecDir(name: string, specDir: string): Promise<ParsedSpec | null> {
     try {
-      const specDir = PathUtils.getSpecPath(this.projectPath, name);
-      await access(specDir);
+      const dirStats = await stat(specDir);
 
       const spec: ParsedSpec = {
         name,
         displayName: this.formatDisplayName(name),
-        createdAt: '',
-        lastModified: '',
+        createdAt: dirStats.birthtime.toISOString(),
+        lastModified: dirStats.mtime.toISOString(),
         phases: {
           requirements: { exists: false },
           design: { exists: false },
@@ -81,155 +76,37 @@ export class SpecParser {
         }
       };
 
-      // Get directory stats
-      const dirStats = await stat(specDir);
-      spec.createdAt = dirStats.birthtime.toISOString();
-      spec.lastModified = dirStats.mtime.toISOString();
+      const phaseFiles = [
+        ['requirements', 'requirements.md'],
+        ['design', 'design.md'],
+        ['tasks', 'tasks.md']
+      ] as const;
 
-      // Check each phase
-      const requirementsPath = join(specDir, 'requirements.md');
-      const designPath = join(specDir, 'design.md');
-      const tasksPath = join(specDir, 'tasks.md');
+      for (const [phase, file] of phaseFiles) {
+        const filePath = join(specDir, file);
+        try {
+          const fileStats = await stat(filePath);
+          spec.phases[phase].exists = true;
+          spec.phases[phase].lastModified = fileStats.mtime.toISOString();
 
-      // Check requirements
-      try {
-        await access(requirementsPath);
-        spec.phases.requirements.exists = true;
-        const reqStats = await stat(requirementsPath);
-        spec.phases.requirements.lastModified = reqStats.mtime.toISOString();
-        
-        // Update overall last modified if this is newer
-        if (reqStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = reqStats.mtime.toISOString();
-        }
-      } catch {}
+          // Update overall last modified if this is newer
+          if (fileStats.mtime > new Date(spec.lastModified)) {
+            spec.lastModified = fileStats.mtime.toISOString();
+          }
 
-      // Check design
-      try {
-        await access(designPath);
-        spec.phases.design.exists = true;
-        const designStats = await stat(designPath);
-        spec.phases.design.lastModified = designStats.mtime.toISOString();
-        
-        if (designStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = designStats.mtime.toISOString();
-        }
-      } catch {}
-
-      // Check tasks
-      try {
-        await access(tasksPath);
-        spec.phases.tasks.exists = true;
-        const tasksStats = await stat(tasksPath);
-        spec.phases.tasks.lastModified = tasksStats.mtime.toISOString();
-        
-        if (tasksStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = tasksStats.mtime.toISOString();
-        }
-
-        // Parse tasks to get progress
-        const tasksContent = await readFile(tasksPath, 'utf-8');
-        const taskProgress = parseTaskProgress(tasksContent);
-        spec.taskProgress = {
-          total: taskProgress.total,
-          completed: taskProgress.completed,
-          pending: taskProgress.pending
-        };
-      } catch {}
+          if (phase === 'tasks') {
+            const taskProgress = parseTaskProgress(await readFile(filePath, 'utf-8'));
+            spec.taskProgress = {
+              total: taskProgress.total,
+              completed: taskProgress.completed,
+              pending: taskProgress.pending
+            };
+          }
+        } catch {}
+      }
 
       // Implementation phase is always considered "exists" since it's ongoing manual work
       spec.phases.implementation.exists = true;
-
-      // Derive overall status from task progress (consumed by the dashboard for completed styling)
-      const tp = spec.taskProgress;
-      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
-
-      return spec;
-    } catch {
-      return null;
-    }
-  }
-
-  async getArchivedSpec(name: string): Promise<ParsedSpec | null> {
-    try {
-      const specDir = PathUtils.getArchiveSpecPath(this.projectPath, name);
-      await access(specDir);
-
-      const spec: ParsedSpec = {
-        name,
-        displayName: this.formatDisplayName(name),
-        createdAt: '',
-        lastModified: '',
-        phases: {
-          requirements: { exists: false },
-          design: { exists: false },
-          tasks: { exists: false },
-          implementation: { exists: false }
-        }
-      };
-
-      // Get directory stats
-      const dirStats = await stat(specDir);
-      spec.createdAt = dirStats.birthtime.toISOString();
-      spec.lastModified = dirStats.mtime.toISOString();
-
-      // Check each phase
-      const requirementsPath = join(specDir, 'requirements.md');
-      const designPath = join(specDir, 'design.md');
-      const tasksPath = join(specDir, 'tasks.md');
-
-      // Check requirements
-      try {
-        await access(requirementsPath);
-        spec.phases.requirements.exists = true;
-        const reqStats = await stat(requirementsPath);
-        spec.phases.requirements.lastModified = reqStats.mtime.toISOString();
-        
-        // Update overall last modified if this is newer
-        if (reqStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = reqStats.mtime.toISOString();
-        }
-      } catch {}
-
-      // Check design
-      try {
-        await access(designPath);
-        spec.phases.design.exists = true;
-        const designStats = await stat(designPath);
-        spec.phases.design.lastModified = designStats.mtime.toISOString();
-        
-        if (designStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = designStats.mtime.toISOString();
-        }
-      } catch {}
-
-      // Check tasks
-      try {
-        await access(tasksPath);
-        spec.phases.tasks.exists = true;
-        const tasksStats = await stat(tasksPath);
-        spec.phases.tasks.lastModified = tasksStats.mtime.toISOString();
-        
-        if (tasksStats.mtime > new Date(spec.lastModified)) {
-          spec.lastModified = tasksStats.mtime.toISOString();
-        }
-
-        // Parse tasks to get progress
-        const tasksContent = await readFile(tasksPath, 'utf-8');
-        const taskProgress = parseTaskProgress(tasksContent);
-        spec.taskProgress = {
-          total: taskProgress.total,
-          completed: taskProgress.completed,
-          pending: taskProgress.pending
-        };
-      } catch {}
-
-      // Implementation phase is always considered "exists" since it's ongoing manual work
-      spec.phases.implementation.exists = true;
-
-      // Derive overall status from task progress (consumed by the dashboard for completed styling)
-      const tp = spec.taskProgress;
-      spec.status = tp && tp.total > 0 && tp.completed === tp.total ? 'completed' : 'in-progress';
 
       return spec;
     } catch {

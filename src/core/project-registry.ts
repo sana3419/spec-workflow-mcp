@@ -84,8 +84,8 @@ export class ProjectRegistry {
    * Returns a map keyed by projectId
    */
   private async readRegistry(): Promise<Map<string, ProjectRegistryEntry>> {
-    await this.ensureRegistryDir();
-
+    // No mkdir here — writeRegistry() creates the directory; a read of a missing
+    // registry is already handled by the ENOENT branch below.
     try {
       const content = await fs.readFile(this.registryPath, 'utf-8');
       // Handle empty or whitespace-only files

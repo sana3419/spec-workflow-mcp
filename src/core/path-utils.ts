@@ -107,29 +107,7 @@ export class PathUtils {
    */
   static translatePath(hostPath: string): string {
     const config = this.getPathConfig();
-    if (!config) return hostPath;
-
-    if (this.pathMatchesPrefix(hostPath, config.hostPrefix)) {
-      const normalizedHostPrefix = this.normalizeForComparison(config.hostPrefix);
-      const normalizedPath = this.normalizeForComparison(hostPath);
-      const normalizedContainerPrefix = this.normalizeForComparison(config.containerPrefix);
-
-      // Get relative path preserving structure
-      let relativePath = normalizedPath.substring(normalizedHostPrefix.length);
-      // Ensure relative path starts with separator (needed for root prefix case)
-      if (relativePath && !relativePath.startsWith('/')) {
-        relativePath = '/' + relativePath;
-      }
-      const result = normalizedContainerPrefix + relativePath;
-
-      // Security: Validate no directory traversal in result
-      if (result.includes('/../') || result.endsWith('/..')) {
-        throw new Error('Path translation resulted in directory traversal attempt');
-      }
-
-      return result;
-    }
-    return hostPath;
+    return config ? this.remapPrefix(hostPath, config.hostPrefix, config.containerPrefix) : hostPath;
   }
 
   /**
@@ -137,29 +115,33 @@ export class PathUtils {
    */
   static reverseTranslatePath(containerPath: string): string {
     const config = this.getPathConfig();
-    if (!config) return containerPath;
+    return config ? this.remapPrefix(containerPath, config.containerPrefix, config.hostPrefix) : containerPath;
+  }
 
-    if (this.pathMatchesPrefix(containerPath, config.containerPrefix)) {
-      const normalizedContainerPrefix = this.normalizeForComparison(config.containerPrefix);
-      const normalizedPath = this.normalizeForComparison(containerPath);
-      const normalizedHostPrefix = this.normalizeForComparison(config.hostPrefix);
+  /**
+   * Swap one path prefix for another, preserving the structure below it.
+   * Shared by both translation directions so the two can never diverge.
+   */
+  private static remapPrefix(path: string, from: string, to: string): string {
+    if (!this.pathMatchesPrefix(path, from)) return path;
 
-      // Get relative path preserving structure
-      let relativePath = normalizedPath.substring(normalizedContainerPrefix.length);
-      // Ensure relative path starts with separator (needed for root prefix case)
-      if (relativePath && !relativePath.startsWith('/')) {
-        relativePath = '/' + relativePath;
-      }
-      const result = normalizedHostPrefix + relativePath;
+    const normalizedFrom = this.normalizeForComparison(from);
+    const normalizedPath = this.normalizeForComparison(path);
 
-      // Security: Validate no directory traversal in result
-      if (result.includes('/../') || result.endsWith('/..')) {
-        throw new Error('Path translation resulted in directory traversal attempt');
-      }
-
-      return result;
+    // Get relative path preserving structure
+    let relativePath = normalizedPath.substring(normalizedFrom.length);
+    // Ensure relative path starts with separator (needed for root prefix case)
+    if (relativePath && !relativePath.startsWith('/')) {
+      relativePath = '/' + relativePath;
     }
-    return containerPath;
+    const result = this.normalizeForComparison(to) + relativePath;
+
+    // Security: Validate no directory traversal in result
+    if (result.includes('/../') || result.endsWith('/..')) {
+      throw new Error('Path translation resulted in directory traversal attempt');
+    }
+
+    return result;
   }
 
   /**

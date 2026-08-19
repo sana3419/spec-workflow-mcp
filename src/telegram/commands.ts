@@ -7,7 +7,7 @@ import { parseTasksFromMarkdown, getTaskById } from '../core/task-parser.js';
 import { ImplementationLogManager } from '../core/implementation-log-manager.js';
 import { SpecArchiveService } from '../core/archive-service.js';
 import { getLoopStatus, requestLoopStop } from '../core/run-state.js';
-import { setTaskStatus, ManualTaskStatus } from '../core/verify-core.js';
+import { setTaskStatus, verifyResultFile, ManualTaskStatus } from '../core/verify-core.js';
 import { cleanupSpecs } from '../core/cleanup.js';
 import { listPendingGates } from '../core/gates.js';
 import { tailAudit } from '../core/run-watcher.js';
@@ -65,7 +65,7 @@ const parseArgs = (text: string): { cmd: string; args: string[] } => {
 
 // -------------------------------------------------------------- project / spec resolution
 
-function projectLabel(p: string): string { return basename(p.replace(/\/+$/, '')); }
+export function projectLabel(p: string): string { return basename(p.replace(/\/+$/, '')); }
 
 function matchProject(ctx: CommandCtx, token: string): string | undefined {
   const t = token.toLowerCase();
@@ -186,9 +186,10 @@ async function cmdStatus(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
 
 export async function specStatusText(project: string, spec: string): Promise<string> {
   const parser = new SpecParser(PathUtils.translatePath(project));
-  const s = (await parser.getSpec(spec)) || (await parser.getArchivedSpec(spec));
+  const active = await parser.getSpec(spec);
+  const s = active || (await parser.getArchivedSpec(spec));
   if (!s) return `spec ${code(spec)} not found in ${esc(projectLabel(project))}`;
-  const archived = !(await parser.getSpec(spec));
+  const archived = !active;
   const loop = archived ? { running: false } as Awaited<ReturnType<typeof getLoopStatus>> : await getLoopStatus(project, spec);
   const tp = s.taskProgress;
   const specDir = archived ? PathUtils.getArchiveSpecPath(PathUtils.translatePath(project), spec) : PathUtils.getSpecPath(PathUtils.translatePath(project), spec);
@@ -292,7 +293,8 @@ async function cmdTasks(ctx: CommandCtx, ref?: string): Promise<Reply[]> {
 
 async function readVerify(project: string, spec: string, taskId: string): Promise<VerifyResult | null> {
   try {
-    const f = join(PathUtils.getSpecPath(PathUtils.translatePath(project), spec), 'verify-results', `task-${taskId.replace(/\./g, '-')}.json`);
+    // Path convention owned by verify-core (the journal's sole writer).
+    const f = verifyResultFile(PathUtils.getSpecPath(PathUtils.translatePath(project), spec), taskId);
     return JSON.parse(await fs.readFile(f, 'utf-8'));
   } catch { return null; }
 }

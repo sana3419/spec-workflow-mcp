@@ -5,11 +5,10 @@ import { randomBytes } from 'crypto';
 import { TelegramApi, TelegramApiError, TgUpdate, InlineKeyboardMarkup } from './api.js';
 import { loadConfig, loadState, saveState, TelegramConfig, DaemonState } from './config.js';
 import { acceptMessage, acceptCallback, Audit } from './access.js';
-import { handleCommand, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
+import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
 import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
-import { SpecParser } from '../core/parser.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
 import { listPendingGates, updatePendingGate, writeDecision, readDecision, verifyPendingSig, PendingGate, GateKind } from '../core/gates.js';
 import { getLoopStatus } from '../core/run-state.js';
@@ -24,6 +23,7 @@ import type { ManualTaskStatus } from '../core/verify-core.js';
  */
 
 const TICK_MS = 4000;
+const SPEC_NAMES_TTL_MS = 60_000;
 
 export interface DaemonOptions {
   once?: boolean;             // run one tick and exit (tests / cron)
@@ -98,7 +98,7 @@ class Daemon {
   private lastDiscover = 0;
   private dirty = false;
   private awaitingReason = new Map<number, { project: string; spec: string; taskId: string }>();
-  private specNames = new Map<string, string[]>();
+  private specNames = new Map<string, { names: string[]; at: number }>();
 
   constructor(
     private api: TelegramApi,
@@ -332,13 +332,22 @@ class Daemon {
 
   private async specsOf(project: string): Promise<string[]> {
     const cached = this.specNames.get(project);
-    if (cached && Math.random() > 0.2) return cached; // refresh ~every 5th call
-    const specs = (await new SpecParser(PathUtils.translatePath(project)).getAllSpecs()).map(s => s.name);
-    this.specNames.set(project, specs);
-    return specs;
+    if (cached && Date.now() - cached.at < SPEC_NAMES_TTL_MS) return cached.names;
+    // Directory names only — a full getAllSpecs() here would read and parse every
+    // tasks.md on every refresh just to throw the parse away.
+    let names: string[];
+    try {
+      const root = PathUtils.getSpecPath(PathUtils.translatePath(project), '');
+      names = (await fs.readdir(root, { withFileTypes: true }))
+        .filter(e => e.isDirectory())
+        .map(e => e.name)
+        .sort((x, y) => x.localeCompare(y));
+    } catch { names = []; }
+    this.specNames.set(project, { names, at: Date.now() });
+    return names;
   }
 
-  private label(project: string): string { return project.replace(/\/+$/, '').split('/').pop() || project; }
+  private label(project: string): string { return projectLabel(project) || project; }
 
   private async onEvent(project: string, ev: LoopEvent): Promise<void> {
     const key = `${project}::${ev.spec}`;
