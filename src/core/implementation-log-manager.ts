@@ -10,11 +10,9 @@ import { randomUUID } from 'crypto';
  * in the spec's "Implementation Logs" directory
  */
 export class ImplementationLogManager {
-  private specPath: string;
   private logsDir: string;
 
   constructor(specPath: string) {
-    this.specPath = specPath;
     this.logsDir = join(specPath, 'Implementation Logs');
   }
 
@@ -27,25 +25,6 @@ export class ImplementationLogManager {
     } catch (error) {
       // Directory might already exist, ignore
     }
-  }
-
-  /**
-   * Parse markdown filename to extract taskId and entry ID
-   * Expected format: task-{sanitized-taskId}_{timestamp}_{id-prefix}.md
-   */
-  private parseFileName(fileName: string): { taskId?: string; id?: string } | null {
-    if (!fileName.endsWith('.md')) return null;
-
-    const baseName = fileName.slice(0, -3); // Remove .md extension
-    const parts = baseName.split('_');
-
-    if (parts.length < 3 || !parts[0].startsWith('task-')) return null;
-
-    // Reconstruct taskId from the first part (unsanitize)
-    const taskIdPart = parts[0].slice(5); // Remove 'task-' prefix
-    const taskId = taskIdPart.replace(/-/g, '.').replace(/\.{2,}/g, '.'); // Simple unsanitization
-
-    return { taskId };
   }
 
   /**
@@ -350,103 +329,6 @@ export class ImplementationLogManager {
   }
 
   /**
-   * Get logs within a date range
-   */
-  async getLogsByDateRange(startDate: Date, endDate: Date): Promise<ImplementationLogEntry[]> {
-    const log = await this.loadLog();
-    return log.entries.filter(e => {
-      const entryDate = new Date(e.timestamp);
-      return entryDate >= startDate && entryDate <= endDate;
-    });
-  }
-
-  /**
-   * Search logs by summary, task ID, files, and artifacts
-   * Supports space-separated keywords with AND logic (all keywords must match)
-   */
-  async searchLogs(query: string): Promise<ImplementationLogEntry[]> {
-    const log = await this.loadLog();
-
-    // Split query into keywords (space-separated) and convert to lowercase
-    const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 0);
-
-    return log.entries.filter(e => {
-      // For each keyword, check if it appears anywhere in this entry
-      // ALL keywords must match (AND logic)
-      return keywords.every(keyword => {
-        // Search in summary, taskId, and files
-        if (
-          e.summary.toLowerCase().includes(keyword) ||
-          e.taskId.toLowerCase().includes(keyword) ||
-          e.filesModified.some(f => f.toLowerCase().includes(keyword)) ||
-          e.filesCreated.some(f => f.toLowerCase().includes(keyword))
-        ) {
-          return true;
-        }
-
-        // Search in artifacts
-        if (e.artifacts) {
-          // Search API endpoints
-          if (e.artifacts.apiEndpoints?.some(api =>
-            api.method?.toLowerCase().includes(keyword) ||
-            api.path?.toLowerCase().includes(keyword) ||
-            api.purpose?.toLowerCase().includes(keyword) ||
-            api.location?.toLowerCase().includes(keyword) ||
-            (api.requestFormat && api.requestFormat.toLowerCase().includes(keyword)) ||
-            (api.responseFormat && api.responseFormat.toLowerCase().includes(keyword))
-          )) {
-            return true;
-          }
-
-          // Search components
-          if (e.artifacts.components?.some(comp =>
-            comp.name?.toLowerCase().includes(keyword) ||
-            comp.type?.toLowerCase().includes(keyword) ||
-            comp.purpose?.toLowerCase().includes(keyword) ||
-            comp.location?.toLowerCase().includes(keyword) ||
-            (comp.props && comp.props.toLowerCase().includes(keyword)) ||
-            (comp.exports?.some(exp => exp.toLowerCase().includes(keyword)))
-          )) {
-            return true;
-          }
-
-          // Search functions
-          if (e.artifacts.functions?.some(func =>
-            func.name?.toLowerCase().includes(keyword) ||
-            func.purpose?.toLowerCase().includes(keyword) ||
-            func.location?.toLowerCase().includes(keyword) ||
-            (func.signature && func.signature.toLowerCase().includes(keyword))
-          )) {
-            return true;
-          }
-
-          // Search classes
-          if (e.artifacts.classes?.some(cls =>
-            cls.name?.toLowerCase().includes(keyword) ||
-            cls.purpose?.toLowerCase().includes(keyword) ||
-            cls.location?.toLowerCase().includes(keyword) ||
-            (cls.methods?.some(method => method.toLowerCase().includes(keyword)))
-          )) {
-            return true;
-          }
-
-          // Search integrations
-          if (e.artifacts.integrations?.some(intg =>
-            intg.description?.toLowerCase().includes(keyword) ||
-            intg.frontendComponent?.toLowerCase().includes(keyword) ||
-            intg.backendEndpoint?.toLowerCase().includes(keyword) ||
-            intg.dataFlow?.toLowerCase().includes(keyword)
-          )) {
-            return true;
-          }
-        }
-
-        return false;
-      });
-    });
-  }
-
-  /**
    * Get statistics for a task
    */
   async getTaskStats(taskId: string) {
@@ -471,18 +353,6 @@ export class ImplementationLogManager {
       totalLinesRemoved: taskLogs.reduce((sum, e) => sum + e.statistics.linesRemoved, 0),
       lastImplementation: taskLogs[0] || null
     };
-  }
-
-  /**
-   * Get all logs that contain a specific artifact type
-   */
-  async getLogsByArtifactType(artifactType: 'apiEndpoints' | 'components' | 'functions' | 'classes' | 'integrations'): Promise<ImplementationLogEntry[]> {
-    const log = await this.loadLog();
-    return log.entries.filter(entry =>
-      entry.artifacts &&
-      entry.artifacts[artifactType] &&
-      (entry.artifacts[artifactType] as any).length > 0
-    );
   }
 
   /**
@@ -512,17 +382,4 @@ export class ImplementationLogManager {
     return results;
   }
 
-  /**
-   * Get the logs directory path
-   */
-  getLogsDir(): string {
-    return this.logsDir;
-  }
-
-  /**
-   * Get the log file path (for backwards compatibility, now returns the logs directory)
-   */
-  getLogPath(): string {
-    return this.logsDir;
-  }
 }

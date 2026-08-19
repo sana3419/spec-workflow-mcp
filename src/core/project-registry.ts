@@ -51,7 +51,6 @@ export function generateProjectDisplayName(workspacePath: string, workflowRootPa
 export class ProjectRegistry {
   private registryPath: string;
   private registryDir: string;
-  private needsInitialization: boolean = false;
 
   constructor() {
     this.registryDir = getGlobalDir();
@@ -92,8 +91,6 @@ export class ProjectRegistry {
       const trimmedContent = content.trim();
       if (!trimmedContent) {
         console.error(`[ProjectRegistry] Warning: ${this.registryPath} is empty, initializing with empty registry`);
-        // Mark that we need to write the file
-        this.needsInitialization = true;
         return new Map();
       }
       const data = JSON.parse(trimmedContent) as Record<string, ProjectRegistryEntry>;
@@ -119,7 +116,6 @@ export class ProjectRegistry {
     } catch (error: any) {
       if (error.code === 'ENOENT') {
         // File doesn't exist yet, return empty map
-        this.needsInitialization = true;
         return new Map();
       }
       if (error instanceof SyntaxError) {
@@ -134,7 +130,6 @@ export class ProjectRegistry {
         } catch (backupError) {
           // Ignore backup errors
         }
-        this.needsInitialization = true;
         return new Map();
       }
       throw error;
@@ -255,15 +250,6 @@ export class ProjectRegistry {
   }
 
   /**
-   * Unregister a project by projectId
-   */
-  async unregisterProjectById(projectId: string): Promise<void> {
-    const registry = await this.readRegistry();
-    registry.delete(projectId);
-    await this.writeRegistry(registry);
-  }
-
-  /**
    * Get all active projects from the registry
    */
   async getAllProjects(): Promise<ProjectRegistryEntry[]> {
@@ -289,57 +275,4 @@ export class ProjectRegistry {
     return registry.get(projectId) || null;
   }
 
-  /**
-   * Clean up stale instances (where the process is no longer running)
-   * Projects with no live instances are removed entirely
-   * Returns the count of removed instances
-   */
-  async cleanupStaleProjects(): Promise<number> {
-    const registry = await this.readRegistry();
-    let removedInstanceCount = 0;
-    let needsWrite = this.needsInitialization; // Write if file needs initialization
-
-    for (const [projectId, entry] of registry.entries()) {
-      const liveInstances = entry.instances.filter(i => this.isProcessAlive(i.pid));
-      const deadCount = entry.instances.length - liveInstances.length;
-
-      if (deadCount > 0) {
-        removedInstanceCount += deadCount;
-        needsWrite = true;
-
-        if (liveInstances.length === 0) {
-          // No live instances, remove entire project
-          registry.delete(projectId);
-        } else {
-          // Keep project with only live instances
-          entry.instances = liveInstances;
-          registry.set(projectId, entry);
-        }
-      }
-    }
-
-    if (needsWrite) {
-      await this.writeRegistry(registry);
-      this.needsInitialization = false; // Reset flag after successful write
-    }
-
-    return removedInstanceCount;
-  }
-
-  /**
-   * Check if a project is registered by path
-   */
-  async isProjectRegistered(projectPath: string): Promise<boolean> {
-    const registry = await this.readRegistry();
-    const absolutePath = resolve(projectPath);
-    const projectId = generateProjectId(absolutePath);
-    return registry.has(projectId);
-  }
-
-  /**
-   * Get the registry file path for watching
-   */
-  getRegistryPath(): string {
-    return this.registryPath;
-  }
 }

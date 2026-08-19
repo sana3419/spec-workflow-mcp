@@ -1,5 +1,5 @@
 import { join, normalize, sep, resolve, posix } from 'path';
-import { access, stat, mkdir } from 'fs/promises';
+import { access, stat } from 'fs/promises';
 import { constants } from 'fs';
 
 export class PathUtils {
@@ -145,21 +145,6 @@ export class PathUtils {
   }
 
   /**
-   * Validate that a resolved absolute path is within at least one of the given base directories.
-   * Throws if the path escapes all bases.
-   */
-  static validatePathWithinBases(resolvedPath: string, basePaths: string[]): void {
-    const normalizedResolved = resolve(resolvedPath);
-    for (const base of basePaths) {
-      const normalizedBase = resolve(base);
-      if (normalizedResolved === normalizedBase || normalizedResolved.startsWith(normalizedBase + sep)) {
-        return;
-      }
-    }
-    throw new Error(`Path traversal detected: path escapes allowed directories`);
-  }
-
-  /**
    * Validate a single path segment that must not contain traversal or separators.
    */
   static validateSimplePathSegment(pathSegment: string, label: string = 'path segment'): void {
@@ -229,39 +214,8 @@ export class PathUtils {
   }
 
 
-  static getTemplatesPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'templates');
-  }
-
-  static getAgentsPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'agents');
-  }
-
-  static getCommandsPath(projectPath: string): string {
-    return this.safeJoin(projectPath, '.spec-workflow', 'commands');
-  }
-
-
   // Ensure paths work across Windows, macOS, Linux
-  static toPlatformPath(path: string): string {
-    return path.split('/').join(sep);
-  }
-
-  static toUnixPath(path: string): string {
-    return path.split(sep).join('/');
-  }
-
   // Get relative path from project root
-  static getRelativePath(projectPath: string, fullPath: string): string {
-    const normalizedProject = normalize(projectPath);
-    const normalizedFull = normalize(fullPath);
-    
-    if (normalizedFull.startsWith(normalizedProject)) {
-      return normalizedFull.slice(normalizedProject.length + 1);
-    }
-    
-    return normalizedFull;
-  }
 }
 
 export async function validateProjectPath(projectPath: string): Promise<string> {
@@ -324,33 +278,4 @@ export async function validateProjectPath(projectPath: string): Promise<string> 
     }
     throw new Error(`Unknown error validating project path: ${String(error)}`);
   }
-}
-
-export async function ensureDirectoryExists(dirPath: string): Promise<void> {
-  try {
-    await access(dirPath, constants.F_OK);
-  } catch {
-    await mkdir(dirPath, { recursive: true });
-  }
-}
-
-export async function ensureWorkflowDirectory(projectPath: string): Promise<string> {
-  const workflowRoot = PathUtils.getWorkflowRoot(projectPath);
-  
-  // Create all necessary subdirectories
-  const directories = [
-    workflowRoot,
-    PathUtils.getSpecPath(projectPath, ''),
-    PathUtils.getArchiveSpecsPath(projectPath),
-    PathUtils.getSteeringPath(projectPath),
-    PathUtils.getTemplatesPath(projectPath),
-    PathUtils.getAgentsPath(projectPath),
-    PathUtils.getCommandsPath(projectPath)
-  ];
-  
-  for (const dir of directories) {
-    await ensureDirectoryExists(dir);
-  }
-  
-  return workflowRoot;
 }

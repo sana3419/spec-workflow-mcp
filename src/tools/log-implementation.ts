@@ -80,10 +80,10 @@ When utility functions are created, document:
 Example:
 \`\`\`
 {
-  "name": "searchLogs",
-  "purpose": "Search implementation logs by keyword",
+  "name": "getTaskLogs",
+  "purpose": "Load the implementation logs recorded for one task",
   "location": "src/core/implementation-log-manager.ts:156",
-  "signature": "(searchTerm: string) => Promise<ImplementationLogEntry[]>",
+  "signature": "(taskId: string) => Promise<ImplementationLogEntry[]>",
   "isExported": true
 }
 \`\`\`
@@ -102,7 +102,7 @@ Example:
   "name": "ImplementationLogManager",
   "purpose": "Manages CRUD operations for implementation logs",
   "location": "src/core/implementation-log-manager.ts",
-  "methods": ["loadLog", "addLogEntry", "getAllLogs", "searchLogs", "getTaskStats"],
+  "methods": ["loadLog", "addLogEntry", "getAllLogs", "getTaskLogs", "getTaskStats"],
   "isExported": true
 }
 \`\`\`
@@ -158,7 +158,7 @@ Task: "Implemented logs page with real-time updates"
         "name": "ImplementationLogManager",
         "purpose": "Manages CRUD operations for implementation logs",
         "location": "src/core/implementation-log-manager.ts",
-        "methods": ["loadLog", "addLogEntry", "getAllLogs", "searchLogs", "getTaskStats"],
+        "methods": ["loadLog", "addLogEntry", "getAllLogs", "getTaskLogs", "getTaskStats"],
         "isExported": true
       }
     ],
