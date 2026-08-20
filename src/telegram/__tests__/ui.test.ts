@@ -1,10 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { renderScreen, NavState, UiDeps } from '../ui.js';
-import { CommandCtx } from '../commands.js';
-import { T } from '../strings.js';
+
+// Isolate the watcher registry from the machine's real ~/.spec-workflow (a live daemon/monitor there
+// would otherwise leak into the window-list assertions).
+const home = join(tmpdir(), `swmcp-ui-home-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+vi.mock('os', async (orig) => {
+  const real = await orig<typeof import('os')>();
+  return { ...real, homedir: () => home };
+});
+
+const { renderScreen } = await import('../ui.js');
+type NavState = import('../ui.js').NavState;
+type UiDeps = import('../ui.js').UiDeps;
+type CommandCtx = import('../commands.js').CommandCtx;
+const { T } = await import('../strings.js');
 
 /**
  * The button UI is the primary surface, so these tests assert the things a user would notice:
@@ -85,6 +96,21 @@ describe('telegram button UI', () => {
     expect(labels).not.toContain(T.btnDesign());         // design.md does not
   });
 
+  it('windows screen lists listeners newest-first, marks the pinned one and offers pin buttons', async () => {
+    const q = await import('../../core/requests.js');
+    const a = await q.registerWatcher('窗口 A');
+    await new Promise(r => setTimeout(r, 5));
+    const b2 = await q.registerWatcher('窗口 B', ['/repo/b']);
+    await q.setWatcherNote(b2.id, '⏳ new-spec auth');
+    const r = await renderScreen({ s: 'windows' }, { ...deps(), pinnedWatcher: b2.id });
+    expect(r.text.indexOf('窗口 B')).toBeLessThan(r.text.indexOf('窗口 A'));   // newest first
+    expect(r.text).toContain('📌');                                            // pinned marker
+    expect(r.text).toContain('new-spec auth');                                 // what it is doing
+    const pins = buttons(r).filter(x => navs.get(x.callback_data.replace(/^n:/, ''))?.watcher);
+    expect(pins).toHaveLength(2);
+    await q.unregisterWatcher(a.id); await q.unregisterWatcher(b2.id);
+  });
+
   it('every screen renders and every nav button resolves (no dead ends)', async () => {
     const seeds: NavState[] = [
       { s: 'home' }, { s: 'projects' }, { s: 'specs', project: root, pg: 0 },
@@ -92,7 +118,7 @@ describe('telegram button UI', () => {
       { s: 'task', project: root, spec: 'auth', taskId: '1' }, { s: 'docs', project: root, spec: 'auth' },
       { s: 'logs', project: root, spec: 'auth' }, { s: 'runlog', project: root, spec: 'auth' },
       { s: 'gates' }, { s: 'steering', project: root }, { s: 'more', project: root },
-      { s: 'cleanup', project: root }, { s: 'help' },
+      { s: 'cleanup', project: root }, { s: 'help' }, { s: 'windows' },
     ];
     for (const seed of seeds) {
       const r = await renderScreen(seed, deps());

@@ -83,6 +83,9 @@ spec-workflow-mcp requests done  <id> --fail --result "缺少依赖"
 * **新开窗口不会顶掉旧窗口**：是叠加，不是重绑定。旧窗口关掉（Ctrl-C / 会话结束）会注销；异常退出则由 90 秒心跳过期兜底。
 * Telegram 在你点按钮时会显示 `👂 正在监听：<窗口名>`；没人听就提示你去开一个。
 
+**指定某个窗口做事**：首页 → `👂 窗口`，列表按**最近活跃排序（新的在最前）**，每行显示窗口名、绑定的项目、上次活跃时间、以及它正在做/刚做完什么（`⏳ new-spec auth` / `✅ task auth #3`）。点一个窗口即"钉住"，之后所有新任务只发给它（请求带 `target`，别的窗口不会领）；再点一次取消钉住。窗口掉线后钉住自动失效。
+会话也可以主动写一句概要：`spec-workflow-mcp requests note "正在重构 parser"`（在 watch 进程里 `SPEC_WORKFLOW_WATCHER_ID` 已设好，或用 `--watcher <id>`）。
+
 无人值守的备选仍在：`.spec-workflow/spec-new-run.sh <spec> <一句话>` 会用独立 headless claude 生成 spec。
 
 ## 命令（兜底，仍然可用）

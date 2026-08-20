@@ -34,6 +34,10 @@ export interface Watcher {
   /** absolute project paths this session handles; empty = any project */
   projects: string[];
   startedAt: string;
+  /** what this session is doing / last did — shown in the Telegram window list */
+  note?: string;
+  /** last time it claimed or finished a request (not the heartbeat) */
+  lastActiveAt?: string;
 }
 
 export interface WorkRequest {
@@ -53,6 +57,8 @@ export interface WorkRequest {
   claimedAt?: string;
   /** watcher id that owns this request (set by the atomic claim) */
   claimedBy?: string;
+  /** address this request to ONE window; unaddressed requests go to any watcher whose scope matches */
+  target?: string;
   finishedAt?: string;
   result?: string;
 }
@@ -118,6 +124,26 @@ export function watcherHandles(w: Pick<Watcher, 'projects'>, project: string): b
   return !w.projects.length || w.projects.includes(project);
 }
 
+/** Is this request for that watcher? Addressed requests are exclusive; the rest follow the scope. */
+export function watcherTakes(w: Pick<Watcher, 'id' | 'projects'>, r: Pick<WorkRequest, 'project' | 'target'>): boolean {
+  return r.target ? r.target === w.id : watcherHandles(w, r.project);
+}
+
+/** Publish what this session is doing (shown in the Telegram window list). */
+export async function setWatcherNote(id: string, note: string): Promise<void> {
+  try {
+    const w = JSON.parse(await fs.readFile(watcherFile(id), 'utf-8')) as Watcher;
+    await writeAtomic(watcherFile(id), { ...w, note: note.slice(0, 160), lastActiveAt: new Date().toISOString() });
+  } catch { /* watcher gone */ }
+}
+
+/** One-line description of a request, for watcher notes and the Telegram list. */
+export function describeRequest(r: Pick<WorkRequest, 'kind' | 'spec' | 'taskId' | 'path'>): string {
+  if (r.kind === 'new-spec') return `new-spec ${r.spec ?? ''}`.trim();
+  if (r.kind === 'new-project') return `new-project ${r.path ?? ''}`.trim();
+  return `task ${r.spec ?? ''} #${r.taskId ?? ''}`.trim();
+}
+
 /**
  * Atomically take ownership of a pending request. Returns false if another watcher got there first,
  * which is what keeps two open windows from doing the same work.
@@ -133,6 +159,7 @@ export async function claimRequest(id: string, watcherId: string): Promise<boole
   const cur = await readRequest(id);
   if (!cur || cur.status !== 'pending') { await fs.rm(lock).catch(() => {}); return false; }
   await updateRequest(id, { status: 'claimed', claimedAt: new Date().toISOString(), claimedBy: watcherId });
+  await setWatcherNote(watcherId, `⏳ ${describeRequest(cur)}`);
   return true;
 }
 
@@ -183,6 +210,11 @@ export async function updateRequest(id: string, patch: Partial<WorkRequest>): Pr
   if (!cur) return null;
   const next = { ...cur, ...patch };
   await writeAtomic(file(id), next);
+  // Finishing a request updates the owning window's summary, so the Telegram list stays truthful
+  // without the session having to remember to publish anything.
+  if (next.claimedBy && (next.status === 'done' || next.status === 'failed')) {
+    await setWatcherNote(next.claimedBy, `${next.status === 'done' ? '✅' : '❌'} ${describeRequest(next)}`);
+  }
   return next;
 }
 

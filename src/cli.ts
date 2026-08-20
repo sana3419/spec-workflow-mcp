@@ -14,7 +14,7 @@ import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskSta
 import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, VerifySource, FailureClass, ManualTaskStatus } from './core/verify-core.js';
 import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
-import { createRequest, listRequests, readRequest, updateRequest, pruneRequests, watcherAlive, registerWatcher, heartbeatWatcher, unregisterWatcher, listWatchers, watcherHandles, claimRequest, WorkRequest } from './core/requests.js';
+import { createRequest, listRequests, readRequest, updateRequest, pruneRequests, watcherAlive, registerWatcher, heartbeatWatcher, unregisterWatcher, listWatchers, watcherTakes, setWatcherNote, claimRequest, WorkRequest } from './core/requests.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
 import { gateHmac, pendingSig, verifyPendingSig } from './core/gates.js';
@@ -281,7 +281,7 @@ export async function runGateHmacCli(args: string[], mode: 'decision' | 'sign' |
  */
 export async function runRequestsCli(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
-  const fmt = (r: WorkRequest) => JSON.stringify({ id: r.id, kind: r.kind, status: r.status, project: r.project, spec: r.spec, taskId: r.taskId, idea: r.idea, path: r.path, by: r.by, at: r.at });
+  const fmt = (r: WorkRequest) => JSON.stringify({ id: r.id, kind: r.kind, status: r.status, project: r.project, spec: r.spec, taskId: r.taskId, idea: r.idea, path: r.path, target: r.target, by: r.by, at: r.at });
 
   if (sub === 'list') {
     const status = flag(rest, '--status') as WorkRequest['status'] | undefined;
@@ -300,7 +300,14 @@ export async function runRequestsCli(args: string[]): Promise<number> {
     return 0;
   }
   if (sub === 'watchers') {
-    for (const w of await listWatchers()) console.log(JSON.stringify({ id: w.id, pid: w.pid, label: w.label, projects: w.projects, lastSeen: w.lastSeen }));
+    for (const w of await listWatchers()) console.log(JSON.stringify({ id: w.id, pid: w.pid, label: w.label, projects: w.projects, note: w.note, lastActiveAt: w.lastActiveAt, lastSeen: w.lastSeen }));
+    return 0;
+  }
+  if (sub === 'note') {                       // publish what this window is doing
+    const id = flag(rest, '--watcher') ?? process.env.SPEC_WORKFLOW_WATCHER_ID;
+    const note = rest.filter(a => !a.startsWith('--') && a !== id).join(' ');
+    if (!id || !note) { console.error('usage: requests note <text> [--watcher <id>]  (or set SPEC_WORKFLOW_WATCHER_ID)'); return 2; }
+    await setWatcherNote(id, note);
     return 0;
   }
   if (sub === 'watch') {
@@ -312,20 +319,21 @@ export async function runRequestsCli(args: string[]): Promise<number> {
     const bye = async () => { await unregisterWatcher(w.id); process.exit(0); };
     process.on('SIGINT', bye); process.on('SIGTERM', bye);
     const others = (await listWatchers()).filter(x => x.id !== w.id);
+    process.env.SPEC_WORKFLOW_WATCHER_ID = w.id;
     console.error(`[requests] watcher ${w.id} · ${projects.length ? projects.join(', ') : 'all projects'}`
       + (others.length ? ` · ${others.length} other session(s) listening: ${others.map(o => o.label).join(', ')}` : ''));
     for (;;) {
       await heartbeatWatcher(w.id);
       for (const r of await listRequests('pending')) {
-        if (!watcherHandles(w, r.project)) continue;          // another window owns this project
-        if (!(await claimRequest(r.id, w.id))) continue;       // someone else got it first
+        if (!watcherTakes(w, r)) continue;                     // addressed elsewhere / another window's project
+        if (!(await claimRequest(r.id, w.id))) continue;        // someone else got it first
         console.log(fmt({ ...r, status: 'claimed', claimedBy: w.id }));
       }
       await pruneRequests();
       await new Promise(res => setTimeout(res, interval));
     }
   }
-  console.error('usage: requests <watch|watchers|list|claim|done> …');
+  console.error('usage: requests <watch|watchers|note|list|claim|done> …');
   return 2;
 }
 

@@ -274,6 +274,25 @@ export const T = {
   kindNewProject: () => pick({ zh: '初始化项目', en: 'init project' }),
   kindDispatch: () => pick({ zh: '实现任务', en: 'implement task' }),
 
+  // ---- windows (listening Claude sessions)
+  hWindows: () => pick({ zh: '👂 Claude 窗口', en: '👂 Claude windows' }),
+  tabWindows: () => pick({ zh: '👂 窗口', en: '👂 Windows' }),
+  windowsHint: () => pick({
+    zh: '新活跃的排在最前。点一个窗口把后续任务指派给它；再点一次取消指派（改为「任何窗口」）。',
+    en: 'Most recently active first. Tap a window to address new work to it; tap again to unpin (any window).' }),
+  noWindows: () => pick({
+    zh: '当前没有窗口在监听。\n在 Claude Code 里让它用 Monitor 跑：\n<code>spec-workflow-mcp requests watch --label "窗口名" [--project /绝对/路径]</code>',
+    en: 'No window is listening.\nIn Claude Code, Monitor:\n<code>spec-workflow-mcp requests watch --label "name" [--project /abs/path]</code>' }),
+  windowRow: (pinned: boolean, label: string, scope: string, seen: string, note: string) => pick({
+    zh: `${pinned ? '📌' : '▫️'} ${label}\n     ${scope} · 活跃 ${seen}前${note ? `\n     ${note}` : ''}`,
+    en: `${pinned ? '📌' : '▫️'} ${label}\n     ${scope} · seen ${seen} ago${note ? `\n     ${note}` : ''}` }),
+  windowScopeAll: () => pick({ zh: '全部项目', en: 'all projects' }),
+  windowNoNote: () => pick({ zh: '（还没有活动）', en: '(no activity yet)' }),
+  windowPinned: (label: string) => pick({ zh: `📌 后续任务将指派给：<b>${label}</b>`, en: `📌 new work goes to: <b>${label}</b>` }),
+  windowUnpinned: () => pick({ zh: '已取消指派：任务交给任意在听的窗口', en: 'unpinned: work goes to any listening window' }),
+  windowGone: () => pick({ zh: '这个窗口已经不在监听了', en: 'that window is no longer listening' }),
+  targetedTo: (label: string) => pick({ zh: `🎯 已指派给窗口：${label}`, en: `🎯 addressed to: ${label}` }),
+
   about: (version: string, projects: number) => pick({ zh: `spec-workflow-mcp ${version} · loop_bot\n监控项目：${projects} 个`, en: `spec-workflow-mcp ${version} · loop_bot\nprojects: ${projects}` }),
 
   help: () => pick({

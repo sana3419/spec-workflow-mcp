@@ -7,6 +7,7 @@ import { listPendingGates } from '../core/gates.js';
 import { ImplementationLogManager } from '../core/implementation-log-manager.js';
 import { cleanupSpecs } from '../core/cleanup.js';
 import { tailAudit } from '../core/run-watcher.js';
+import { listWatchers } from '../core/requests.js';
 import { esc, b, code, ago, bar, pct, inlineUntrusted, untrusted, statusIcon, shortPath } from './render.js';
 import { T } from './strings.js';
 import { projectLabel, specStatusText, loadTasks, readVerify, specExists, Reply, CommandCtx } from './commands.js';
@@ -26,7 +27,7 @@ import type { InlineKeyboardButton, InlineKeyboardMarkup } from './api.js';
 export type Screen =
   | 'home' | 'projects' | 'specs' | 'spec' | 'tasks' | 'task' | 'logs' | 'runlog'
   | 'gates' | 'docs' | 'steering' | 'more' | 'cleanup' | 'help'
-  | 'new-spec' | 'new-project';
+  | 'new-spec' | 'new-project' | 'windows';
 
 export interface NavState {
   s: Screen;
@@ -39,12 +40,16 @@ export interface NavState {
   arch?: boolean;
   /** cleanup: days */
   days?: number;
+  /** windows screen: watcher id to pin/unpin */
+  watcher?: string;
 }
 
 export interface UiDeps {
   ctx: CommandCtx;
   /** register a nav target, returns the short callback key */
   nav(state: NavState): Promise<string>;
+  /** watcher id this chat currently addresses work to (if any) */
+  pinnedWatcher?: string;
 }
 
 const PAGE = 8;
@@ -88,6 +93,7 @@ export async function renderScreen(nav: NavState, d: UiDeps): Promise<Reply> {
     case 'cleanup': return screenCleanup(d, nav);
     case 'new-spec': return { text: T.askNewSpec(), keyboard: kb([[await navBtn(d, T.btnBack(), { s: 'specs', project: nav.project, pg: 0 })]]) };
     case 'new-project': return { text: T.askNewProject(), keyboard: kb([[await navBtn(d, T.btnBack(), { s: 'home' })]]) };
+    case 'windows': return screenWindows(d);
     case 'help': return { text: T.help(), keyboard: kb([[await navBtn(d, T.btnHome(), { s: 'home' })]]) };
     default: return screenHome(d);
   }
@@ -97,6 +103,8 @@ export async function renderScreen(nav: NavState, d: UiDeps): Promise<Reply> {
 
 async function screenHome(d: UiDeps): Promise<Reply> {
   const lines = [b(T.hHome()), ''];
+  const live = await listWatchers();
+  const windows = live.length;
   let gates = 0, running = 0;
   for (const p of d.ctx.projects) {
     const specs = await new SpecParser(p).getAllSpecs();
@@ -112,6 +120,8 @@ async function screenHome(d: UiDeps): Promise<Reply> {
   if (!d.ctx.projects.length) lines.push(esc(T.noProjects()));
   if (running) lines.push('', `🔄 ${running} ${T.lRunning()}`);
   if (gates) lines.push(`⏸ ${esc(T.gatesWaitingShort(gates))}`);
+  const pinnedLabel = live.find(w => w.id === d.pinnedWatcher)?.label;
+  if (pinnedLabel) lines.push(T.windowPinned(esc(pinnedLabel)));
 
   const project = d.ctx.currentProject || (d.ctx.projects.length === 1 ? d.ctx.projects[0] : undefined);
   return {
@@ -120,9 +130,27 @@ async function screenHome(d: UiDeps): Promise<Reply> {
       row(await navBtn(d, T.tabSpecs(), { s: 'specs', project, pg: 0 }), await navBtn(d, T.tabProjects(), { s: 'projects' })),
       row(await navBtn(d, gates ? `⏸ ${T.tabGates()} (${gates})` : T.tabGates(), { s: 'gates' }), await navBtn(d, T.tabMore(), { s: 'more', project })),
       row(await navBtn(d, T.btnNewSpec(), { s: 'new-spec', project }), await navBtn(d, T.btnNewProject(), { s: 'new-project' })),
-      row(await navBtn(d, T.btnRefresh(), { s: 'home' })),
+      row(await navBtn(d, `${T.tabWindows()}${windows ? ` (${windows})` : ''}`, { s: 'windows' }), await navBtn(d, T.btnRefresh(), { s: 'home' })),
     ]),
   };
+}
+
+// ---------------------------------------------------------------- windows (listening sessions)
+
+async function screenWindows(d: UiDeps): Promise<Reply> {
+  const live = await listWatchers();          // already newest-heartbeat-first
+  const lines = [b(T.hWindows()), ''];
+  const rows: InlineKeyboardButton[][] = [];
+  if (!live.length) lines.push(esc(T.noWindows()));
+  for (const w of live) {
+    const pinned = w.id === d.pinnedWatcher;
+    const scope = w.projects.length ? w.projects.map(p => projectLabel(p)).join(', ') : T.windowScopeAll();
+    lines.push(T.windowRow(pinned, b(w.label), esc(scope), ago(w.lastActiveAt ?? w.lastSeen), w.note ? esc(w.note) : esc(T.windowNoNote())));
+    rows.push(row(await navBtn(d, `${pinned ? '📌 ' : ''}${plain(w.label, 28)}`, { s: 'windows', watcher: w.id })));
+  }
+  lines.push('', esc(T.windowsHint()));
+  rows.push(row(await navBtn(d, T.btnRefresh(), { s: 'windows' }), await navBtn(d, T.btnHome(), { s: 'home' })));
+  return { text: lines.join('\n'), keyboard: kb(rows) };
 }
 
 // ---------------------------------------------------------------- projects

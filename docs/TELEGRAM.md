@@ -99,6 +99,13 @@ the file mtime, stale entries expire after 90s), so:
   unregisters; a crash is covered by the 90s heartbeat expiry.
 * Telegram shows `👂 listening: <labels>` when you tap, or warns you that nobody is.
 
+**Address work to one window**: Home → `👂 Windows`. The list is sorted **most-recently-active first** and
+each row shows the label, bound projects, when it was last active, and what it is doing or just did
+(`⏳ new-spec auth` / `✅ task auth #3`). Tap a window to pin it: new work is addressed to it only (the
+request carries `target`, other windows will not claim it); tap again to unpin. A window that stops
+listening drops the pin automatically. A session can also publish its own summary with
+`spec-workflow-mcp requests note "refactoring the parser"`.
+
 Unattended fallback: `.spec-workflow/spec-new-run.sh <spec> <idea>` creates a spec with its own headless claude.
 
 ## Commands (still available as a fallback)

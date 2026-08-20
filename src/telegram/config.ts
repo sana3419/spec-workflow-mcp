@@ -81,6 +81,8 @@ export interface DaemonState {
   auditOffsets: Record<string, number>;
   /** chatId → current project path (for commands that omit <project>) */
   currentProject: Record<string, string>;
+  /** chatId → watcher id that new work is addressed to (unset = any listening window) */
+  pinnedWatcher: Record<string, string>;
   /** `${project}::${spec}` → one board message per notify chat */
   boards: Record<string, BoardRef[]>;
   /** short callback key → gate */
@@ -94,7 +96,7 @@ export interface DaemonState {
 }
 
 export function emptyState(): DaemonState {
-  return { offset: 0, auditOffsets: {}, currentProject: {}, boards: {}, gateKeys: {}, postedGates: {}, cbKeys: {}, navKeys: {} };
+  return { offset: 0, auditOffsets: {}, currentProject: {}, pinnedWatcher: {}, boards: {}, gateKeys: {}, postedGates: {}, cbKeys: {}, navKeys: {} };
 }
 
 export async function loadState(file: string = STATE_FILE): Promise<DaemonState> {

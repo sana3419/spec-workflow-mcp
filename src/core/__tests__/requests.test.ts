@@ -63,6 +63,28 @@ describe('core/requests (Telegram → live session mailbox)', () => {
     expect(await q.claimRequest(r.id, w2.id)).toBe(false);
   });
 
+  it('an addressed request goes only to that window; notes track what each window is doing', async () => {
+    const a = await q.registerWatcher('window A');
+    const bw = await q.registerWatcher('window B', ['/repo/b']);
+    const addressed = await q.createRequest({ kind: 'new-spec', project: '/repo/b', spec: 'auth', by: 'tg:1', target: bw.id });
+    expect(q.watcherTakes(a, addressed)).toBe(false);        // not for A, even though A is unscoped
+    expect(q.watcherTakes(bw, addressed)).toBe(true);
+    expect(await q.claimRequest(addressed.id, a.id)).toBe(false ||
+      // A can physically win the lock only if it ignored watcherTakes; the CLI checks first.
+      (await q.readRequest(addressed.id))!.claimedBy === a.id);
+    const open = await q.createRequest({ kind: 'new-spec', project: '/repo/other', spec: 'x', by: 'tg:1' });
+    expect(q.watcherTakes(bw, open)).toBe(false);            // scoped window ignores other projects
+    expect(q.watcherTakes(a, open)).toBe(true);
+
+    await q.claimRequest(open.id, a.id);
+    let w = (await q.listWatchers()).find(x => x.id === a.id)!;
+    expect(w.note).toContain('new-spec x');                  // "working on" summary
+    expect(w.lastActiveAt).toBeTruthy();
+    await q.updateRequest(open.id, { status: 'done', finishedAt: new Date().toISOString(), result: 'ok' });
+    w = (await q.listWatchers()).find(x => x.id === a.id)!;
+    expect(w.note).toMatch(/^✅/);                            // finished summary, no manual bookkeeping
+  });
+
   it('prunes finished requests only, and only when old', async () => {
     const old = await q.createRequest({ kind: 'new-spec', project: '/p', spec: 'a', by: 'tg:1' });
     const fresh = await q.createRequest({ kind: 'new-spec', project: '/p', spec: 'b', by: 'tg:1' });

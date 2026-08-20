@@ -9,7 +9,7 @@ import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, ap
 import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { T, setLang } from './strings.js';
 import { renderScreen, NavState, UiDeps, loopActionOf, isDispatch } from './ui.js';
-import { createRequest, listRequests, listWatchers, watcherHandles, WorkRequest } from '../core/requests.js';
+import { createRequest, listRequests, listWatchers, watcherTakes, WorkRequest } from '../core/requests.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
@@ -164,7 +164,7 @@ class Daemon {
   private navFor(key: string): NavState | undefined { return this.state.navKeys[key]?.nav as NavState | undefined; }
 
   private uiDeps(userId: number, chatId: number): UiDeps {
-    return { ctx: this.ctx(userId, chatId), nav: (s: NavState) => this.registerNav(s) };
+    return { ctx: this.ctx(userId, chatId), nav: (s: NavState) => this.registerNav(s), pinnedWatcher: this.state.pinnedWatcher[String(chatId)] };
   }
 
   /** Render a screen into the message the button belongs to (tab-like navigation). */
@@ -257,6 +257,16 @@ class Daemon {
         await ack(action === 'start' ? T.btnStartLoop() : T.btnStopLoop());
         for (const r of res) await this.send(chatId, r);
         await this.showScreen(chatId, messageId, userId, { s: 'spec', project, spec: nav.spec });
+        return;
+      }
+      if (nav.s === 'windows' && nav.watcher) {   // pin / unpin the window that gets new work
+        const live = await listWatchers();
+        const w = live.find(x => x.id === nav.watcher);
+        const key2 = String(chatId);
+        if (!w) { await ack(T.windowGone()); }
+        else if (this.state.pinnedWatcher[key2] === w.id) { delete this.state.pinnedWatcher[key2]; this.dirty = true; await ack(T.windowUnpinned()); }
+        else { this.state.pinnedWatcher[key2] = w.id; this.dirty = true; await ack(T.targetedTo(w.label)); }
+        await this.showScreen(chatId, messageId, userId, { s: 'windows' });
         return;
       }
       if (nav.s === 'new-spec' || nav.s === 'new-project') {
@@ -379,8 +389,16 @@ class Daemon {
   private async fileRequest(userId: number, chatId: number, updateId: number, r: Omit<WorkRequest, 'id' | 'status' | 'at'>, what: string): Promise<void> {
     // Several sessions may listen; the one that will take this request is a live watcher whose scope
     // covers the project (unscoped watchers take anything). Name them so the user knows who is on it.
-    const handlers = (await listWatchers()).filter(w => watcherHandles(w, r.project));
+    // A pinned window gets the work exclusively (if it is still listening and covers the project);
+    // otherwise any matching window may claim it.
+    const pinnedId = this.state.pinnedWatcher[String(chatId)];
+    const all = await listWatchers();
+    const pinned = pinnedId ? all.find(w => w.id === pinnedId) : undefined;
+    const target = pinned && watcherTakes(pinned, { project: r.project, target: undefined }) ? pinned.id : undefined;
+    if (pinnedId && !pinned) { delete this.state.pinnedWatcher[String(chatId)]; this.dirty = true; }
+    const handlers = target ? [pinned!] : all.filter(w => watcherTakes(w, { project: r.project, target: undefined }));
     const live = handlers.length > 0;
+    r = { ...r, target };
     const req = await createRequest(r);
     this.requestWatch.set(req.id, { chatId, kind: req.kind, what });
     await this.auditCmd(userId, chatId, updateId, `request.${req.kind}`, [what], r.project || undefined, r.spec, req.id);
