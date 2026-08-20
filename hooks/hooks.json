@@ -1,0 +1,12 @@
+{
+  "description": "spec-workflow — one quiet SessionStart check: is this project initialised?",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-check.sh\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

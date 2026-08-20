@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-08-20 (fork)
+
+### Added
+- **Search-and-add component picker** (`templates/catalog.json` + `templates/lib/search.sh`, wired into `init.sh` step 10). Nothing third-party is pre-installed or vendored: you search the curated catalog, the Claude Code marketplaces on this machine and npm — several keywords per search, several picks per list (`1 3 5`, `2-6`, `all`), basket carried across searches. Marketplace skills/agents/commands are **copied into `.claude/` as plain files** (no `claude plugin install`), with the upstream LICENSE placed in `.claude/licenses/`. Every install writes `.spec-workflow/INSTALLED.md` (component · licence · how it was installed) and grants exactly `mcp__<server>__*` in `.claude/settings.json` — no blanket rule. `--with-graph/--with-nexus/--with-all` are gone; `--no-add` skips the picker.
+- **Curated catalog: 18 MCP servers + 7 skills, every licence verified** against the registry or the upstream LICENSE on 2026-08-20 (Context7, Playwright, Chrome DevTools, Serena, Sequential Thinking, Memory, fetch, git, Postgres, Octocode, Tavily, Brave, Exa, Firecrawl, Supabase, Neon, DeepWiki, GitHub; superpowers' systematic-debugging / verification-before-completion / using-git-worktrees / brainstorming / dispatching-parallel-agents, garden-skills' web-video-presentation / beautiful-article). Anything unverifiable is refused by the picker (⚠) and absent from the catalog: Snyk CLI (NOASSERTION), code-review-graph (no licence on PyPI), gitnexus (PolyForm-Noncommercial), Sentry (FSL, not OSI); semgrep/mcp and the archived reference postgres/sqlite servers are dropped as upstream-archived.
+- **Recorded project state** (`~/.spec-workflow/projects.json`, `spec-workflow-mcp project status|mark|forget|list`) and a **SessionStart hook** that reads that one parameter instead of probing: a project is `initialized` / `pending` / `ignored`, first sight detects once and writes the answer, and only a `pending` project gets a single line pointing at `/spec-workflow:init`. It never initialises anything by itself.
+- **Telegram: 🧩 Components screen** — the current project's MCP servers, skills, reviewer agents and recorded state, with a pointer to the terminal picker for changes.
+
+### Changed
+- `THIRD_PARTY_NOTICES.md` rewritten around the fetch-never-vendor policy, with the verified licence table and the GPL-3.0 compatibility note.
+
 ## [3.1.1] — 2026-08-19 (fork)
 
 ### Fixed (follow-ups to the code-review pass)

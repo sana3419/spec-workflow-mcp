@@ -46,10 +46,43 @@ settings.json) and **`/spec-workflow:telegram`** (loop_bot daemon).
 npm i -g @openai/codex && codex login          # only if you want Codex offload
 bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
 ```
-Optional flags: `--with-graph` (code-review-graph), `--with-nexus` (GitNexus), `--with-all`, `--auto-loop`, `--force`.
-`init.sh` writes `.mcp.json` (spec-workflow + codex servers), copies skills/agents into `.claude/`, and installs the loop runner.
+Optional flags: `--no-add` (skip the component picker), `--auto-loop`, `--force`.
+`init.sh` writes `.spec-workflow/`, `CLAUDE.md`, `AGENTS.md`, the loop runner, a restrictive
+`.claude/settings.json`, records the project as initialised, and then opens the picker.
 
-Then `cd /path/to/your-project && claude` and approve the MCP servers when prompted.
+### Choosing MCP servers and skills
+
+Nothing third-party is pre-installed or vendored. The picker searches three places at once and only
+offers what it can licence-check:
+
+```
+search [0 in basket]> playwright postgres docs security      ← several keywords per search
+  1) Playwright            [mcp]   Drive a real browser…      licence: Apache-2.0
+  2) Postgres (crystaldba) [mcp]   Schema, safe SQL, EXPLAIN… licence: MIT
+  …
+ ⚠9) some-package          [mcp]   …                          licence: unknown
+  add (numbers / 2-6 / all), Enter to search again: 1 2 5-7
+search [5 in basket]> done
+```
+
+* **curated catalog** (`templates/catalog.json`) — 17 MCP servers and 7 skills with verified licences
+* **the Claude Code marketplaces on your machine** — their `skills/`, `agents/` and `commands/` are
+  **copied into `.claude/` as plain files** (no `claude plugin install`), with the upstream LICENSE
+  placed in `.claude/licenses/`
+* **npm** — any published MCP server; the licence is read from the registry
+
+⚠ marks an unverifiable licence and cannot be added. What you pick is fetched from its own source and
+recorded in `.spec-workflow/INSTALLED.md` (component, licence, how it was installed) — see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Re-run the picker any time with
+`bash templates/init.sh <project> --force`.
+
+### First time you open an uninitialised project
+
+A SessionStart hook checks one recorded parameter — `~/.spec-workflow/projects.json` keeps each project
+as `initialized` / `pending` / `ignored`, so after the first sight there is no filesystem probing and no
+repeated nagging. A `pending` project gets one line telling you to run `/spec-workflow:init`; nothing is
+created without you asking. Manage the record with
+`spec-workflow-mcp project status|mark|forget|list`.
 
 ## How It Works
 

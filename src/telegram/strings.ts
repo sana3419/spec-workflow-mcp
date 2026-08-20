@@ -293,6 +293,19 @@ export const T = {
   windowGone: () => pick({ zh: '这个窗口已经不在监听了', en: 'that window is no longer listening' }),
   targetedTo: (label: string) => pick({ zh: `🎯 已指派给窗口：${label}`, en: `🎯 addressed to: ${label}` }),
 
+  // ---- components (installed MCP servers / skills)
+  tabComponents: () => pick({ zh: '🧩 组件', en: '🧩 Components' }),
+  hComponents: (proj: string) => pick({ zh: `🧩 组件 · ${proj}`, en: `🧩 Components · ${proj}` }),
+  compMcp: () => pick({ zh: 'MCP 服务', en: 'MCP servers' }),
+  compSkills: () => pick({ zh: '技能', en: 'Skills' }),
+  compAgents: () => pick({ zh: '审查 agent', en: 'Reviewer agents' }),
+  compNone: () => pick({ zh: '（无）', en: '(none)' }),
+  compHint: () => pick({
+    zh: '增删组件在终端里做（要装包、填 API key）：\n<code>bash templates/init.sh &lt;项目&gt; --force</code>\n选择器支持多关键词搜索、多选，许可无法核实的会被拒绝。',
+    en: 'Add or remove components from a terminal (packages and API keys are involved):\n<code>bash templates/init.sh &lt;project&gt; --force</code>\nThe picker takes several keywords at once and refuses anything with an unverifiable licence.' }),
+  projectPending: () => pick({ zh: '⚠️ 这个项目还没初始化（状态：pending）', en: '⚠️ this project is not initialised (state: pending)' }),
+  projectStateLabel: (st: string) => pick({ zh: `状态：${st === 'initialized' ? '已初始化' : st === 'ignored' ? '已忽略' : st === 'pending' ? '待初始化' : '未记录'}`, en: `state: ${st}` }),
+
   about: (version: string, projects: number) => pick({ zh: `spec-workflow-mcp ${version} · loop_bot\n监控项目：${projects} 个`, en: `spec-workflow-mcp ${version} · loop_bot\nprojects: ${projects}` }),
 
   help: () => pick({

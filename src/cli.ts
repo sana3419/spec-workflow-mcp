@@ -14,6 +14,7 @@ import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskSta
 import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, VerifySource, FailureClass, ManualTaskStatus } from './core/verify-core.js';
 import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
+import { readProjectStates, getProjectState, setProjectState, forgetProject, ProjectStatus, PROJECTS_FILE } from './core/project-state.js';
 import { createRequest, listRequests, readRequest, updateRequest, pruneRequests, watcherAlive, registerWatcher, heartbeatWatcher, unregisterWatcher, listWatchers, watcherTakes, setWatcherNote, claimRequest, WorkRequest } from './core/requests.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
@@ -337,6 +338,46 @@ export async function runRequestsCli(args: string[]): Promise<number> {
   return 2;
 }
 
+/** project: the recorded setup state, so nothing has to re-probe the filesystem every session.
+ *
+ *   project status [path] [--json]        print the recorded state (exit 1 when unknown)
+ *   project mark <initialized|pending|ignored> [path] [--note t]
+ *   project forget [path]                 drop the record; the next session re-detects
+ *   project list                          everything on record
+ */
+export async function runProjectCli(args: string[]): Promise<number> {
+  const [sub, ...rest] = args;
+  const pathOf = (i = 0) => resolve(rest.filter(a => !a.startsWith('--'))[i] ?? process.cwd());
+
+  if (sub === 'list') {
+    const all = await readProjectStates();
+    for (const [p, e] of Object.entries(all)) console.log(`${e.status.padEnd(12)} ${e.at.slice(0, 19)}  ${p}`);
+    return 0;
+  }
+  if (sub === 'status') {
+    const p = pathOf();
+    const e = await getProjectState(p);
+    if (args.includes('--json')) console.log(JSON.stringify({ project: p, ...(e ?? { status: 'unknown' }) }));
+    else console.log(e ? `${e.status} (${e.at})` : 'unknown');
+    return e ? 0 : 1;
+  }
+  if (sub === 'mark') {
+    const status = rest[0] as ProjectStatus;
+    if (!['initialized', 'pending', 'ignored'].includes(status)) { console.error('usage: project mark <initialized|pending|ignored> [path] [--note t]'); return 2; }
+    const p = resolve(rest.filter(a => !a.startsWith('--'))[1] ?? process.cwd());
+    const e = await setProjectState(p, status, flag(rest, '--note'));
+    console.log(`${e.status} ${p}`);
+    return 0;
+  }
+  if (sub === 'forget') {
+    const p = pathOf();
+    console.log(await forgetProject(p) ? `forgotten ${p}` : `not on record: ${p}`);
+    return 0;
+  }
+  console.error(`usage: project <status|mark|forget|list> …   (state file: ${PROJECTS_FILE})`);
+  return 2;
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
@@ -351,6 +392,7 @@ export async function runSubcommand(argv: string[]): Promise<number | null> {
   if (cmd === 'cleanup') return runCleanupCli(rest);
   if (cmd === 'route') return runRouteCli(rest);
   if (cmd === 'requests') return runRequestsCli(rest);
+  if (cmd === 'project') return runProjectCli(rest);
   if (cmd === 'gate-hmac') return runGateHmacCli(rest, 'decision');
   if (cmd === 'gate-sign') return runGateHmacCli(rest, 'sign');
   if (cmd === 'gate-verify-pending') return runGateHmacCli(rest, 'verify-pending');

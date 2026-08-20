@@ -88,6 +88,18 @@ spec-workflow-mcp requests done  <id> --fail --result "缺少依赖"
 
 无人值守的备选仍在：`.spec-workflow/spec-new-run.sh <spec> <一句话>` 会用独立 headless claude 生成 spec。
 
+## 组件（看，不改）
+
+`⚙️ 更多 → 🧩 组件` 显示当前项目的 `.mcp.json` 里有哪些 MCP 服务、`.claude/skills`、`.claude/agents` 里有什么，以及项目状态（已初始化 / 待初始化 / 已忽略，读自 `~/.spec-workflow/projects.json`）。
+
+**增删组件不在 Telegram 做** —— 要装包、填 API key，终端里更清楚：
+
+```bash
+bash templates/init.sh <项目> --force     # 打开搜索式选择器
+```
+
+选择器一次可搜多个关键词、一次可加多个（`1 3 5` / `2-6` / `all`），来源是白名单目录 + 本机 Claude Code 市场（skills/agents 直接复制成普通文件）+ npm；许可无法核实的一律拒绝。装了什么记在项目的 `.spec-workflow/INSTALLED.md`。
+
 ## 命令（兜底，仍然可用）
 
 ```

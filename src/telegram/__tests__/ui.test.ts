@@ -111,6 +111,26 @@ describe('telegram button UI', () => {
     await q.unregisterWatcher(a.id); await q.unregisterWatcher(b2.id);
   });
 
+  it('components screen reflects .mcp.json, .claude/skills and the recorded project state', async () => {
+    await fs.writeFile(join(root, '.mcp.json'), JSON.stringify({ mcpServers: {
+      context7: { command: 'npx', args: ['-y', '@upstash/context7-mcp'] },
+      deepwiki: { type: 'http', url: 'https://mcp.deepwiki.com/mcp' },
+    } }));
+    await fs.mkdir(join(root, '.claude', 'skills', 'systematic-debugging'), { recursive: true });
+    await fs.mkdir(join(root, '.claude', 'agents'), { recursive: true });
+    await fs.writeFile(join(root, '.claude', 'agents', 'security-reviewer.md'), '---\nname: security-reviewer\n---\n');
+    const ps = await import('../../core/project-state.js');
+    await ps.setProjectState(root, 'initialized');
+
+    const r = await renderScreen({ s: 'components', project: root }, deps());
+    expect(r.text).toContain('context7');
+    expect(r.text).toContain('(http)');                    // hosted endpoint rendered differently
+    expect(r.text).toContain('systematic-debugging');
+    expect(r.text).toContain('security-reviewer');
+    expect(r.text).toContain(T.projectStateLabel('initialized'));
+    expect(r.text).toContain('init.sh');                    // tells you where adding happens
+  });
+
   it('every screen renders and every nav button resolves (no dead ends)', async () => {
     const seeds: NavState[] = [
       { s: 'home' }, { s: 'projects' }, { s: 'specs', project: root, pg: 0 },
@@ -118,7 +138,7 @@ describe('telegram button UI', () => {
       { s: 'task', project: root, spec: 'auth', taskId: '1' }, { s: 'docs', project: root, spec: 'auth' },
       { s: 'logs', project: root, spec: 'auth' }, { s: 'runlog', project: root, spec: 'auth' },
       { s: 'gates' }, { s: 'steering', project: root }, { s: 'more', project: root },
-      { s: 'cleanup', project: root }, { s: 'help' }, { s: 'windows' },
+      { s: 'cleanup', project: root }, { s: 'help' }, { s: 'windows' }, { s: 'components', project: root },
     ];
     for (const seed of seeds) {
       const r = await renderScreen(seed, deps());

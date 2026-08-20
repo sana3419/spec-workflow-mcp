@@ -1,0 +1,489 @@
+{
+  "$comment": "Curated components offered by the init.sh picker. NOTHING here is pre-installed or vendored: each entry records how to fetch the upstream artefact and under which licence, and the picker writes .spec-workflow/INSTALLED.md from these fields. Licence values were read from the package registry or the upstream LICENSE file on 2026-08-20; anything whose licence could not be verified (e.g. the Snyk CLI, NOASSERTION) is deliberately absent. `env` values with an empty string are placeholders the user must fill in.",
+  "version": 2,
+  "mcp": [
+    {
+      "id": "context7",
+      "name": "Context7",
+      "description": "Up-to-date docs and API references for any library, fetched on demand",
+      "tags": [
+        "docs",
+        "reference",
+        "library",
+        "search"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/upstash/context7",
+      "server": "context7",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "post": "works without a key; set CONTEXT7_API_KEY for higher limits"
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "description": "Drive a real browser: navigate, click, fill, screenshot, run E2E checks",
+      "tags": [
+        "browser",
+        "test",
+        "e2e",
+        "ui",
+        "playwright"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/microsoft/playwright-mcp",
+      "server": "playwright",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "post": "first run downloads browsers (npx playwright install chromium)"
+    },
+    {
+      "id": "sequential-thinking",
+      "name": "Sequential Thinking",
+      "description": "Structured step-by-step reasoning scratchpad for hard, branching problems",
+      "tags": [
+        "reasoning",
+        "planning",
+        "thinking"
+      ],
+      "license": "Apache-2.0 / MIT (MCP reference servers)",
+      "homepage": "https://github.com/modelcontextprotocol/servers",
+      "server": "sequential-thinking",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "post": "token-heavy per call — use it for genuinely hard problems"
+    },
+    {
+      "id": "memory",
+      "name": "Memory (knowledge graph)",
+      "description": "Persistent entity/relation store the agent can write to and query across sessions",
+      "tags": [
+        "memory",
+        "knowledge",
+        "graph",
+        "notes"
+      ],
+      "license": "Apache-2.0 / MIT (MCP reference servers)",
+      "homepage": "https://github.com/modelcontextprotocol/servers",
+      "server": "memory",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": ".spec-workflow/memory.jsonl"
+      }
+    },
+    {
+      "id": "fetch",
+      "name": "Fetch (URL → markdown)",
+      "description": "Fetch a web page and hand it back as markdown",
+      "tags": [
+        "web",
+        "fetch",
+        "http",
+        "docs"
+      ],
+      "license": "Apache-2.0 / MIT (MCP reference servers)",
+      "homepage": "https://github.com/modelcontextprotocol/servers",
+      "server": "fetch",
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "check": "command -v uvx",
+      "post": "needs uv (https://docs.astral.sh/uv/)"
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "description": "Repository history, diffs, blame and branch operations as tools",
+      "tags": [
+        "git",
+        "history",
+        "diff",
+        "vcs"
+      ],
+      "license": "Apache-2.0 / MIT (MCP reference servers)",
+      "homepage": "https://github.com/modelcontextprotocol/servers",
+      "server": "git",
+      "command": "uvx",
+      "args": [
+        "mcp-server-git"
+      ],
+      "check": "command -v uvx",
+      "post": "overlaps the native Bash git access — add it when you want structured git tools"
+    },
+    {
+      "id": "postgres",
+      "name": "Postgres (crystaldba)",
+      "description": "Schema inspection, safe SQL, EXPLAIN, index and health analysis",
+      "tags": [
+        "database",
+        "postgres",
+        "sql",
+        "db"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/crystaldba/postgres-mcp",
+      "server": "postgres",
+      "command": "uvx",
+      "args": [
+        "postgres-mcp",
+        "--access-mode=restricted"
+      ],
+      "env": {
+        "DATABASE_URI": ""
+      },
+      "check": "command -v uvx",
+      "post": "set DATABASE_URI in .mcp.json; --access-mode=restricted is read-only"
+    },
+    {
+      "id": "octocode",
+      "name": "Octocode (GitHub code search)",
+      "description": "Search and read code across GitHub repositories, plus npm lookups",
+      "tags": [
+        "github",
+        "search",
+        "code",
+        "repo"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/bgauryy/octocode-mcp",
+      "server": "octocode",
+      "command": "npx",
+      "args": [
+        "octocode-mcp@latest"
+      ],
+      "post": "authenticates via your existing `gh auth login` (or GITHUB_TOKEN)"
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily (web search)",
+      "description": "Web search, extract, map and crawl built for agents",
+      "tags": [
+        "search",
+        "web",
+        "research"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/tavily-ai/tavily-mcp",
+      "server": "tavily",
+      "command": "npx",
+      "args": [
+        "-y",
+        "tavily-mcp@latest"
+      ],
+      "env": {
+        "TAVILY_API_KEY": ""
+      },
+      "post": "requires a Tavily API key"
+    },
+    {
+      "id": "brave-search",
+      "name": "Brave Search",
+      "description": "Web, news, image and local search through the Brave API",
+      "tags": [
+        "search",
+        "web",
+        "news"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/brave/brave-search-mcp-server",
+      "server": "brave-search",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@brave/brave-search-mcp-server",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "BRAVE_API_KEY": ""
+      },
+      "post": "requires a Brave Search API key"
+    },
+    {
+      "id": "exa",
+      "name": "Exa",
+      "description": "Neural web search and page fetch tuned for research",
+      "tags": [
+        "search",
+        "web",
+        "research"
+      ],
+      "license": "MIT (repo LICENSE; npm metadata omits it)",
+      "homepage": "https://github.com/exa-labs/exa-mcp-server",
+      "server": "exa",
+      "command": "npx",
+      "args": [
+        "-y",
+        "exa-mcp-server"
+      ],
+      "env": {
+        "EXA_API_KEY": ""
+      },
+      "post": "requires an Exa API key for production use"
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl",
+      "description": "Scrape, crawl and map sites into clean markdown",
+      "tags": [
+        "scrape",
+        "crawl",
+        "web",
+        "docs"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/firecrawl/firecrawl-mcp-server",
+      "server": "firecrawl",
+      "command": "npx",
+      "args": [
+        "-y",
+        "firecrawl-mcp"
+      ],
+      "env": {
+        "FIRECRAWL_API_KEY": ""
+      },
+      "post": "scrape/search work on the free tier; crawl/map need a key"
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "description": "Project database, edge functions, logs and docs for a Supabase project",
+      "tags": [
+        "database",
+        "supabase",
+        "backend",
+        "postgres"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/supabase-community/supabase-mcp",
+      "server": "supabase",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase",
+        "--read-only"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": ""
+      },
+      "post": "add --project-ref <ref>; --read-only recommended (~24 tools, token-heavy)"
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "description": "Serverless Postgres: branches, schema, queries and observability",
+      "tags": [
+        "database",
+        "neon",
+        "postgres",
+        "serverless"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/neondatabase-labs/mcp-server-neon",
+      "server": "neon",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@neondatabase/mcp-server-neon",
+        "start"
+      ],
+      "post": "append your NEON_API_KEY to args, or use the hosted OAuth endpoint"
+    },
+    {
+      "id": "deepwiki",
+      "name": "DeepWiki",
+      "description": "Ask questions about any public GitHub repo's generated wiki (hosted, no key)",
+      "tags": [
+        "docs",
+        "repo",
+        "reference",
+        "wiki"
+      ],
+      "license": "hosted service — Cognition/Devin terms apply (no code installed)",
+      "homepage": "https://docs.devin.ai/work-with-devin/deepwiki-mcp",
+      "server": "deepwiki",
+      "url": "https://mcp.deepwiki.com/mcp",
+      "post": "no account needed; read_wiki_contents can return very large payloads"
+    },
+    {
+      "id": "chrome-devtools",
+      "name": "Chrome DevTools",
+      "description": "Performance traces, console and network with source maps — diagnosis rather than automation",
+      "tags": [
+        "browser",
+        "perf",
+        "debug",
+        "console",
+        "network"
+      ],
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "server": "chrome-devtools",
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless",
+        "--isolated"
+      ],
+      "post": "57 tools — heavy; add it when you are chasing a perf or runtime bug"
+    },
+    {
+      "id": "serena",
+      "name": "Serena (symbol-level code intelligence)",
+      "description": "LSP-grade symbols, references and symbol-scoped edits instead of grep-and-replace",
+      "tags": [
+        "code",
+        "symbols",
+        "lsp",
+        "refactor",
+        "navigate"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/oraios/serena",
+      "server": "serena",
+      "command": "serena",
+      "args": [
+        "start-mcp-server",
+        "--context",
+        "claude-code",
+        "--project-from-cwd"
+      ],
+      "check": "command -v serena",
+      "install": "uv tool install -p 3.13 serena-agent",
+      "post": "needs uv; indexes the repo on first run"
+    },
+    {
+      "id": "github",
+      "name": "GitHub (hosted)",
+      "description": "Pull requests, issues, checks and CI state for the repo you are in",
+      "tags": [
+        "github",
+        "pr",
+        "issues",
+        "ci",
+        "review"
+      ],
+      "license": "hosted service — GitHub terms (local server: MIT)",
+      "homepage": "https://github.com/github/github-mcp-server",
+      "server": "github",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "post": "OAuth on first use; 90+ tools — scope them with X-MCP-Toolsets if context gets tight"
+    }
+  ],
+  "skills": [
+    {
+      "id": "systematic-debugging",
+      "name": "systematic-debugging",
+      "description": "Root-cause-first debugging protocol (nothing in this toolkit debugs a failing L0/L1 today)",
+      "tags": [
+        "debug",
+        "bug",
+        "root cause",
+        "investigation"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/obra/superpowers",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/obra/superpowers \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/systematic-debugging\" .claude/skills/ && mkdir -p .claude/licenses && cp \"$tmp/LICENSE\" .claude/licenses/superpowers.LICENSE 2>/dev/null; rm -rf \"$tmp\""
+    },
+    {
+      "id": "verification-before-completion",
+      "name": "verification-before-completion",
+      "description": "Evidence-before-assertion gate — the discipline the Verification Ladder enforces, for the agent itself",
+      "tags": [
+        "verification",
+        "quality",
+        "done",
+        "evidence"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/obra/superpowers",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/obra/superpowers \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/verification-before-completion\" .claude/skills/ && mkdir -p .claude/licenses && cp \"$tmp/LICENSE\" .claude/licenses/superpowers.LICENSE 2>/dev/null; rm -rf \"$tmp\""
+    },
+    {
+      "id": "using-git-worktrees",
+      "name": "using-git-worktrees",
+      "description": "Isolated worktree setup for parallel work (what /tdd improvises today)",
+      "tags": [
+        "git",
+        "worktree",
+        "parallel",
+        "isolation"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/obra/superpowers",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/obra/superpowers \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/using-git-worktrees\" .claude/skills/ && mkdir -p .claude/licenses && cp \"$tmp/LICENSE\" .claude/licenses/superpowers.LICENSE 2>/dev/null; rm -rf \"$tmp\""
+    },
+    {
+      "id": "brainstorming",
+      "name": "brainstorming",
+      "description": "Structured intent exploration before requirements.md exists",
+      "tags": [
+        "planning",
+        "requirements",
+        "ideas",
+        "spec"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/obra/superpowers",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/obra/superpowers \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/brainstorming\" .claude/skills/ && rm -rf \"$tmp\""
+    },
+    {
+      "id": "dispatching-parallel-agents",
+      "name": "dispatching-parallel-agents",
+      "description": "When work is genuinely independent, fan it out; when it isn't, don't",
+      "tags": [
+        "parallel",
+        "agents",
+        "dispatch",
+        "planning"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/obra/superpowers",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/obra/superpowers \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/dispatching-parallel-agents\" .claude/skills/ && rm -rf \"$tmp\""
+    },
+    {
+      "id": "web-video-presentation",
+      "name": "web-video-presentation",
+      "description": "Turn a script or spec into a click-driven 16:9 web deck you can screen-record",
+      "tags": [
+        "video",
+        "presentation",
+        "demo",
+        "docs"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/ConardLi/garden-skills",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/ConardLi/garden-skills \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/web-video-presentation\" .claude/skills/ && mkdir -p .claude/licenses && cp \"$tmp/LICENSE\" .claude/licenses/garden-skills.LICENSE 2>/dev/null; rm -rf \"$tmp\"",
+      "post": "needs Node + Vite when you actually build a deck; TTS is optional"
+    },
+    {
+      "id": "beautiful-article",
+      "name": "beautiful-article",
+      "description": "Render a report or spec into a share-ready single-file HTML article",
+      "tags": [
+        "docs",
+        "report",
+        "html",
+        "article"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/ConardLi/garden-skills",
+      "install": "tmp=$(mktemp -d) && git clone --depth 1 -q https://github.com/ConardLi/garden-skills \"$tmp\" && mkdir -p .claude/skills && cp -r \"$tmp/skills/beautiful-article\" .claude/skills/ && mkdir -p .claude/licenses && cp \"$tmp/LICENSE\" .claude/licenses/garden-skills.LICENSE 2>/dev/null; rm -rf \"$tmp\""
+    }
+  ]
+}

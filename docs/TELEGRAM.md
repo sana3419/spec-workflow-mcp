@@ -108,6 +108,23 @@ listening drops the pin automatically. A session can also publish its own summar
 
 Unattended fallback: `.spec-workflow/spec-new-run.sh <spec> <idea>` creates a spec with its own headless claude.
 
+## Components (read-only here)
+
+`⚙️ More → 🧩 Components` shows what the current project has: MCP servers from its `.mcp.json`, the
+skills and reviewer agents under `.claude/`, and the recorded project state (initialised / pending /
+ignored, from `~/.spec-workflow/projects.json`).
+
+**Adding or removing components is a terminal job** — packages get installed and API keys get filled in:
+
+```bash
+bash templates/init.sh <project> --force     # opens the search-and-add picker
+```
+
+The picker takes several keywords per search and several picks per result list (`1 3 5`, `2-6`, `all`),
+searching the curated catalog, the Claude Code marketplaces on this machine (skills/agents are copied in
+as plain files) and npm. Anything with an unverifiable licence is refused. What you installed is
+recorded in the project's `.spec-workflow/INSTALLED.md`.
+
 ## Commands (still available as a fallback)
 
 ```

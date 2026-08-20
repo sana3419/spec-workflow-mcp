@@ -3,22 +3,25 @@
 # Usage: bash init.sh [project-path] [options]
 #        bash init.sh                          → initialize current directory
 #        bash init.sh /path/to/project         → initialize target directory
-#        bash init.sh /path --with-graph       → add code-review-graph (save tokens)
-#        bash init.sh /path --with-nexus       → add GitNexus (dependency analysis)
-#        bash init.sh /path --with-all         → install all three
+#        bash init.sh /path --no-add           → skip the "add MCP servers / skills" picker
 #        bash init.sh /path --force            → overwrite CLAUDE.md/skills/agents
+#
+# Nothing third-party is pre-installed. The picker searches the curated catalog, the Claude Code
+# marketplaces on this machine (their skills/agents are COPIED into .claude/ as plain files) and npm,
+# and only offers items whose licence can be read. What you pick is recorded in
+# .spec-workflow/INSTALLED.md together with its source and licence.
 #        bash init.sh /path --auto-loop        → pre-enable the Phase 4 background loop ([loop].autoLoop=true)
 
 set -e
 
 # Parse arguments
-WITH_GRAPH=""; WITH_NEXUS=""; WITH_ALL=""; FORCE=""; AUTO_LOOP=""
+NO_ADD=""; FORCE=""; AUTO_LOOP=""
 POSITIONAL=""
 for arg in "$@"; do
   case $arg in
-    --with-graph)      WITH_GRAPH=1 ;;
-    --with-nexus)      WITH_NEXUS=1 ;;
-    --with-all)        WITH_ALL=1 ;;
+    --no-add)          NO_ADD=1 ;;
+    --with-graph|--with-nexus|--with-all)
+                       echo "note: $arg is gone — components are chosen in the picker (or --no-add to skip)" ;;
     --force)           FORCE=1 ;;
     --auto-loop)       AUTO_LOOP=1 ;;
     -*)                echo "Unknown option: $arg"; exit 1 ;;
@@ -195,9 +198,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
   "permissions": {
     "allow": [
       "mcp__spec-workflow__*",
-      "mcp__codex__*",
-      "mcp__code-review-graph__*",
-      "mcp__gitnexus__*"
+      "mcp__codex__*"
     ],
     "deny": [
       "Read(~/.spec-workflow/telegram.env)",
@@ -298,34 +299,36 @@ else
   echo "  Skipping (run npm run build first)"
 fi
 
-# 10. Optional code intelligence MCP
-MCP_INSTALLED=""
-if [ "$WITH_GRAPH" = "1" ] || [ "$WITH_ALL" = "1" ]; then
-  echo "[10/11] Configuring code-review-graph..."
-  if ! command -v code-review-graph &>/dev/null; then
-    echo "  Installing code-review-graph (Python)..."
-    pip install code-review-graph 2>/dev/null | tail -1
+# 10. Add MCP servers / skills — search and pick; nothing is installed unless chosen.
+if [ -z "$NO_ADD" ]; then
+  echo "[10/11] Add MCP servers / skills..."
+  if [ -f "$SCRIPT_DIR/lib/search.sh" ] && command -v jq >/dev/null 2>&1; then
+    # shellcheck source=lib/search.sh
+    . "$SCRIPT_DIR/lib/search.sh"
+    CHOSEN="$(search_and_add "$SCRIPT_DIR/catalog.json" "$PROJECT_DIR")"
+    if [ -n "$CHOSEN" ]; then
+      install_chosen "$CHOSEN" "$PROJECT_DIR"
+      write_installed_notice "$CHOSEN" "$PROJECT_DIR"
+      # Allow exactly the servers that were just added — never a blanket mcp__* rule.
+      SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
+      if [ -f "$SETTINGS_FILE" ]; then
+        while IFS='|' read -r _k _id _name _lic _inst srv _cmd _args _url _env; do
+          [ -z "$srv" ] && continue
+          if ! jq -e --arg r "mcp__${srv}__*" '.permissions.allow // [] | index($r)' "$SETTINGS_FILE" >/dev/null 2>&1; then
+            TMP="$(mktemp)"
+            jq --arg r "mcp__${srv}__*" '.permissions.allow = ((.permissions.allow // []) + [$r] | unique)' \
+              "$SETTINGS_FILE" > "$TMP" && mv "$TMP" "$SETTINGS_FILE" && echo "  + allow mcp__${srv}__* → .claude/settings.json"
+          fi
+        done <<< "$CHOSEN"
+      fi
+    else
+      echo "  nothing added (search again any time: bash init.sh $PROJECT_DIR --force)"
+    fi
+  else
+    echo "  picker unavailable (needs jq) — add servers to .mcp.json by hand"
   fi
-  add_mcp_server "code-review-graph" "code-review-graph" '["mcp"]'
-  echo "  Building knowledge graph (required before the MCP tools return data)..."
-  (cd "$PROJECT_DIR" && code-review-graph build 2>/dev/null | tail -1)
-  MCP_INSTALLED="1"
-fi
-
-if [ "$WITH_NEXUS" = "1" ] || [ "$WITH_ALL" = "1" ]; then
-  echo "[10/11] Configuring GitNexus..."
-  if ! command -v gitnexus &>/dev/null; then
-    echo "  Installing gitnexus..."
-    npm i -g gitnexus 2>/dev/null | tail -1
-  fi
-  add_mcp_server "gitnexus" "gitnexus" '["mcp"]'
-  echo "  Indexing repo (gitnexus mcp only serves indexed repos)..."
-  (cd "$PROJECT_DIR" && gitnexus analyze 2>/dev/null | tail -1)
-  MCP_INSTALLED="1"
-fi
-
-if [ -z "$MCP_INSTALLED" ]; then
-  echo "[10/11] Skipping optional code intelligence MCP (use --with-graph / --with-nexus / --with-all)"
+else
+  echo "[10/11] Skipping the component picker (--no-add)"
 fi
 
 # 11. Check dependencies (required vs optional)
@@ -347,6 +350,12 @@ if [ -n "$REQUIRED_MISSING" ]; then
   echo -e "$REQUIRED_MISSING"
 else
   echo "  All required tools installed"
+fi
+
+# Record the state, so the SessionStart check is a key lookup from now on (and stops prompting).
+if [ -n "${SWMCP_CMD:-}" ] && [ "$SWMCP_CMD" != "spec-workflow-mcp" ]; then
+  eval "$SWMCP_CMD project mark initialized \"$PROJECT_DIR\" --note \"init.sh\"" >/dev/null 2>&1 \
+    && echo "       project recorded as initialized (~/.spec-workflow/projects.json)"
 fi
 
 echo ""

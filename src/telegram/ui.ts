@@ -8,6 +8,7 @@ import { ImplementationLogManager } from '../core/implementation-log-manager.js'
 import { cleanupSpecs } from '../core/cleanup.js';
 import { tailAudit } from '../core/run-watcher.js';
 import { listWatchers } from '../core/requests.js';
+import { getProjectState } from '../core/project-state.js';
 import { esc, b, code, ago, bar, pct, inlineUntrusted, untrusted, statusIcon, shortPath } from './render.js';
 import { T } from './strings.js';
 import { projectLabel, specStatusText, loadTasks, readVerify, specExists, Reply, CommandCtx } from './commands.js';
@@ -27,7 +28,7 @@ import type { InlineKeyboardButton, InlineKeyboardMarkup } from './api.js';
 export type Screen =
   | 'home' | 'projects' | 'specs' | 'spec' | 'tasks' | 'task' | 'logs' | 'runlog'
   | 'gates' | 'docs' | 'steering' | 'more' | 'cleanup' | 'help'
-  | 'new-spec' | 'new-project' | 'windows';
+  | 'new-spec' | 'new-project' | 'windows' | 'components';
 
 export interface NavState {
   s: Screen;
@@ -94,6 +95,7 @@ export async function renderScreen(nav: NavState, d: UiDeps): Promise<Reply> {
     case 'new-spec': return { text: T.askNewSpec(), keyboard: kb([[await navBtn(d, T.btnBack(), { s: 'specs', project: nav.project, pg: 0 })]]) };
     case 'new-project': return { text: T.askNewProject(), keyboard: kb([[await navBtn(d, T.btnBack(), { s: 'home' })]]) };
     case 'windows': return screenWindows(d);
+    case 'components': return screenComponents(d, nav);
     case 'help': return { text: T.help(), keyboard: kb([[await navBtn(d, T.btnHome(), { s: 'home' })]]) };
     default: return screenHome(d);
   }
@@ -133,6 +135,48 @@ async function screenHome(d: UiDeps): Promise<Reply> {
       row(await navBtn(d, gates ? `⏸ ${T.tabGates()} (${gates})` : T.tabGates(), { s: 'gates' }), await navBtn(d, T.tabMore(), { s: 'more', project })),
       row(await navBtn(d, T.btnNewSpec(), { s: 'new-spec', project }), await navBtn(d, T.btnNewProject(), { s: 'new-project' })),
       row(await navBtn(d, `${T.tabWindows()}${windows ? ` (${windows})` : ''}`, { s: 'windows' }), await navBtn(d, T.btnRefresh(), { s: 'home' })),
+    ]),
+  };
+}
+
+// ---------------------------------------------------------------- components (what this project has)
+
+async function screenComponents(d: UiDeps, nav: NavState): Promise<Reply> {
+  const project = currentProject(d, nav);
+  if (!project) return screenProjects(d, nav);
+  const lines = [b(T.hComponents(projectLabel(project))), ''];
+
+  const state = await getProjectState(project);
+  lines.push(esc(T.projectStateLabel(state?.status ?? 'unknown')));
+  if (state?.status === 'pending') lines.push(esc(T.projectPending()));
+  lines.push('');
+
+  // MCP servers come from the project's own .mcp.json — the file the picker writes.
+  const servers: string[] = [];
+  try {
+    const raw = JSON.parse(await fs.readFile(join(project, '.mcp.json'), 'utf-8'));
+    for (const [name, cfg] of Object.entries(raw.mcpServers ?? {})) {
+      const c = cfg as { command?: string; url?: string; args?: string[] };
+      servers.push(`${name} ${c.url ? '(http)' : `(${[c.command, ...(c.args ?? [])].join(' ').slice(0, 46)})`}`);
+    }
+  } catch { /* none */ }
+  lines.push(`<b>${T.compMcp()}</b> (${servers.length})`);
+  lines.push(servers.length ? servers.map(x => `  · ${esc(x)}`).join('\n') : `  ${T.compNone()}`);
+
+  const listDir = async (dir: string) => {
+    try { return (await fs.readdir(join(project, '.claude', dir), { withFileTypes: true })).filter(e => e.isDirectory() || e.name.endsWith('.md')).map(e => e.name.replace(/\.md$/, '')); }
+    catch { return [] as string[]; }
+  };
+  const skills = await listDir('skills'), agents = await listDir('agents');
+  lines.push('', `<b>${T.compSkills()}</b> (${skills.length})`, skills.length ? `  ${esc(skills.join('、'))}` : `  ${T.compNone()}`);
+  lines.push('', `<b>${T.compAgents()}</b> (${agents.length})`);
+  lines.push(agents.length ? `  ${esc(agents.slice(0, 12).join('、'))}${agents.length > 12 ? ` … +${agents.length - 12}` : ''}` : `  ${T.compNone()}`);
+  lines.push('', esc(T.compHint()));
+
+  return {
+    text: lines.join('\n'),
+    keyboard: kb([
+      row(await navBtn(d, T.btnRefresh(), { s: 'components', project }), await navBtn(d, T.btnBack(), { s: 'more', project }), await navBtn(d, T.btnHome(), { s: 'home' })),
     ]),
   };
 }
@@ -423,8 +467,9 @@ async function screenMore(d: UiDeps, nav: NavState): Promise<Reply> {
   return {
     text: `${b(T.hMore())}\n\n${esc(T.moreHint())}`,
     keyboard: kb([
-      row(await navBtn(d, T.tabSteering(), { s: 'steering', project }), await navBtn(d, T.tabCleanup(), { s: 'cleanup', project })),
-      row(await navBtn(d, T.tabHelp(), { s: 'help' }), await navBtn(d, T.btnHome(), { s: 'home' })),
+      row(await navBtn(d, T.tabSteering(), { s: 'steering', project }), await navBtn(d, T.tabComponents(), { s: 'components', project })),
+      row(await navBtn(d, T.tabCleanup(), { s: 'cleanup', project }), await navBtn(d, T.tabHelp(), { s: 'help' })),
+      row(await navBtn(d, T.btnHome(), { s: 'home' })),
     ]),
   };
 }
