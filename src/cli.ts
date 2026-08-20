@@ -14,6 +14,7 @@ import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskSta
 import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, VerifySource, FailureClass, ManualTaskStatus } from './core/verify-core.js';
 import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
+import { createRequest, listRequests, readRequest, updateRequest, touchHeartbeat, pruneRequests, watcherAlive, WorkRequest } from './core/requests.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
 import { gateHmac, pendingSig, verifyPendingSig } from './core/gates.js';
@@ -35,7 +36,7 @@ function resolveProject(args: string[]): string {
  *  mark it [-], and print a JSON line the loop script can read. */
 export async function runPickCli(args: string[]): Promise<number> {
   const spec = args[0];
-  if (!spec) { console.error('usage: pick <spec> [--project <path>]'); return 2; }
+  if (badSpec(spec)) { console.error('usage: pick <spec> [--task <id>] [--project <path>]'); return 2; }
   const projectPath = resolveProject(args);
   const tasksFile = join(PathUtils.getSpecPath(projectPath, spec), 'tasks.md');
 
@@ -44,7 +45,18 @@ export async function runPickCli(args: string[]): Promise<number> {
   catch { console.error(`No tasks.md for spec '${spec}'`); return 2; }
 
   const { tasks } = parseTasksFromMarkdown(content);
-  const task = tasks.find(t => t.status === 'in-progress' && !t.isHeader) || findNextPendingTask(tasks);
+  // --task pins the selection (Telegram "dispatch just this task"); it must still be work that is
+  // actually open, so a completed/blocked task is refused rather than silently re-run.
+  const wanted = flag(args, '--task');
+  let task;
+  if (wanted) {
+    const t = getTaskById(tasks, wanted);
+    if (!t || t.isHeader) { console.error(`Task '${wanted}' not found in spec '${spec}'`); return 2; }
+    if (t.status !== 'pending' && t.status !== 'in-progress') { console.error(`Task '${wanted}' is ${t.status}; only pending/in-progress tasks can be picked`); return 2; }
+    task = t;
+  } else {
+    task = tasks.find(t => t.status === 'in-progress' && !t.isHeader) || findNextPendingTask(tasks);
+  }
   if (!task) { console.log(JSON.stringify({ taskId: null })); return 0; }
 
   if (task.status !== 'in-progress') {
@@ -259,6 +271,56 @@ export async function runGateHmacCli(args: string[], mode: 'decision' | 'sign' |
   } catch (e) { console.error(`cannot read ${file}: ${(e as Error).message}`); return 2; }
 }
 
+/** requests: the mailbox between the Telegram daemon and a live Claude Code session.
+ *
+ *   requests watch [--interval 3]   print one JSON line per NEW pending request, forever (Monitor-friendly);
+ *                                   also touches the heartbeat so the daemon knows a session is listening
+ *   requests list [--status s]      print the queue
+ *   requests claim <id>             mark in progress (the watcher does this before working)
+ *   requests done <id> [--result t] mark finished; --fail marks it failed
+ */
+export async function runRequestsCli(args: string[]): Promise<number> {
+  const [sub, ...rest] = args;
+  const fmt = (r: WorkRequest) => JSON.stringify({ id: r.id, kind: r.kind, status: r.status, project: r.project, spec: r.spec, taskId: r.taskId, idea: r.idea, path: r.path, by: r.by, at: r.at });
+
+  if (sub === 'list') {
+    const status = flag(rest, '--status') as WorkRequest['status'] | undefined;
+    for (const r of await listRequests(status)) console.log(fmt(r));
+    return 0;
+  }
+  if (sub === 'claim' || sub === 'done') {
+    const id = rest[0];
+    if (!id) { console.error(`usage: requests ${sub} <id>`); return 2; }
+    const patch: Partial<WorkRequest> = sub === 'claim'
+      ? { status: 'claimed', claimedAt: new Date().toISOString() }
+      : { status: rest.includes('--fail') ? 'failed' : 'done', finishedAt: new Date().toISOString(), result: flag(rest, '--result') };
+    const r = await updateRequest(id, patch);
+    if (!r) { console.error(`no such request: ${id}`); return 2; }
+    console.log(fmt(r));
+    return 0;
+  }
+  if (sub === 'watch') {
+    const intervalRaw = flag(rest, '--interval');
+    const interval = Math.min(Math.max(Number(intervalRaw ?? 3) || 3, 1), 60) * 1000;
+    const seen = new Set((await listRequests()).filter(r => r.status !== 'pending').map(r => r.id));
+    // Existing pending requests are emitted immediately — a session that starts late still picks them up.
+    await touchHeartbeat();
+    console.error(`[requests] watching ${await listRequests('pending').then(x => x.length)} pending — heartbeat every ${interval / 1000}s`);
+    for (;;) {
+      await touchHeartbeat();
+      for (const r of await listRequests('pending')) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        console.log(fmt(r));
+      }
+      await pruneRequests();
+      await new Promise(res => setTimeout(res, interval));
+    }
+  }
+  console.error('usage: requests <watch|list|claim|done> …');
+  return 2;
+}
+
 /** Dispatch a CLI subcommand. Returns null if argv is not a recognized subcommand. */
 export async function runSubcommand(argv: string[]): Promise<number | null> {
   const [cmd, ...rest] = argv;
@@ -272,6 +334,7 @@ export async function runSubcommand(argv: string[]): Promise<number | null> {
   if (cmd === 'reset') return runSetStatusCli(rest, 'pending');
   if (cmd === 'cleanup') return runCleanupCli(rest);
   if (cmd === 'route') return runRouteCli(rest);
+  if (cmd === 'requests') return runRequestsCli(rest);
   if (cmd === 'gate-hmac') return runGateHmacCli(rest, 'decision');
   if (cmd === 'gate-sign') return runGateHmacCli(rest, 'sign');
   if (cmd === 'gate-verify-pending') return runGateHmacCli(rest, 'verify-pending');

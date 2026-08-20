@@ -329,6 +329,11 @@ if [ "$AUTO" != "true" ]; then
   exit 0
 fi
 MAX="$(read_key loop maxIterations)";        case "$MAX" in ''|*[!0-9]*) MAX=50 ;; esac
+# Env overrides for one-shot dispatch (Telegram "run just this task"): LOOP_MAX_ITERATIONS caps the
+# run, LOOP_TASK pins which task `pick` selects. Both are runner-side; the ladder is unchanged.
+case "${LOOP_MAX_ITERATIONS:-}" in ''|*[!0-9]*) : ;; *) MAX="$LOOP_MAX_ITERATIONS" ;; esac
+LOOP_TASK="${LOOP_TASK:-}"
+case "$LOOP_TASK" in ''|*[!0-9.]*) LOOP_TASK="" ;; esac
 NOPROG_MAX="$(read_key loop noProgressStop)"; case "$NOPROG_MAX" in ''|*[!0-9]*) NOPROG_MAX=3 ;; esac
 MAXFIX="$(read_key engine maxFixAttempts)";  case "$MAXFIX" in ''|*[!0-9]*) MAXFIX=5 ;; esac
 TEST_CMD="$(read_str loop testCommand)"
@@ -390,7 +395,7 @@ trap on_signal INT TERM
 if [ -z "$TEST_CMD" ]; then
   echo "$(date -u +%FT%TZ) [$SPEC] WARN SELF-CERTIFIED (no [loop].testCommand — verification NOT independent, DEPRECATED)" | tee -a "$AUDIT" >> "$LOG"
 fi
-echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX git=$IS_GIT harness=$([ -n "$TEST_CMD" ] && echo on || echo off) pid=$$)" >> "$AUDIT"
+echo "$(date -u +%FT%TZ) [$SPEC] loop-run START (max=$MAX noProgress=$NOPROG_MAX git=$IS_GIT harness=$([ -n "$TEST_CMD" ] && echo on || echo off)${LOOP_TASK:+ task=$LOOP_TASK} pid=$$)" >> "$AUDIT"
 [ "$IS_GIT" = 0 ] && { echo "$(date -u +%FT%TZ) [$SPEC] WARN TAMPER-GATE OFF (not a git repo — pre-existing test tamper undetectable; verdicts flagged tamperGate:off)" >> "$AUDIT"; touch "$SPECDIR/.tamper-gate-off"; }
 
 # L3 pre-flight spec gate — refuse to autonomously implement a spec too hackable/underspecified to verify.
@@ -427,7 +432,7 @@ while true; do
   iter=$((iter + 1))
 
   # 1) Pick the task (script owns selection + marks [-]).
-  PICK="$($SWMCP pick "$SPEC" --project "$PWD" 2>>"$LOG")"
+  PICK="$($SWMCP pick "$SPEC" ${LOOP_TASK:+--task "$LOOP_TASK"} --project "$PWD" 2>>"$LOG")"
   TASKID="$(json_str "$PICK" taskId)"
   SCOPE="$(json_str "$PICK" tests)"
   ENGINE="$(json_str "$PICK" engine)"; [ -z "$ENGINE" ] && ENGINE="claude"

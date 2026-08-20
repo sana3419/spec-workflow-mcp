@@ -35,6 +35,13 @@ export class TelegramApiError extends Error {
 }
 
 export const TG_MAX_TEXT = 4096;
+const MAX_NET_RETRIES = 3;
+const RETRY_DELAYS_MS = [400, 1200, 3000];
+
+function netError(method: string, e: unknown): Error {
+  const err = e as { message?: string; cause?: { message?: string } };
+  return new TelegramApiError(method, 0, `network: ${err?.message ?? String(e)}${err?.cause?.message ? ` (${err.cause.message})` : ''}`);
+}
 
 export class TelegramApi {
   private base: string;
@@ -43,7 +50,7 @@ export class TelegramApi {
     this.base = `https://api.telegram.org/bot${token}`;
   }
 
-  private async call<T>(method: string, body?: Record<string, unknown> | FormData, timeoutMs = 30_000, outer?: AbortSignal): Promise<T> {
+  private async call<T>(method: string, body?: Record<string, unknown> | FormData, timeoutMs = 30_000, outer?: AbortSignal, attempt = 0): Promise<T> {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), timeoutMs);
     outer?.addEventListener('abort', () => ctl.abort(), { once: true });
@@ -51,12 +58,27 @@ export class TelegramApi {
       const init: RequestInit = { method: 'POST', signal: ctl.signal };
       if (body instanceof FormData) init.body = body;
       else if (body) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body); }
-      const res = await this.fetchImpl(`${this.base}/${method}`, init);
+      let res: Response;
+      try {
+        res = await this.fetchImpl(`${this.base}/${method}`, init);
+      } catch (e) {
+        // Transport-level failure (DNS blip, connection reset, TLS hiccup). Telegram never saw the
+        // request, so retrying is safe for every method we use — and dropping a user's reply on a
+        // single network hiccup is the worst outcome. Aborts (shutdown / our own timeout) never retry.
+        if (outer?.aborted || attempt >= MAX_NET_RETRIES || body instanceof FormData) throw netError(method, e);
+        await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+        return this.call<T>(method, body, timeoutMs, outer, attempt + 1);
+      }
       const json = await res.json().catch(() => ({})) as { ok?: boolean; result?: T; error_code?: number; description?: string; parameters?: { retry_after?: number } };
       if (!json.ok) {
         if (json.error_code === 429 && json.parameters?.retry_after) {
           await new Promise(r => setTimeout(r, (json.parameters!.retry_after! + 1) * 1000));
-          return this.call<T>(method, body, timeoutMs);
+          return this.call<T>(method, body, timeoutMs, outer);
+        }
+        // 5xx from Telegram: the API is momentarily unhealthy, same treatment as a transport blip.
+        if (json.error_code && json.error_code >= 500 && attempt < MAX_NET_RETRIES && !(body instanceof FormData)) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+          return this.call<T>(method, body, timeoutMs, outer, attempt + 1);
         }
         throw new TelegramApiError(method, json.error_code ?? res.status, json.description ?? res.statusText);
       }

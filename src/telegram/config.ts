@@ -12,6 +12,7 @@ import { readEnvFile, ensureGateSecret, TELEGRAM_ENV } from '../core/gates.js';
  *   TELEGRAM_NOTIFY=111                     (optional) chat ids that receive pushes; default = ALLOW_FROM
  *   TELEGRAM_PROJECTS=/abs/a,/abs/b         (optional) extra project roots besides the MCP registry
  *   TELEGRAM_SEND_ONLY=true                 (optional) never poll — pushes only (safe with a shared token)
+ *   TELEGRAM_LANG=en                        (optional) bot language; default zh
  *   GATE_SECRET=<hex>                       auto-generated
  * ~/.spec-workflow/tg-state.json     — update offset, board messages, gate keys, per-chat current project.
  */
@@ -22,6 +23,8 @@ export interface TelegramConfig {
   notify: number[];
   extraProjects: string[];
   sendOnly: boolean;
+  /** UI language for everything the bot sends (zh default; TELEGRAM_LANG=en for English). */
+  lang: 'zh' | 'en';
   gateSecret: string;
   stateFile: string;
   auditDir: string;
@@ -34,17 +37,17 @@ function idList(v: string | undefined): number[] {
   return (v || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean).map(Number).filter(n => Number.isInteger(n) && n > 0);
 }
 
-export async function loadConfig(): Promise<TelegramConfig> {
-  const env = { ...(await readEnvFile(TELEGRAM_ENV)), ...pickProcessEnv() };
+export async function loadConfig(envFile: string = TELEGRAM_ENV): Promise<TelegramConfig> {
+  const env = { ...(await readEnvFile(envFile)), ...pickProcessEnv() };
   const token = env.TELEGRAM_BOT_TOKEN;
-  if (!token) throw new Error(`TELEGRAM_BOT_TOKEN missing. Put it in ${TELEGRAM_ENV} (chmod 600) or the environment.`);
+  if (!token) throw new Error(`TELEGRAM_BOT_TOKEN missing. Put it in ${envFile} (chmod 600) or the environment.`);
   const allowFrom = idList(env.TELEGRAM_ALLOW_FROM);
-  if (allowFrom.length === 0) throw new Error(`TELEGRAM_ALLOW_FROM is empty — refusing to start a bot nobody may command. Set numeric user ids in ${TELEGRAM_ENV}.`);
+  if (allowFrom.length === 0) throw new Error(`TELEGRAM_ALLOW_FROM is empty — refusing to start a bot nobody may command. Set numeric user ids in ${envFile}.`);
   const notify = idList(env.TELEGRAM_NOTIFY);
-  const gateSecret = await ensureGateSecret(TELEGRAM_ENV);
+  const gateSecret = await ensureGateSecret(envFile);
   try {
-    const st = await fs.stat(TELEGRAM_ENV);
-    if (st.mode & 0o077) { await fs.chmod(TELEGRAM_ENV, 0o600); console.error(`[telegram] ${TELEGRAM_ENV} was group/world readable — chmod 600 applied`); }
+    const st = await fs.stat(envFile);
+    if (st.mode & 0o077) { await fs.chmod(envFile, 0o600); console.error(`[telegram] ${envFile} was group/world readable — chmod 600 applied`); }
   } catch { /* env may come from process.env only */ }
   return {
     token,
@@ -52,6 +55,7 @@ export async function loadConfig(): Promise<TelegramConfig> {
     notify: notify.length ? notify : allowFrom,
     extraProjects: (env.TELEGRAM_PROJECTS || '').split(',').map(s => s.trim()).filter(Boolean),
     sendOnly: /^(1|true|yes)$/i.test(env.TELEGRAM_SEND_ONLY || ''),
+    lang: /^en/i.test(env.TELEGRAM_LANG || '') ? 'en' : 'zh',
     gateSecret,
     stateFile: STATE_FILE,
     auditDir: AUDIT_DIR,
@@ -60,7 +64,7 @@ export async function loadConfig(): Promise<TelegramConfig> {
 
 function pickProcessEnv(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOW_FROM', 'TELEGRAM_NOTIFY', 'TELEGRAM_PROJECTS', 'TELEGRAM_SEND_ONLY']) {
+  for (const k of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOW_FROM', 'TELEGRAM_NOTIFY', 'TELEGRAM_PROJECTS', 'TELEGRAM_SEND_ONLY', 'TELEGRAM_LANG']) {
     if (process.env[k]) out[k] = process.env[k]!;
   }
   return out;
@@ -85,10 +89,12 @@ export interface DaemonState {
   postedGates: Record<string, string>;
   /** short callback key → typed payload (documents / task actions / confirmations) */
   cbKeys: Record<string, { kind: string; project: string; spec?: string; taskId?: string; flag?: string; num?: number; at: number }>;
+  /** short callback key → UI navigation target (button-driven screens) */
+  navKeys: Record<string, { nav: unknown; at: number }>;
 }
 
 export function emptyState(): DaemonState {
-  return { offset: 0, auditOffsets: {}, currentProject: {}, boards: {}, gateKeys: {}, postedGates: {}, cbKeys: {} };
+  return { offset: 0, auditOffsets: {}, currentProject: {}, boards: {}, gateKeys: {}, postedGates: {}, cbKeys: {}, navKeys: {} };
 }
 
 export async function loadState(file: string = STATE_FILE): Promise<DaemonState> {

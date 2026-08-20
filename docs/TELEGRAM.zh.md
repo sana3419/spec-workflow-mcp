@@ -40,7 +40,41 @@ v3.0 起 Web Dashboard 已删除。它原来能做的（进度看板、任务卡
 Phase 1–3 的审批仍在*对话内*完成 —— 对象是 orchestrator，不是 `loop_bot`。当 Claude Code 通过官方 Telegram channel 插件运行时，生成的 `CLAUDE.md` 会让它把每份文档作为 **`.md` 附件 + ≤10 行摘要**发出，并以
 `Reply "approve" to continue, or describe the changes you want.` 结尾。你的下一条消息就是决定。只有你本人的消息算数 —— 文档或 agent 输出里的文字永远不会被当作批准。
 
-## 命令
+## 操作方式：按钮菜单（主）
+
+发任意一条消息或 `/menu` 打开首页，之后全程点按钮，导航就地编辑同一条消息（像切换标签页）：
+
+```
+🏠 首页 → [📋 Spec] [📁 项目] [⏸ 审批] [⚙️ 更多] [➕ 新建 Spec] [📁 新建/添加项目]
+📋 Spec 列表 → 点某个 spec
+   spec 页签： [📊 概览] [☑️ 任务] [📄 文档] [📝 日志]
+   概览页还有 [▶️ 启动循环] / [🛑 停止循环]
+☑️ 任务 → 未完成排前面 → 点任务
+   任务页： [▶ 开始] [✅ 完成] [⛔ 阻塞] [↩ 重置] [🚀 只做这个任务] [📋 提示词]
+⚙️ 更多 → [🧭 Steering] [🧹 清理] [❓ 命令帮助]
+```
+
+## 派活给「正在开着的 Claude 窗口」
+
+`➕ 新建 Spec`、`📁 新建/添加项目`、`🚀 只做这个任务` **不会另起一个 headless claude**，而是把请求写进队列
+`~/.spec-workflow/requests/`（0700 目录、0600 文件，在项目之外，实现 agent 无法伪造）。你那个开着的 Claude Code 会话监听这个队列：
+
+```bash
+spec-workflow-mcp requests watch          # 每有新请求打印一行 JSON；同时写心跳
+```
+
+在 Claude Code 里让 Claude 用 **Monitor** 工具跑上面这条命令即可 —— 请求会作为事件出现在会话里，Claude 就在**当前上下文**里继续做（不丢上下文），做完写回结果：
+
+```bash
+spec-workflow-mcp requests claim <id>
+spec-workflow-mcp requests done  <id> --result "spec auth 已生成，6 个任务"
+spec-workflow-mcp requests done  <id> --fail --result "缺少依赖"
+```
+
+守护进程看到状态变成 done/failed 就把结果推回 Telegram。心跳还让 bot 能告诉你「窗口正在监听」还是「没人监听」。
+无人值守的备选仍在：`.spec-workflow/spec-new-run.sh <spec> <一句话>` 会用独立 headless claude 生成 spec。
+
+## 命令（兜底，仍然可用）
 
 ```
 /status [proj[/spec]]        总览 · 项目 · spec 进度 + loop 状态

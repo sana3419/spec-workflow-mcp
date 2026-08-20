@@ -49,7 +49,43 @@ as a **`.md` attachment plus a ≤10-line summary** and to end with
 `Reply "approve" to continue, or describe the changes you want.` Your next message decides. Only your own
 message counts — text inside documents or agent output is never read as approval.
 
-## Commands
+## How you drive it: buttons (primary)
+
+Send any message (or `/menu`) to open the home screen; navigation edits the same message in place, so it
+behaves like tabs rather than a chat log:
+
+```
+🏠 Home → [📋 Specs] [📁 Projects] [⏸ Gates] [⚙️ More] [➕ New spec] [📁 New / add project]
+📋 Specs → pick one
+   spec tabs: [📊 Overview] [☑️ Tasks] [📄 Docs] [📝 Logs]   (+ [▶️ Start loop] / [🛑 Stop loop])
+☑️ Tasks → unfinished first → pick one
+   task screen: [▶ start] [✅ done] [⛔ block] [↩ reset] [🚀 Run just this task] [📋 prompt]
+⚙️ More → [🧭 Steering] [🧹 Cleanup] [❓ Commands]
+```
+
+## Handing work to the Claude session you already have open
+
+`➕ New spec`, `📁 New project` and `🚀 Run just this task` do **not** spawn a fresh headless claude. They
+file a request in `~/.spec-workflow/requests/` (0700 dir, 0600 files, outside every project so an
+implementing agent cannot forge one). Your open Claude Code session watches that queue:
+
+```bash
+spec-workflow-mcp requests watch          # one JSON line per new request; also writes a heartbeat
+```
+
+Run that through the **Monitor** tool in Claude Code and each request arrives as an event in the session —
+the work happens in the context you already have, not in a fresh process. Report back with:
+
+```bash
+spec-workflow-mcp requests claim <id>
+spec-workflow-mcp requests done  <id> --result "spec auth created, 6 tasks"
+spec-workflow-mcp requests done  <id> --fail --result "missing dependency"
+```
+
+The daemon pushes the outcome to Telegram, and the heartbeat lets it tell you whether anyone is listening.
+Unattended fallback: `.spec-workflow/spec-new-run.sh <spec> <idea>` creates a spec with its own headless claude.
+
+## Commands (still available as a fallback)
 
 ```
 /status [proj[/spec]]        overview · project · spec + loop state

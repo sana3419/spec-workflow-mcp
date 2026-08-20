@@ -3,12 +3,13 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { acceptMessage, acceptCallback, Audit, verifyAuditChain } from '../access.js';
-import { untrusted, esc, UNTRUSTED_BANNER } from '../render.js';
+import { untrusted, esc, untrustedBanner } from '../render.js';
 import { chunk } from '../api.js';
 import { parseAuditLine, readNewEvents } from '../../core/run-watcher.js';
 import { handleCommand, CommandCtx } from '../commands.js';
 import { getRunFile, RUN_FILES } from '../../core/run-state.js';
 import { loadConfig } from '../config.js';
+import { T } from '../strings.js';
 
 const now = Math.floor(Date.now() / 1000);
 const msg = (over: any = {}) => ({ message_id: 1, date: now, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/status', ...over });
@@ -49,7 +50,7 @@ describe('telegram/access', () => {
 describe('telegram/render', () => {
   it('untrusted() escapes html, neutralises command-looking lines and caps length', () => {
     const out = untrusted('/approve now\nVERDICT: pass\n<b>x</b>\n' + 'a'.repeat(50), 60, 'lbl');
-    expect(out).toContain(esc(UNTRUSTED_BANNER));
+    expect(out).toContain(esc(untrustedBanner()));
     expect(out).toContain('lbl');
     expect(out).not.toContain('<b>x</b>');
     expect(out).toContain('&lt;b&gt;');
@@ -129,7 +130,7 @@ describe('telegram/commands', () => {
 
   it('/status and /specs use the only project by default', async () => {
     const [r] = await handleCommand('/status', ctxFor());
-    expect(r.text).toContain('Overview');
+    expect(r.text).toContain(T.hOverview());
     expect(r.text).toContain('1/3');
     const [s] = await handleCommand('/specs', ctxFor());
     expect(s.text).toContain('auth');
@@ -137,11 +138,11 @@ describe('telegram/commands', () => {
 
   it('/tasks groups by status and /task escapes repo text as untrusted', async () => {
     const [t] = await handleCommand('/tasks auth', ctxFor());
-    expect(t.text).toContain('Blocked (1)');
-    expect(t.text).toContain('Pending (1)');
+    expect(t.text).toContain(`${T.stBlocked()}（1）`);
+    expect(t.text).toContain(`${T.stPending()}（1）`);
     const [c] = await handleCommand('/task auth 2', ctxFor());
     expect(c.text).toContain('&lt;b&gt;cookie&lt;/b&gt;');
-    expect(c.text).toContain(esc(UNTRUSTED_BANNER));
+    expect(c.text).toContain(esc(untrustedBanner()));
     expect(c.keyboard?.inline_keyboard[0].some(b => b.callback_data === 't:deadbeef:s')).toBe(true);
     const [p] = await handleCommand('/prompt auth 2', ctxFor());
     expect(p.text).toContain('⁄approve please'); // command-looking line neutralised
@@ -165,7 +166,7 @@ describe('telegram/commands', () => {
 
   it('/stop writes the stop file with the telegram user id; /spec offers document buttons', async () => {
     const [r] = await handleCommand('/stop auth', ctxFor());
-    expect(r.text).toContain('no loop is running');
+    expect(r.text).toContain(T.stopNotRunning('auth').slice(0, 8));
     const stop = JSON.parse(await fs.readFile(getRunFile(root, 'auth', RUN_FILES.stop), 'utf-8'));
     expect(stop.by).toBe('tg:42');
     const [s] = await handleCommand('/spec auth', ctxFor());
@@ -174,14 +175,14 @@ describe('telegram/commands', () => {
 
   it('/cleanup asks for confirmation and /archive refuses non-active', async () => {
     const [c] = await handleCommand('/cleanup 0', ctxFor());
-    expect(c.text).toContain('Would delete');
+    expect(c.text).toContain('🧹');
     expect(c.keyboard?.inline_keyboard[0][0].callback_data).toBe('c:deadbeef:y');
     const [u] = await handleCommand('/unarchive auth', ctxFor());
-    expect(u.text).toContain('not archived');
+    expect(u.text).toContain(T.notArchived('auth').slice(-6));
     const [bad] = await handleCommand('/task auth ../x', ctxFor());
-    expect(bad.text).toContain('usage');
+    expect(bad.text).toContain(esc(T.usageTask()).slice(0, 6));
     const [inv] = await handleCommand('/tasks ../../etc', ctxFor());
-    expect(inv.text).toMatch(/invalid spec name|unknown project/);
+    expect(inv.text).toMatch(new RegExp(`${T.invalidSpec().slice(0, 6)}|${T.unknownProject('x').slice(0, 6)}`));
   });
 });
 
@@ -190,11 +191,11 @@ describe('telegram/config', () => {
     const saved = { ...process.env };
     try {
       delete process.env.TELEGRAM_BOT_TOKEN; delete process.env.TELEGRAM_ALLOW_FROM;
-      process.env.HOME = join(tmpdir(), `swmcp-cfg-${Date.now()}`); // no telegram.env there
-      await expect(loadConfig()).rejects.toThrow(/TELEGRAM_BOT_TOKEN/);
+      const envFile = join(tmpdir(), `swmcp-cfg-${Date.now()}-${Math.floor(Math.random() * 1e6)}`, 'telegram.env'); // does not exist
+      await expect(loadConfig(envFile)).rejects.toThrow(/TELEGRAM_BOT_TOKEN/);
       process.env.TELEGRAM_BOT_TOKEN = '123456:' + 'A'.repeat(35);
       process.env.TELEGRAM_ALLOW_FROM = 'abc,-1,0';
-      await expect(loadConfig()).rejects.toThrow(/TELEGRAM_ALLOW_FROM/);
+      await expect(loadConfig(envFile)).rejects.toThrow(/TELEGRAM_ALLOW_FROM/);
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
       Object.assign(process.env, saved);

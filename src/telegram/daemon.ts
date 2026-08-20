@@ -5,8 +5,11 @@ import { randomBytes } from 'crypto';
 import { TelegramApi, TelegramApiError, TgUpdate, InlineKeyboardMarkup } from './api.js';
 import { loadConfig, loadState, saveState, TelegramConfig, DaemonState } from './config.js';
 import { acceptMessage, acceptCallback, Audit } from './access.js';
-import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
+import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, applyTaskAction, promptFor, steeringDocument, doArchive, doCleanup, specExists, HELP, CommandCtx, CallbackPayload, Reply } from './commands.js';
 import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
+import { T, setLang } from './strings.js';
+import { renderScreen, NavState, UiDeps, loopActionOf, isDispatch } from './ui.js';
+import { createRequest, listRequests, watcherAlive, WorkRequest } from '../core/requests.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
@@ -31,11 +34,14 @@ export interface DaemonOptions {
   log?: (s: string) => void;
   /** tests only: updates to feed through handleUpdate during a `once` run (instead of polling) */
   injectUpdates?: TgUpdate[];
+  /** override the env file (tests / multiple bots on one machine) */
+  envFile?: string;
 }
 
 export async function runTelegramDaemon(opts: DaemonOptions = {}): Promise<void> {
   const log = opts.log ?? ((s: string) => console.error(`[telegram] ${s}`));
-  const cfg = await loadConfig();
+  const cfg = await loadConfig(opts.envFile);
+  setLang(cfg.lang);
   const api = new TelegramApi(cfg.token, opts.fetchImpl);
   const state = await loadState(cfg.stateFile);
   const audit = new Audit(cfg.auditDir);
@@ -98,6 +104,10 @@ class Daemon {
   private lastDiscover = 0;
   private dirty = false;
   private awaitingReason = new Map<number, { project: string; spec: string; taskId: string }>();
+  /** chat → a screen is waiting for a free-text answer (new spec idea / project path) */
+  private awaitingInput = new Map<number, { kind: 'new-spec' | 'new-project'; project?: string }>();
+  /** request id → the chat that filed it, so results go back to the right place */
+  private requestWatch = new Map<string, { chatId: number; kind: WorkRequest['kind']; what: string }>();
   private specNames = new Map<string, { names: string[]; at: number }>();
 
   constructor(
@@ -144,6 +154,26 @@ class Daemon {
     this.dirty = true;
     return key;
   }
+  private async registerNav(nav: NavState): Promise<string> {
+    const key = randomBytes(4).toString('hex');
+    this.state.navKeys[key] = { nav, at: Date.now() };
+    for (const [k, v] of Object.entries(this.state.navKeys)) if (Date.now() - v.at > 7 * 86400e3) delete this.state.navKeys[k];
+    this.dirty = true;
+    return key;
+  }
+  private navFor(key: string): NavState | undefined { return this.state.navKeys[key]?.nav as NavState | undefined; }
+
+  private uiDeps(userId: number, chatId: number): UiDeps {
+    return { ctx: this.ctx(userId, chatId), nav: (s: NavState) => this.registerNav(s) };
+  }
+
+  /** Render a screen into the message the button belongs to (tab-like navigation). */
+  private async showScreen(chatId: number, messageId: number | undefined, userId: number, nav: NavState): Promise<void> {
+    const reply = await renderScreen(nav, this.uiDeps(userId, chatId));
+    if (messageId !== undefined) await this.editCard(chatId, messageId, reply);
+    else await this.send(chatId, reply);
+  }
+
   private payloadFor(key: string, kind: CallbackPayload['kind']): (CallbackPayload & { at: number }) | undefined {
     const p = this.state.cbKeys[key];
     return p && p.kind === kind ? (p as CallbackPayload & { at: number }) : undefined;
@@ -165,6 +195,15 @@ class Daemon {
     if (!acc.ok) return; // silently drop — never reveal the bot exists to strangers
     const { text, userId, chatId } = acc;
 
+    // A pending "new spec / new project" prompt consumes the next non-command message.
+    const input = this.awaitingInput.get(chatId);
+    if (input && !text.startsWith('/')) {
+      this.awaitingInput.delete(chatId);
+      await this.handleInput(userId, chatId, u.update_id, input, text);
+      return;
+    }
+    if (input && /^\/cancel\b/i.test(text)) { this.awaitingInput.delete(chatId); await this.send(chatId, { text: T.cancelled() }); return; }
+
     // A pending "send me the block reason" prompt consumes the next non-command message.
     const pending = this.awaitingReason.get(chatId);
     if (pending && !text.startsWith('/')) {
@@ -172,18 +211,28 @@ class Daemon {
       const ctx = this.ctx(userId, chatId);
       const r = await applyTaskAction(ctx, pending.project, pending.spec, pending.taskId, 'blocked', text.slice(0, 300));
       await this.auditCmd(userId, chatId, u.update_id, 'task.block', [pending.spec, pending.taskId], pending.project, pending.spec, r.message);
-      await this.send(chatId, r.ok ? await taskCard(ctx, pending.project, pending.spec, pending.taskId) : { text: `❌ ${esc(r.message)}` });
+      if (r.ok) await this.showScreen(chatId, undefined, userId, { s: 'task', project: pending.project, spec: pending.spec, taskId: pending.taskId });
+      else await this.send(chatId, { text: `❌ ${esc(r.message)}` });
       return;
     }
-    if (!text.startsWith('/')) { await this.send(chatId, { text: HELP }); return; }
+    if (!text.startsWith('/')) { await this.showScreen(chatId, undefined, userId, { s: 'home' }); return; }
     if (this.awaitingReason.has(chatId)) this.awaitingReason.delete(chatId);
 
     if (Date.now() - this.lastDiscover > 30_000) await this.discoverProjects();
+    const bare = text.split(/\s+/)[0].replace(/^\//, '').replace(/@\w+$/, '').toLowerCase();
+    if (bare === 'menu' || (bare === 'start' && text.trim().split(/\s+/).length === 1)) {
+      await this.auditCmd(userId, chatId, u.update_id, `/${bare}`, [], this.state.currentProject[String(chatId)], undefined, 'menu');
+      await this.showScreen(chatId, undefined, userId, { s: 'home' });
+      return;
+    }
     const ctx = this.ctx(userId, chatId);
     const replies = await handleCommand(text, ctx);
     const [cmd, ...args] = text.split(/\s+/);
     await this.auditCmd(userId, chatId, u.update_id, cmd, args, ctx.currentProject, undefined, replies.map(r => r.text.slice(0, 80)).join(' | '));
-    for (const r of replies) await this.send(chatId, r);
+    for (const r of replies) {
+      try { await this.send(chatId, r); }
+      catch (e) { this.log(`reply to ${cmd} failed after retries: ${(e as Error).message}`); }
+    }
   }
 
   private async handleCallback(u: TgUpdate): Promise<void> {
@@ -196,6 +245,37 @@ class Daemon {
     const ack = (t?: string, alert = false) => this.api.answerCallbackQuery(cb.id, t, alert).catch(() => {});
 
     if (kind === 'g') return this.handleGateCallback(cb.id, userId, chatId, messageId, key, arg, u.update_id);
+
+    if (kind === 'n') { // screen navigation
+      const nav = this.navFor(key);
+      if (!nav) { await ack(T.ackExpired()); return; }
+      const action = loopActionOf(nav);
+      if (action) {
+        const project = nav.project ?? this.state.currentProject[String(chatId)] ?? '';
+        const res = await handleCommand(`/${action} ${nav.spec}`, this.ctx(userId, chatId));
+        await this.auditCmd(userId, chatId, u.update_id, `loop.${action}`, [String(nav.spec)], project, nav.spec, res.map(r => r.text.slice(0, 60)).join(' | '));
+        await ack(action === 'start' ? T.btnStartLoop() : T.btnStopLoop());
+        for (const r of res) await this.send(chatId, r);
+        await this.showScreen(chatId, messageId, userId, { s: 'spec', project, spec: nav.spec });
+        return;
+      }
+      if (nav.s === 'new-spec' || nav.s === 'new-project') {
+        this.awaitingInput.set(chatId, { kind: nav.s, project: nav.project });
+      }
+      if (isDispatch(nav)) {
+        await ack();
+        await this.fileRequest(userId, chatId, u.update_id, {
+          kind: 'dispatch-task', project: nav.project ?? '', spec: nav.spec, taskId: nav.taskId, by: `tg:${userId}`,
+        }, `${nav.spec} · ${nav.taskId}`);
+        await this.showScreen(chatId, messageId, userId, { s: 'task', project: nav.project, spec: nav.spec, taskId: nav.taskId, pg: nav.pg });
+        return;
+      }
+      // Picking a project from the list also makes it current for this chat.
+      if (nav.s === 'specs' && nav.project) { this.state.currentProject[String(chatId)] = nav.project; this.dirty = true; }
+      await ack();
+      await this.showScreen(chatId, messageId, userId, nav);
+      return;
+    }
 
     const kindMap: Record<string, CallbackPayload['kind']> = { d: 'doc', s: 'steer', t: 'task', a: 'arch', c: 'clean' };
     const payload = kindMap[kind] ? this.payloadFor(key, kindMap[kind]) : undefined;
@@ -222,28 +302,28 @@ class Daemon {
         if (!status) { await ack('?'); return; }
         const r = await applyTaskAction(ctx, project, spec, taskId, status);
         await this.auditCmd(userId, chatId, u.update_id, `task.${status}`, [spec, taskId], project, spec, r.message);
-        await ack(r.ok ? 'done' : r.message.slice(0, 190));
-        if (r.ok) await this.editCard(chatId, messageId, await taskCard(ctx, project, spec, taskId));
+        await ack(r.ok ? T.ackDone() : r.message.slice(0, 190));
+        if (r.ok) await this.showScreen(chatId, messageId, userId, { s: 'task', project, spec, taskId });
         else await this.send(chatId, { text: `❌ ${esc(r.message)}` });
         return;
       }
       case 'a': { // archive confirm
         const flag = payload.flag;
-        if (arg !== 'y') { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        if (arg !== 'y') { await ack(T.ackCancelled()); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
         if (flag === '1' && (await getLoopStatus(project, spec)).running) { await ack('loop is running — /stop first', true); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
         try {
           const msg = await doArchive(project, spec, flag === '1');
           await this.auditCmd(userId, chatId, u.update_id, flag === '1' ? 'archive' : 'unarchive', [spec], project, spec, msg);
-          await ack('done'); await this.editCard(chatId, messageId, { text: `${flag === '1' ? '📦' : '📤'} ${esc(msg)}` });
-        } catch (e) { await ack('failed'); await this.send(chatId, { text: `❌ ${esc((e as Error).message)}` }); }
+          await ack(T.ackDone()); await this.editCard(chatId, messageId, { text: esc(msg) });
+        } catch (e) { await ack(T.ackFailed()); await this.send(chatId, { text: `❌ ${esc((e as Error).message)}` }); }
         return;
       }
       case 'c': { // cleanup confirm
         const flag = payload.flag, days = payload.num ?? NaN;
-        if (arg !== 'y' || !Number.isFinite(days)) { await ack('cancelled'); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
+        if (arg !== 'y' || !Number.isFinite(days)) { await ack(T.ackCancelled()); await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {}); return; }
         const msg = await doCleanup(project, days, flag === '1');
         await this.auditCmd(userId, chatId, u.update_id, 'cleanup', [String(days), flag === '1' ? 'archived' : 'active'], project, undefined, msg.replace(/<[^>]+>/g, ''));
-        await ack('done'); await this.editCard(chatId, messageId, { text: msg });
+        await ack(T.ackDone()); await this.editCard(chatId, messageId, { text: msg });
         return;
       }
       default: await ack('?');
@@ -253,20 +333,20 @@ class Daemon {
   private async handleGateCallback(cbId: string, userId: number, chatId: number, messageId: number, key: string, arg: string, updateId: number): Promise<void> {
     const ack = (t?: string, alert = false) => this.api.answerCallbackQuery(cbId, t, alert).catch(() => {});
     const ref = this.state.gateKeys[key];
-    if (!ref) { await ack('gate expired'); return; }
+    if (!ref) { await ack(T.ackExpired()); return; }
     if (arg !== 'a' && arg !== 'r') { await ack('?'); return; }
     const decision = arg === 'a' ? 'approve' : 'reject';
     // Still pending? (runner may have timed out)
     const stillPending = (await listPendingGates(ref.project, ref.spec)).find(g => g.id === ref.id && g.nonce === ref.nonce);
     const already = await readDecision(ref.project, ref.id);
     if (!stillPending && !already) {
-      await ack('this gate is no longer pending (timeout or runner stopped)', true);
+      await ack(T.ackGateGone(), true);
       await this.api.editMessageReplyMarkup(chatId, messageId).catch(() => {});
       return;
     }
     const { record, alreadyDecided } = await writeDecision(ref.project, { id: ref.id, nonce: ref.nonce }, decision, `tg:${userId}`, this.cfg.gateSecret);
     await this.auditCmd(userId, chatId, updateId, `gate.${record.decision}`, [ref.id], ref.project, ref.spec, alreadyDecided ? 'already decided' : 'recorded');
-    await ack(alreadyDecided ? `already ${record.decision}d by ${record.by}` : `${record.decision}d`);
+    await ack(alreadyDecided ? T.ackAlreadyDecided(record.decision, record.by) : T.ackDecided(record.decision));
     // Update every chat's card for this gate (each chat has its own key/message).
     for (const [k, r] of Object.entries(this.state.gateKeys)) {
       if (r.id !== ref.id || r.project !== ref.project) continue;
@@ -274,6 +354,51 @@ class Daemon {
       delete this.state.gateKeys[k];
     }
     this.dirty = true;
+  }
+
+  // ------------------------------------------------------------ work requests
+
+  /** Free-text answer to a "new spec" / "new project" prompt. */
+  private async handleInput(userId: number, chatId: number, updateId: number, input: { kind: 'new-spec' | 'new-project'; project?: string }, text: string): Promise<void> {
+    if (input.kind === 'new-spec') {
+      const m = text.trim().match(/^([A-Za-z0-9._-]{1,64})[\s:：,，-]+([\s\S]{3,})$/);
+      if (!m) { await this.send(chatId, { text: T.badSpecInput() }); return; }
+      const [, spec, idea] = m;
+      const project = input.project ?? this.state.currentProject[String(chatId)] ?? this.projects[0];
+      if (!project) { await this.send(chatId, { text: esc(T.noProjects()) }); return; }
+      if ((await specExists(project, spec)) !== 'missing') { await this.send(chatId, { text: T.specExists(code(spec)) }); return; }
+      await this.fileRequest(userId, chatId, updateId, { kind: 'new-spec', project, spec, idea: idea.trim(), by: `tg:${userId}` }, spec);
+      return;
+    }
+    const path = text.trim();
+    if (!path.startsWith('/') || path.includes('..')) { await this.send(chatId, { text: esc(T.badProjectPath()) }); return; }
+    await this.fileRequest(userId, chatId, updateId, { kind: 'new-project', project: '', path, by: `tg:${userId}` }, path);
+  }
+
+  /** File a request for the live session and tell the user whether anyone is listening. */
+  private async fileRequest(userId: number, chatId: number, updateId: number, r: Omit<WorkRequest, 'id' | 'status' | 'at'>, what: string): Promise<void> {
+    const live = await watcherAlive();
+    const req = await createRequest(r);
+    this.requestWatch.set(req.id, { chatId, kind: req.kind, what });
+    await this.auditCmd(userId, chatId, updateId, `request.${req.kind}`, [what], r.project || undefined, r.spec, req.id);
+    const text = req.kind === 'new-spec' ? T.queuedNewSpec(esc(what), live)
+      : req.kind === 'new-project' ? T.queuedNewProject(esc(what), live)
+      : T.queuedDispatch(esc(String(r.spec)), esc(String(r.taskId)), live);
+    await this.send(chatId, { text });
+  }
+
+  /** Push finished requests back to whoever asked (called from tick). */
+  private async pollRequests(): Promise<void> {
+    if (!this.requestWatch.size) return;
+    for (const r of await listRequests()) {
+      const w = this.requestWatch.get(r.id);
+      if (!w || (r.status !== 'done' && r.status !== 'failed')) continue;
+      this.requestWatch.delete(r.id);
+      const kind = r.kind === 'new-spec' ? T.kindNewSpec() : r.kind === 'new-project' ? T.kindNewProject() : T.kindDispatch();
+      const body = r.result ? inlineUntrusted(r.result, 400) : '';
+      await this.send(w.chatId, { text: r.status === 'done' ? T.requestDone(kind, esc(w.what), body) : T.requestFailed(kind, esc(w.what), body) });
+      if (r.status === 'done' && r.kind !== 'new-project') await this.discoverProjects();
+    }
   }
 
   // ------------------------------------------------------------ outbound helpers
@@ -329,6 +454,7 @@ class Daemon {
       }
       await this.scanGates(p);
     }
+    await this.pollRequests();
     await this.flush();
   }
 
@@ -357,7 +483,7 @@ class Daemon {
     switch (ev.type) {
       case 'start': {
         // New board message per run.
-        const text = await this.boardText(project, ev.spec, `▶️ loop started${ev.pid ? ` (pid ${ev.pid})` : ''}`);
+        const text = await this.boardText(project, ev.spec, esc(T.evLoopStarted(ev.pid)));
         const refs = [];
         for (const chatId of this.cfg.notify) {
           try {
@@ -387,8 +513,8 @@ class Daemon {
         await this.updateBoard(project, ev.spec, describe(ev));
         return;
       case 'end': {
-        await this.updateBoard(project, ev.spec, `⏹ loop ended: ${esc(ev.reason)}${ev.iterations !== undefined ? ` after ${ev.iterations} iteration(s)` : ''}`);
-        await this.broadcast({ text: `${head} · ⏹ loop ended: ${b(ev.reason)}${ev.iterations !== undefined ? ` · ${ev.iterations} iter` : ''}\n${await specStatusText(project, ev.spec)}` });
+        await this.updateBoard(project, ev.spec, esc(T.evEnded(ev.reason, ev.iterations)));
+        await this.broadcast({ text: `${head} · ${esc(T.evEnded(ev.reason, ev.iterations))}\n\n${await specStatusText(project, ev.spec)}` });
         delete this.state.boards[key]; this.dirty = true;
         return;
       }
@@ -397,7 +523,7 @@ class Daemon {
   }
 
   private async boardText(project: string, spec: string, last: string): Promise<string> {
-    return `${await specStatusText(project, spec)}\n\n<i>last: ${last} · ${esc(new Date().toISOString().slice(11, 19))}Z</i>`;
+    return `${await specStatusText(project, spec)}\n\n${T.boardLast(last, esc(new Date().toISOString().slice(11, 19)))}`;
   }
 
   private async updateBoard(project: string, spec: string, last: string): Promise<void> {
@@ -458,22 +584,19 @@ class Daemon {
 
   /** Card text is composed ONLY from daemon-owned strings keyed by gate kind + numeric details. */
   private gateCardText(spec: string, project: string, id: string, createdAt: string, g?: PendingGate, decided?: { decision: string; by: string; at: string }): string {
-    const KIND_TEXT: Record<GateKind, string> = {
-      'spec-gate-fail': 'Spec gate (L3) FAILED — the cross-family auditor thinks the spec lets wrong-but-green outcomes through.\nApprove = override and implement anyway (audited, result stays "fail"). Reject = stop.',
-      'integration-fail': 'Integration gate (L4) FAILED — the assembled build/boot did not pass.\nApprove = ONE more bounded auto-fix round. Reject = stop. (Approve can never turn this into a pass.)',
-      'every-n-tasks': 'Checkpoint — N tasks went green. Approve = continue the loop. Reject = stop.',
-      'manual': 'Manual gate. Approve = continue. Reject = stop.',
-    };
-    const kind = (g && (g.kind in KIND_TEXT) ? g.kind : undefined) as GateKind | undefined;
+    const KINDS: GateKind[] = ['spec-gate-fail', 'integration-fail', 'every-n-tasks', 'manual'];
+    const kind = g && KINDS.includes(g.kind) ? g.kind : undefined;
     const NUM_KEYS = ['exitCode', 'attempts', 'greens', 'remaining'];
-    const nums = g?.detail ? Object.entries(g.detail).filter(([k, v]) => NUM_KEYS.includes(k) && Number.isFinite(Number(v))).map(([k, v]) => `${k} ${Number(v)}`).join(' · ') : '';
+    const nums = g?.detail ? Object.entries(g.detail).filter(([k, v]) => NUM_KEYS.includes(k) && Number.isFinite(Number(v))).map(([k, v]) => `${esc(k)} ${Number(v)}`).join(' · ') : '';
     const lines = [
-      `⏸ ${b('GATE')} · ${b(this.label(project))}/${b(spec)}`,
-      kind ? `kind: ${code(kind)}` : (g ? 'kind: <i>unknown</i>' : ''),
-      kind ? esc(KIND_TEXT[kind]) : '',
+      `${b(T.gateTitle())} · ${b(this.label(project))}/${b(spec)}`,
+      '',
+      kind ? esc(T.gateKind(kind)) : '',
+      kind ? esc(T.gateKindText(kind)) : '',
       nums,
-      `id ${code(id)} · opened ${ago(createdAt)} ago`,
-      decided ? `\n${decided.decision === 'approve' ? '✅ APPROVED' : '⛔ REJECTED'} by ${esc(decided.by)} at ${esc(decided.at)}` : '\n<i>harness-authored card — approve/reject below</i>',
+      '',
+      esc(T.gateOpened(id, ago(createdAt))),
+      decided ? esc(T.gateDecided(decided.decision, decided.by, decided.at)) : T.gateHint(),
     ].filter(Boolean);
     return lines.join('\n');
   }
@@ -484,7 +607,7 @@ class Daemon {
     // separate untrusted message so it can never sit next to the buttons.
     for (const chatId of this.cfg.notify) {
       const key = randomBytes(4).toString('hex'); // one key per chat so every card can be updated
-      const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[{ text: '✅ Approve', callback_data: `g:${key}:a` }, { text: '⛔ Reject', callback_data: `g:${key}:r` }]] };
+      const keyboard: InlineKeyboardMarkup = { inline_keyboard: [[{ text: T.btnApprove(), callback_data: `g:${key}:a` }, { text: T.btnReject(), callback_data: `g:${key}:r` }]] };
       try {
         const id = await this.send(chatId, { text: this.gateCardText(spec, project, g.id, g.createdAt, g), keyboard });
         if (id) {
@@ -494,7 +617,7 @@ class Daemon {
         }
         // Repo/agent-derived text (auditor reasons, runner summary) goes in a SEPARATE untrusted message.
         const extra = [g.summary, ...(g.detail ? Object.entries(g.detail).filter(([k]) => /reason|output|log|note|summary/i.test(k)).map(([, v]) => String(v)) : [])].filter(Boolean).join('\n');
-        if (extra) await this.send(chatId, { text: untrusted(extra, 800, 'gate context (runner/auditor text)'), silent: true });
+        if (extra) await this.send(chatId, { text: untrusted(extra, 800, T.gateContextLabel()), silent: true });
       } catch (e) { this.log(`gate card to ${chatId} failed: ${(e as Error).message}`); }
     }
     this.dirty = true;
@@ -506,22 +629,22 @@ class Daemon {
 
 function describe(ev: LoopEvent): string {
   switch (ev.type) {
-    case 'iter': return `iter ${ev.iter} → task ${code(ev.taskId)} (${ev.remaining} left)`;
-    case 'green': return `✅ task ${code(ev.taskId)} green`;
-    case 'red': return `❌ task ${code(ev.taskId)} red (exit ${esc(ev.exitCode ?? '?')}${ev.failureClass ? `, ${esc(ev.failureClass)}` : ''})`;
-    case 'blocked': return `⛔ task ${code(ev.taskId)} blocked${ev.reason ? ` — ${inlineUntrusted(ev.reason)}` : ''}`;
-    case 'tamper': return `🚨 tamper gate on task ${code(ev.taskId)}: ${inlineUntrusted(ev.reason)}`;
-    case 'unverified': return `⚠️ task ${code(ev.taskId)} completed WITHOUT independent verification`;
-    case 'judge': return `⚖️ judge ${ev.verdict} on task ${code(ev.taskId)}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
-    case 'regression': return `⚠️ regression after task ${code(ev.taskId ?? '?')}`;
-    case 'spec-gate': return `🧭 spec gate ${ev.verdict}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
-    case 'integration': return `🏗 integration ${ev.verdict}${ev.detail ? ` ${inlineUntrusted(ev.detail)}` : ''}`;
-    case 'gate': return `⏸ gate ${ev.state}${ev.kind ? ` (${esc(ev.kind)})` : ''}${ev.by ? ` by ${esc(ev.by)}` : ''}`;
-    case 'stop': return `🛑 stop ${ev.by ? `by ${esc(ev.by)}` : esc(ev.reason)}`;
-    case 'done': return '🎉 all tasks done';
+    case 'iter': return esc(T.evIter(ev.iter, ev.taskId, ev.remaining));
+    case 'green': return esc(T.evGreen(ev.taskId));
+    case 'red': return esc(T.evRed(ev.taskId, String(ev.exitCode ?? '?'), ev.failureClass));
+    case 'blocked': return `${esc(T.evBlocked(ev.taskId, ''))}${ev.reason ? ` — ${inlineUntrusted(ev.reason)}` : ''}`;
+    case 'tamper': return `${esc(T.evTamper(ev.taskId, ''))} ${inlineUntrusted(ev.reason)}`;
+    case 'unverified': return esc(T.evUnverified(ev.taskId));
+    case 'judge': return `${esc(T.evJudge(ev.verdict, ev.taskId, ''))}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
+    case 'regression': return esc(T.evRegression(ev.taskId ?? '?'));
+    case 'spec-gate': return `${esc(T.evSpecGate(ev.verdict, ''))}${ev.reasons ? ` — ${inlineUntrusted(ev.reasons)}` : ''}`;
+    case 'integration': return `${esc(T.evIntegration(ev.verdict, ''))}${ev.detail ? ` ${inlineUntrusted(ev.detail)}` : ''}`;
+    case 'gate': return esc(T.evGate(ev.state, ev.kind ?? '', ev.by ?? ''));
+    case 'stop': return esc(T.evStop(ev.by ?? '', ev.reason));
+    case 'done': return esc(T.evDone());
     case 'warn': return `⚠️ ${inlineUntrusted(ev.message)}`;
-    case 'start': return '▶️ loop started';
-    case 'end': return `⏹ ended ${esc(ev.reason)}`;
+    case 'start': return esc(T.evLoopStarted());
+    case 'end': return esc(T.evEnded(ev.reason));
     default: return esc((ev as any).message ?? ev.raw).slice(0, 200);
   }
 }

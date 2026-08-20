@@ -241,6 +241,12 @@ if [ -f "$RUNNER_SRC" ]; then
   fi
   echo "       Background loop runner installed: .spec-workflow/spec-loop-run.sh"
 fi
+# Spec creation runner (used by the Telegram "new spec" button; also runnable by hand).
+NEWSRC="$SCRIPT_DIR/spec-new-run.sh"
+if [ -f "$NEWSRC" ]; then
+  cp "$NEWSRC" "$PROJECT_DIR/.spec-workflow/spec-new-run.sh" && chmod +x "$PROJECT_DIR/.spec-workflow/spec-new-run.sh"
+  echo "       Spec creation runner installed: .spec-workflow/spec-new-run.sh"
+fi
 # --auto-loop pre-enables the loop in config (off by default; toggle [loop].autoLoop any time).
 if [ "$AUTO_LOOP" = "1" ]; then
   sed -i 's/^autoLoop = false/autoLoop = true/' "$CONFIG_FILE" 2>/dev/null

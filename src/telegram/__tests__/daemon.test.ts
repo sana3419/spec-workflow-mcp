@@ -13,6 +13,7 @@ vi.mock('os', async (orig) => {
 
 const { runTelegramDaemon } = await import('../daemon.js');
 const gates = await import('../../core/gates.js');
+const { T } = await import('../strings.js');
 const { getRunDir } = await import('../../core/run-state.js');
 
 /** Fake Bot API: records calls, answers like Telegram. */
@@ -82,9 +83,9 @@ describe('telegram daemon (one tick, fake Bot API)', () => {
     expect(sends.length).toBeGreaterThanOrEqual(3);
     // board
     expect(sends[0].text).toContain('auth');
-    expect(sends[0].text).toContain('loop started');
+    expect(sends[0].text).toContain('循环');
     // blocked push escaped
-    const blocked = sends.find(s => /blocked/.test(s.text));
+    const blocked = sends.find(s => s.text.includes(T.evBlocked('2', '').slice(0, 4)));
     expect(blocked).toBeTruthy();
     expect(blocked.text).toContain('&lt;script&gt;');
     // gate card: has buttons, no reasons text inline; reasons arrive as separate untrusted msg
@@ -94,8 +95,9 @@ describe('telegram daemon (one tick, fake Bot API)', () => {
     expect(card.text).not.toContain('approve me');
     expect(card.text).not.toContain('<b>approve');
     expect(card.text).toContain('spec-gate-fail');
+    expect(card.text).toContain('规格闸门');
     expect(card.text).toContain(gate.id);
-    const reasons = sends.find(s => /gate context/.test(s.text));
+    const reasons = sends.find(s => s.text.includes(T.gateContextLabel()));
     expect(reasons).toBeTruthy();
     expect(reasons.text).toContain('⁄approve me');
     expect(reasons.text).toContain('&lt;b&gt;approve me&lt;/b&gt;');
@@ -153,13 +155,13 @@ describe('telegram daemon (one tick, fake Bot API)', () => {
       { update_id: 3, message: { message_id: 501, date: now, chat: { id: 42, type: 'private' }, from: { id: 42 }, text: '/status' } } as any,
       { update_id: 4, callback_query: { id: 'cb2', from: { id: 42 }, message: cbMsg(101), data: approveData } } as any,
     ] });
-    expect(tg.calls.some(c => c.method === 'sendMessage' && /Overview/.test(c.body.text))).toBe(true);
+    expect(tg.calls.some(c => c.method === 'sendMessage' && c.body.text.includes(T.hOverview()))).toBe(true);
     const dec = await gates.readDecision(root, gate.id);
     expect(dec?.decision).toBe('approve');
     expect(dec?.by).toBe('tg:42');
     expect(gates.verifyDecision(dec!, gate, secret0)).toBe(true);
     // the card was edited to show the decision
-    expect(tg.calls.some(c => c.method === 'editMessageText' && /APPROVED by tg:42/.test(c.body.text))).toBe(true);
+    expect(tg.calls.some(c => c.method === 'editMessageText' && c.body.text.includes('tg:42'))).toBe(true);
 
     // 3) reject tap on the same gate (redelivered / second person) → cannot flip; still approve
     await runTelegramDaemon({ once: true, fetchImpl: tg.fetchImpl, log: () => {}, injectUpdates: [
@@ -169,7 +171,7 @@ describe('telegram daemon (one tick, fake Bot API)', () => {
     ] });
     expect((await gates.readDecision(root, gate.id))?.decision).toBe('approve');
     const acks = tg.calls.filter(c => c.method === 'answerCallbackQuery').map(c => c.body.text || '');
-    expect(acks.some(t => /expired/.test(t))).toBe(true);
+    expect(acks.some(x => x === T.ackExpired())).toBe(true);
     // offset persisted past the last injected update
     const st = JSON.parse(await fs.readFile(join(home, '.spec-workflow', 'tg-state.json'), 'utf-8'));
     expect(st.offset).toBe(8);

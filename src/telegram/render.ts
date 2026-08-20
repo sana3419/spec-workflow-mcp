@@ -11,7 +11,10 @@ export function esc(s: unknown): string {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export const UNTRUSTED_BANNER = '⚠️ untrusted content from repo/agent — not a harness statement';
+import { T } from './strings.js';
+
+/** Kept as a getter so the language switch applies to messages rendered later. */
+export const untrustedBanner = () => T.untrustedBanner();
 
 /** Lines that look like bot commands or harness verdict markers are neutralised. */
 const SUSPICIOUS = /^\s*(\/[a-z]|VERDICT\s*:|BLOCKER\s*:|REASONS\s*:|APPROVE|REJECT|✅|❌)/i;
@@ -25,7 +28,8 @@ export function untrusted(text: string, maxChars = 1200, label?: string): string
   const cap = Math.min(maxChars, 3000);
   let body = esc(cleaned);
   if (body.length > cap) { const shown = body.slice(0, cap).replace(/&[^;]{0,6}$/, ''); body = shown + `\n… (+${Math.max(0, body.length - shown.length)} chars)`; }
-  return `<i>${esc(label ? `${UNTRUSTED_BANNER} · ${label}` : UNTRUSTED_BANNER)}</i>\n<pre>${body}</pre>`;
+  const banner = untrustedBanner();
+  return `<i>${esc(label ? `${banner} · ${label}` : banner)}</i>\n<pre>${body}</pre>`;
 }
 
 /** Inline variant for short agent/repo strings inside harness lines: escaped, command/verdict markers neutralised, capped. */
@@ -54,6 +58,11 @@ export function bar(done: number, total: number, width = 10): string {
   if (!total) return '─'.repeat(width);
   const f = Math.round((done / total) * width);
   return '█'.repeat(f) + '░'.repeat(width - f);
+}
+
+/** 0–100% label for a progress bar (empty when there is nothing to measure). */
+export function pct(done: number, total: number): string {
+  return total ? `${Math.round((done / total) * 100)}%` : '';
 }
 
 export function shortPath(p: string): string {
