@@ -66,6 +66,10 @@ claude
 
 首次启动：Claude Code 会提示审批 `.mcp.json` 中的 MCP server — 选择 **Allow**。
 
+## 项目状态
+
+[docs/STATUS.zh.md](docs/STATUS.zh.md)（[English](docs/STATUS.md)）固定记录当前状态：v3.0–v3.2 做完了什么、哪些设计决定不要回退、每个部件怎么跑、还剩什么未完。
+
 ## 工作原理
 
 ```

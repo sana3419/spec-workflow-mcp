@@ -84,6 +84,10 @@ repeated nagging. A `pending` project gets one line telling you to run `/spec-wo
 created without you asking. Manage the record with
 `spec-workflow-mcp project status|mark|forget|list`.
 
+## Project status
+
+[docs/STATUS.md](docs/STATUS.md) ([中文](docs/STATUS.zh.md)) pins the current state: what is done in v3.0–v3.2, the design decisions that should not be reverted, how to run every piece, and what is still open.
+
 ## How It Works
 
 ```
