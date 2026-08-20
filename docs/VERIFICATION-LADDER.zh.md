@@ -83,7 +83,6 @@ noProgressStop = 3
 
 # L0 + L1
 testCommand = "npm test -- {tests}"   # {tests} = 当前任务的 _Tests 作用域。不配 → 自证(已弃用)
-coverageMin = 0              # 可选 L1 覆盖率下限(0-100),配了才门
 
 # L2
 judge = false                # opt-in 跨家族 adequacy 判官

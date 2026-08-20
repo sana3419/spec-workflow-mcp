@@ -30,7 +30,7 @@ const DEFAULT_DIR_NAME = '.spec-workflow-mcp';
  * 
  * Files stored in this directory:
  * - activeProjects.json - Project registry
- * - activeSession.json - Dashboard session info
+ * - activeSession.json - legacy dashboard session file (the dashboard was removed in v3; nothing writes this)
  * - settings.json - Global settings
  * - job-execution-history.json - Job execution history
  * - migration.log - Implementation log migration tracking

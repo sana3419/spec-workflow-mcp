@@ -48,6 +48,28 @@ describe('config', () => {
       expect(ok.config?.engine?.codex?.sandbox).toBe('read-only');
     });
 
+    it('validates [loop]', async () => {
+      expect(loadConfigFromPath(await write(`[loop]\nmaxIterations = 0\n`)).error).toContain('maxIterations');
+      expect(loadConfigFromPath(await write(`[loop]\nnoProgressStop = 0\n`)).error).toContain('noProgressStop');
+      expect(loadConfigFromPath(await write(`[loop]\ntestCommand = 42\n`)).error).toContain('testCommand');
+      expect(loadConfigFromPath(await write(`[loop]\njudge = "yes"\n`)).error).toContain('judge');
+      expect(loadConfigFromPath(await write(`[loop]\nintegrationFixAttempts = -1\n`)).error).toContain('integrationFixAttempts');
+      expect(loadConfigFromPath(await write(`[loop]\nspecGate = "on"\n`)).error).toContain('specGate');
+      const ok = loadConfigFromPath(await write(`[loop]\nautoLoop = true\ntestCommand = "npm test -- {tests}"\njudge = true\nspecGate = true\n`));
+      expect(ok.error).toBeUndefined();
+      expect(ok.config?.loop?.testCommand).toBe('npm test -- {tests}');
+      expect(ok.config?.loop?.judge).toBe(true);
+      expect(ok.config?.loop?.maxIterations).toBe(50);   // defaults land here, once
+      expect(ok.config?.loop?.noProgressStop).toBe(3);
+    });
+
+    it('ignores a retired [loop] key (coverageMin)', async () => {
+      const r = loadConfigFromPath(await write(`[loop]\nautoLoop = true\ncoverageMin = 999\n`));
+      expect(r.error).toBeUndefined();
+      expect((r.config?.loop as any).coverageMin).toBeUndefined();
+      expect(r.config?.loop?.autoLoop).toBe(true);
+    });
+
     it('returns a parse error for invalid TOML', async () => {
       const r = loadConfigFromPath(await write(`lang = "unterminated\n`));
       expect(r.config).toBeNull();

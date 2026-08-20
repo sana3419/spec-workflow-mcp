@@ -5,11 +5,10 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     include: ['src/**/*.{test,spec}.{js,ts}'],
-    exclude: ['src/dashboard_frontend/**/*', 'node_modules/**/*'],
+    exclude: ['node_modules/**/*'],
     coverage: {
       reporter: ['text', 'json', 'html'],
       exclude: [
-        'src/dashboard_frontend/**',
         'dist/**',
         '**/*.d.ts',
         '**/*.config.*',

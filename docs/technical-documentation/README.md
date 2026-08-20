@@ -1,6 +1,6 @@
 # Technical Documentation
 
-> ⚠️ **Upstream reference — partially outdated for this fork.** This fork is **Codex-driven** (Claude Code orchestrates; coding is dispatched to **OpenAI Codex** — no DeepSeek/Gemini/multi-engine), document approval happens **in conversation** (no dashboard approval page, no VS Code approval extension, no `approvals` MCP tool), and the MCP server exposes **5 tools**. For current behavior see the project **README** and **CLAUDE.md**.
+> ⚠️ **Upstream reference — outdated in parts for this fork.** These pages describe [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) and are kept for what this fork still shares with it (task parsing, the project registry, path utilities, the six markdown templates). What differs here: **Claude Code plans and implements by default**, OpenAI Codex is an *optional* offload engine for tasks tagged `_Engine: codex` (no DeepSeek/Gemini/multi-engine); there is **no web dashboard and no HTTP server at all** — `src/dashboard_frontend/` was deleted in v3.0.0 and the control surface is Telegram (**[TELEGRAM.md](../TELEGRAM.md)**); document approval happens **in conversation** (no approval page, no VS Code approval extension, no `approvals` MCP tool); the MCP server exposes **6 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`, `review-route`); and "done" is decided by the harness, not the agent (**[VERIFICATION-LADDER.md](../VERIFICATION-LADDER.md)**). For current behavior see the project **README**, **CLAUDE.md** and **[docs/STATUS.md](../STATUS.md)**.
 
 > **Quick Reference**: Jump to what you need most → [Tools API](api-reference.md) | [Architecture](architecture.md) | [Developer Guide](developer-guide.md) | [Troubleshooting](troubleshooting.md)
 
@@ -293,7 +293,8 @@ This project implements a **pure Model Context Protocol (MCP) server** that:
 - **MCP Tools**: `src/tools/*.ts` - tools for workflow management
 - **Templates**: `src/markdown/templates/*.md` - Static document structures  
 - **Context Loading**: `src/core/*.ts` - File-based context structuring
-- **Web Dashboard**: `src/dashboard_frontend/` - React-based monitoring UI
+- **Control surface**: `src/telegram/` - Telegram bot (the v3 replacement for the removed `src/dashboard_frontend/` web UI)
+- **Verification**: `src/core/verify-core.ts` + `templates/spec-loop-run.sh` - the harness owns green/red
 
 ### Performance Characteristics
 - **Memory Usage**: 50KB templates + 10-100KB per spec context

@@ -6,6 +6,12 @@
 
 ## 命令行选项
 
+> **当前二进制实际接受的参数**（`src/index.ts:65`）：`--telegram`、`--telegram-once`、
+> `--no-shared-worktree-specs`、`--help`/`-h`，外加一个位置参数（项目路径）——**其它 `--flag` 一律报错拒绝**，
+> 包括 `--dashboard`/`--port`/`--bindAddress`。子命令在 `src/cli.ts`（`stop`、`status`、`set-status`、
+> `reset`、`cleanup`、`route`、`requests`、`project`）。下面的选项表是上游参考，另见文件开头的 v3 说明。
+
+
 ### 基本用法
 
 ```bash
@@ -198,6 +204,10 @@ noProgressStop = 3       # 连续 N 轮 tasks.md / verify-results 无变化则�
 | `autoLoop` | boolean | `true`、`false` | `false` | 主开关。非 `true` 时 runner 拒绝运行。opt-in。 |
 | `maxIterations` | number | ≥ 1 | `50` | 循环迭代次数的硬上限；保证循环终止的主安全阀。 |
 | `noProgressStop` | number | ≥ 1 | `3` | 连续该轮数内 `tasks.md` 或 verify-results 无变化时停止循环，以避免在卡住的任务上空转。 |
+| `gateOnSpecGateFail` | boolean | | `false` | L3 spec gate 失败 → 在 Telegram 上问人；批准 = 覆盖并继续（有审计），拒绝/超时 = 停。 |
+| `gateOnIntegrationFail` | boolean | | `false` | L4 集成失败 → 批准 = 再来一轮有界修复；永远不会把失败翻成通过。 |
+| `gateEveryTasks` | number | ≥ 0 | `0` | > 0：每 N 个任务变绿后暂停一次，等人工检查点。 |
+| `gateTimeoutMin` | number | ≥ 1 | `60` | 等待人工决定的分钟数，超时按拒绝处理。 |
 
 #### 如何生成与使用
 

@@ -83,7 +83,6 @@ noProgressStop = 3
 
 # L0 + L1
 testCommand = "npm test -- {tests}"   # {tests} = the current task's _Tests scope. Unset → self-cert (deprecated)
-coverageMin = 0              # optional L1 coverage floor (0-100), enforced only if set
 
 # L2
 judge = false                # opt-in cross-family adequacy judge

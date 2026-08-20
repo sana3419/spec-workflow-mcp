@@ -6,6 +6,13 @@ This guide covers all configuration options for Spec Workflow MCP.
 
 ## Command-Line Options
 
+> **What the binary actually accepts today** (`src/index.ts:65`): `--telegram`, `--telegram-once`,
+> `--no-shared-worktree-specs`, `--help`/`-h`, plus a positional project path — **any other `--flag` is
+> rejected with an error**, `--dashboard`/`--port`/`--bindAddress` included. Sub-commands live in
+> `src/cli.ts` (`stop`, `status`, `set-status`, `reset`, `cleanup`, `route`, `requests`, `project`).
+> The option tables below are upstream reference; see the v3 note at the top of this file.
+
+
 ### Basic Usage
 
 ```bash

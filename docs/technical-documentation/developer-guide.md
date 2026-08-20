@@ -1,6 +1,6 @@
 # Developer Workflow Guide
 
-> ⚠️ **Upstream reference — partially outdated for this fork.** This fork is **Codex-driven** (Claude Code orchestrates; coding is dispatched to **OpenAI Codex** — no DeepSeek/Gemini/multi-engine), document approval happens **in conversation** (no dashboard approval page, no VS Code approval extension, no `approvals` MCP tool), and the MCP server exposes **5 tools**. For current behavior see the project **README** and **CLAUDE.md**.
+> ⚠️ **Upstream reference — outdated in parts for this fork.** These pages describe [Pimzino/spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp) and are kept for what this fork still shares with it (task parsing, the project registry, path utilities, the six markdown templates). What differs here: **Claude Code plans and implements by default**, OpenAI Codex is an *optional* offload engine for tasks tagged `_Engine: codex` (no DeepSeek/Gemini/multi-engine); there is **no web dashboard and no HTTP server at all** — `src/dashboard_frontend/` was deleted in v3.0.0 and the control surface is Telegram (**[TELEGRAM.md](../TELEGRAM.md)**); document approval happens **in conversation** (no approval page, no VS Code approval extension, no `approvals` MCP tool); the MCP server exposes **6 tools** (`spec-workflow-guide`, `steering-guide`, `spec-status`, `verify-task`, `log-implementation`, `review-route`); and "done" is decided by the harness, not the agent (**[VERIFICATION-LADDER.md](../VERIFICATION-LADDER.md)**). For current behavior see the project **README**, **CLAUDE.md** and **[docs/STATUS.md](../STATUS.md)**.
 
 > **Quick Start**: Clone → `npm install` → `npm run dev` → Start building!
 
@@ -170,6 +170,9 @@ npm run dev:dashboard
 ```
 
 #### Adding a New Page
+
+> 🚫 **Removed in v3.0.0 — upstream only.** `src/dashboard_frontend/` and the HTTP server no longer exist in this fork; the control surface is Telegram ([TELEGRAM.md](../TELEGRAM.md)). Everything below is kept as a description of upstream, not as instructions for this repo.
+
 ```typescript
 // src/dashboard_frontend/src/modules/pages/MyNewPage.tsx
 import React from 'react';
@@ -349,6 +352,9 @@ src/
 ```
 
 ### Dashboard Frontend
+
+> 🚫 **Removed in v3.0.0 — upstream only.** `src/dashboard_frontend/` and the HTTP server no longer exist in this fork; the control surface is Telegram ([TELEGRAM.md](../TELEGRAM.md)). Everything below is kept as a description of upstream, not as instructions for this repo.
+
 ```
 src/dashboard_frontend/src/
 ├── modules/
@@ -452,6 +458,9 @@ useEffect(() => {
 ```
 
 #### 2. API Integration
+
+> 🚫 **Removed in v3.0.0 — upstream only.** `src/dashboard_frontend/` and the HTTP server no longer exist in this fork; the control surface is Telegram ([TELEGRAM.md](../TELEGRAM.md)). Everything below is kept as a description of upstream, not as instructions for this repo.
+
 ```typescript
 // src/dashboard_frontend/src/modules/api/api.tsx
 export const api = {

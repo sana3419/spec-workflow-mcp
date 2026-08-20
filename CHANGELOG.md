@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `npm run build` uses `tsconfig.build.json`, which excludes `src/**/__tests__/**` — compiled test files are no longer emitted into `dist/` (and so are no longer shipped by the `files: ["dist/**/*"]` entry). `npm run typecheck` still type-checks the tests.
+
+### Removed
+- `loop.coverageMin` — documented since v2 but never implemented (no consumer in `templates/spec-loop-run.sh` or anywhere else). Dropped from `SpecWorkflowConfig`, `validateConfig`, `templates/init.sh` and both `VERIFICATION-LADDER` docs. Existing `config.toml` files that still set it keep loading (unknown keys are ignored); values that used to be *rejected* as out-of-range now load fine.
+- `src/dashboard_frontend/` build leftovers (7.4 MB, never tracked by git) and the two `vitest.config.ts` globs that excluded them.
+
+### Fixed
+- Stale documentation left by the v3 dashboard removal: the `docs/technical-documentation/` banner claimed the fork was "Codex-driven" and that the server exposes 5 tools (it is Claude-led and exposes 6), and eight places still taught contributors to add pages/components to the deleted `src/dashboard_frontend/`. `docs/CONFIGURATION.md` (+zh) now states the flags the binary actually accepts. `docs/STATUS.md` (+zh) no longer pins a commit hash that goes stale on the next commit, and no longer claims the Telegram daemon is running.
+- The `[loop]` section of `validateConfig` had no test at all; it is now covered, including the tolerance for retired keys.
+
 ## [3.2.0] — 2026-08-20 (fork)
 
 ### Added

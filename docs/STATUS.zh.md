@@ -1,6 +1,6 @@
 # 工作状态（固定记录）
 
-**版本 3.2.0 · 2026-08-20 · `main` = `v3-telegram` = `142e669`（已推送）**
+**版本 3.2.0 · 2026-08-20 · `main` = `v3-telegram`，与 `origin` 同步（tip 用 `git log --oneline -1` 看）**
 [English](STATUS.md)
 
 这份文件记录**当前是什么状态、为什么这么设计、还剩什么**。代码怎么用看 README 和 `docs/`；
@@ -105,7 +105,7 @@ node dist/index.js status [spec]
 node dist/index.js route --base HEAD~1
 ```
 
-测试：`npx vitest run`（193 通过）、`bash scripts/test-loop-l{1,2,3,4}.sh`、`test-loop-l5-gates.sh`（11 项）。
+测试：`npx vitest run`（195 通过）、`bash scripts/test-loop-l{1,2,3,4}.sh`、`test-loop-l5-gates.sh`（11 项）。
 
 ---
 
@@ -115,7 +115,6 @@ node dist/index.js route --base HEAD~1
 |---|---|---|
 | **独立成自己的项目** | **等你定名字** | 改 package/MCP server/CLI/plugin/仓库名 + README 重新定位 + NOTICE。**许可仍须 GPL-3.0 并保留上游署名**（`src/core/` 与 6 个模板仍是上游代码）；要彻底切断需重写这些文件 |
 | 并行任务（`_DependsOn` + worktree） | 设计已定，未实现 | 需要 per-worktree 快照、合并后再记 L0/L1（见 `docs/WORKFLOW-SPIKE.md`） |
-| `coverageMin` | 文档有、实现无 | 要么实现要么从文档删 |
 | Telegram 里增删组件 | 有意不做 | 装包/填 key 在终端更合适；`🧩 组件` 屏只读 |
 | 上游同步 | 无 | 上游 2026-05 后基本停更，不再跟随 |
 
@@ -123,7 +122,9 @@ node dist/index.js route --base HEAD~1
 
 ## 6. 机器上的现存状态（本机）
 
-- 守护进程：`node dist/index.js --telegram`（bot `@worm2018_bot`，allowlist = 本人 id）。
+- Telegram 守护进程**已配好但未运行** —— 用 `node dist/index.js --telegram` 启动（bot `@worm2018_bot`，
+  allowlist = 本人 id，见 `~/.spec-workflow/telegram.env`）。`~/.spec-workflow/telegram.log` 里最后一次
+  运行以 `stopped` 收尾，之前是连续的 `getUpdates` TLS 失败。
 - 本窗口注册为请求监听者（无项目绑定 = 接所有请求）。
 - 本仓库自身已 `init.sh` 初始化（`.spec-workflow/` 被 gitignore），内含演示 spec `demo-auth`
   （4 个假任务，仅用于展示 Telegram 界面，可随时删）。

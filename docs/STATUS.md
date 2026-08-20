@@ -1,6 +1,6 @@
 # Project status (pinned)
 
-**v3.2.0 · 2026-08-20 · `main` = `v3-telegram` = `142e669` (pushed)**
+**v3.2.0 · 2026-08-20 · `main` = `v3-telegram`, in sync with `origin` (`git log --oneline -1` for the tip)**
 [中文](STATUS.zh.md)
 
 What this project is right now, why it is built this way, and what is still open. Usage lives in the
@@ -114,7 +114,7 @@ node dist/index.js status [spec]
 node dist/index.js route --base HEAD~1
 ```
 
-Tests: `npx vitest run` (193 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `test-loop-l5-gates.sh` (11).
+Tests: `npx vitest run` (195 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `test-loop-l5-gates.sh` (11).
 
 ---
 
@@ -124,7 +124,6 @@ Tests: `npx vitest run` (193 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `
 |---|---|---|
 | **Stand the project on its own** | **waiting on a name** | rename package / MCP server / CLI / plugin / repo, reposition the README, update NOTICE. The licence must **stay GPL-3.0 with upstream attribution** (`src/core/` and the six templates are still upstream code); cutting the tie completely means rewriting those files |
 | Parallel tasks (`_DependsOn` + worktrees) | designed, not built | needs per-worktree snapshots and post-merge L0/L1 recording (`docs/WORKFLOW-SPIKE.md`) |
-| `coverageMin` | documented, not implemented | implement it or drop it from the docs |
 | Adding components from Telegram | deliberately not done | packages and API keys belong in a terminal; the `🧩 Components` screen is read-only |
 | Upstream sync | none | upstream has been quiet since 2026-05; this fork no longer follows it |
 
@@ -132,7 +131,9 @@ Tests: `npx vitest run` (193 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `
 
 ## 6. Live state on this machine
 
-- Daemon `node dist/index.js --telegram` running (bot `@worm2018_bot`, allowlist = the owner's id).
+- Telegram daemon **configured but not running** — start it with `node dist/index.js --telegram` (bot
+  `@worm2018_bot`, allowlist = the owner's id in `~/.spec-workflow/telegram.env`). The last run in
+  `~/.spec-workflow/telegram.log` ended in `stopped` after repeated `getUpdates` TLS failures.
 - This checkout is registered as a request watcher (unscoped — it takes any request).
 - The repository itself has been initialised with `init.sh` (`.spec-workflow/` is gitignored) and holds a
   demo spec `demo-auth` (four fake tasks, only there to show the Telegram screens — delete any time).

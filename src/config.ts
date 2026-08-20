@@ -27,7 +27,6 @@ export interface SpecWorkflowConfig {
     // from the exit code (e.g. "npm test -- {tests}"). When unset, the loop falls back to the
     // DEPRECATED agent-self-report path. Per-task scope comes from each task's _Tests: tag.
     testCommand?: string;
-    coverageMin?: number;    // Optional L1 coverage non-regression floor (0-100); enforced only if set
     // L2 cross-family adequacy judge: after harness-green, an opposite-engine judge checks whether
     // the agent-authored tests are adequate (not trivial). Opt-in; recommended. Can only reopen a green.
     judge?: boolean;
@@ -131,9 +130,6 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     if (lp.testCommand !== undefined && typeof lp.testCommand !== 'string') {
       return { valid: false, error: `Invalid loop.testCommand: must be a string (e.g. "npm test -- {tests}").` };
     }
-    if (lp.coverageMin !== undefined && (typeof lp.coverageMin !== 'number' || lp.coverageMin < 0 || lp.coverageMin > 100)) {
-      return { valid: false, error: `Invalid loop.coverageMin: must be a number between 0 and 100.` };
-    }
     if (lp.judge !== undefined && typeof lp.judge !== 'boolean') {
       return { valid: false, error: `Invalid loop.judge: must be a boolean.` };
     }
@@ -201,7 +197,6 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
         maxIterations: parsedConfig.loop.maxIterations || 50,
         noProgressStop: parsedConfig.loop.noProgressStop || 3,
         ...(parsedConfig.loop.testCommand !== undefined && { testCommand: parsedConfig.loop.testCommand }),
-        ...(parsedConfig.loop.coverageMin !== undefined && { coverageMin: parsedConfig.loop.coverageMin }),
         ...(parsedConfig.loop.judge !== undefined && { judge: parsedConfig.loop.judge }),
         ...(parsedConfig.loop.judgeMaxAttempts !== undefined && { judgeMaxAttempts: parsedConfig.loop.judgeMaxAttempts }),
         ...(parsedConfig.loop.integrationCommand !== undefined && { integrationCommand: parsedConfig.loop.integrationCommand }),
