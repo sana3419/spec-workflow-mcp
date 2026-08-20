@@ -105,7 +105,7 @@ node dist/index.js status [spec]
 node dist/index.js route --base HEAD~1
 ```
 
-测试：`npx vitest run`（195 通过）、`bash scripts/test-loop-l{1,2,3,4}.sh`、`test-loop-l5-gates.sh`（11 项）。
+测试：`npx vitest run`（199 通过）、`bash scripts/test-loop-l{1,2,3,4}.sh`、`test-loop-l5-gates.sh`（11 项）。
 
 ---
 

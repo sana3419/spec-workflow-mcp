@@ -63,6 +63,17 @@ describe('config', () => {
       expect(ok.config?.loop?.noProgressStop).toBe(3);
     });
 
+    it('validates the [loop] human-gate keys the runner reads', async () => {
+      expect(loadConfigFromPath(await write(`[loop]\ngateOnSpecGateFail = "yes"\n`)).error).toContain('gateOnSpecGateFail');
+      expect(loadConfigFromPath(await write(`[loop]\ngateEveryTasks = -1\n`)).error).toContain('gateEveryTasks');
+      expect(loadConfigFromPath(await write(`[loop]\ngateTimeoutMin = 0\n`)).error).toContain('gateTimeoutMin');
+      const ok = loadConfigFromPath(await write(`[loop]\ngateOnIntegrationFail = true\ngateEveryTasks = 5\ngateTimeoutMin = 30\n`));
+      expect(ok.error).toBeUndefined();
+      expect(ok.config?.loop?.gateOnIntegrationFail).toBe(true);
+      expect(ok.config?.loop?.gateEveryTasks).toBe(5);
+      expect(ok.config?.loop?.gateTimeoutMin).toBe(30);
+    });
+
     it('ignores a retired [loop] key (coverageMin)', async () => {
       const r = loadConfigFromPath(await write(`[loop]\nautoLoop = true\ncoverageMin = 999\n`));
       expect(r.error).toBeUndefined();

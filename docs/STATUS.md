@@ -114,7 +114,7 @@ node dist/index.js status [spec]
 node dist/index.js route --base HEAD~1
 ```
 
-Tests: `npx vitest run` (195 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `test-loop-l5-gates.sh` (11).
+Tests: `npx vitest run` (199 passing), `bash scripts/test-loop-l{1,2,3,4}.sh`, `test-loop-l5-gates.sh` (11).
 
 ---
 

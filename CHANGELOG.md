@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `[loop]` **human-gate keys are now typed and validated** (`gateOnSpecGateFail`, `gateOnIntegrationFail`, `gateEveryTasks`, `gateTimeoutMin`). The runner has always read them from `config.toml`; `SpecWorkflowConfig.loop` now declares them, `validateConfig` range-checks them, and they appear in the `[loop]` block of `docs/VERIFICATION-LADDER.md` (+zh) and in the ZH configuration table (which was missing rows the EN one already had).
+- `normalizeProjectPath()` in `src/core/requests.ts`: one place that turns a human-typed project path into an absolute one (`~` expanded, `..` refused, control characters refused, length-bounded), used by the Telegram `📁 New / add project` flow.
+
 ### Changed
+- **`📁 New / add project` (Telegram) accepts `~/…` paths and says when it will create the folder.** The target still does not have to exist — `init.sh` creates it, parents included — and a path that already exists as a *file* is refused up front instead of failing later in the session.
+- **`init.sh` resolves the project path to an absolute one even when the folder does not exist yet.** Previously `bash init.sh some/new/dir` created the folder but recorded a *relative* path in `config.toml`, `.mcp.json`, the loop runner and `~/.spec-workflow/projects.json`, which breaks every consumer that runs from another directory. It also expands a literal `~`/`~/…` argument and fails cleanly when the target exists as a file.
 - `npm run build` uses `tsconfig.build.json`, which excludes `src/**/__tests__/**` — compiled test files are no longer emitted into `dist/` (and so are no longer shipped by the `files: ["dist/**/*"]` entry). `npm run typecheck` still type-checks the tests.
 
 ### Removed

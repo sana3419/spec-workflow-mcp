@@ -236,15 +236,16 @@ export const T = {
     zh: '➕ 回复一行：<code>spec名字 一句话说明要做什么</code>\n例如：<code>auth 用邮箱密码登录，失败要限流</code>\n\n我会用一个独立的 headless Claude 写出 requirements / design / tasks，写完发给你审阅（不写任何代码）。发 /cancel 取消。',
     en: '➕ Reply with one line: <code>spec-name one sentence about what to build</code>\ne.g. <code>auth email+password login, rate-limit failures</code>\n\nA separate headless Claude writes requirements / design / tasks and sends them to you for review (it writes no code). /cancel to abort.' }),
   askNewProject: () => pick({
-    zh: '📁 回复项目的绝对路径（不存在会创建）\n例如：<code>/home/worm/code/my-app</code>\n\n我会在那里跑 init.sh（生成 .spec-workflow、CLAUDE.md、循环脚本），然后把它加入监控。发 /cancel 取消。',
-    en: '📁 Reply with the absolute project path (created if missing)\ne.g. <code>/home/me/code/my-app</code>\n\ninit.sh runs there (.spec-workflow, CLAUDE.md, loop runner) and the project is added to the watch list. /cancel to abort.' }),
+    zh: '📁 回复项目文件夹的绝对路径 —— <b>不存在会自动创建</b>（含中间层级）\n例如：<code>/home/worm/code/my-app</code> 或 <code>~/code/my-app</code>\n\n我会在那里跑 init.sh（生成 .spec-workflow、CLAUDE.md、循环脚本），然后把它加入监控。发 /cancel 取消。',
+    en: '📁 Reply with the project folder\'s absolute path — <b>created if it does not exist</b> (parents included)\ne.g. <code>/home/me/code/my-app</code> or <code>~/code/my-app</code>\n\ninit.sh runs there (.spec-workflow, CLAUDE.md, loop runner) and the project is added to the watch list. /cancel to abort.' }),
   cancelled: () => pick({ zh: '已取消', en: 'cancelled' }),
   badSpecInput: () => pick({ zh: '格式不对：第一段是 spec 名字（字母数字 . _ -），后面是说明。例：<code>auth 邮箱密码登录</code>', en: 'Bad input: first word is the spec name ([A-Za-z0-9._-]), the rest is the idea. e.g. <code>auth email+password login</code>' }),
   specExists: (s: string) => pick({ zh: `已经有叫 ${s} 的 spec 了，换个名字`, en: `a spec named ${s} already exists` }),
   specNewStarted: (s: string) => pick({ zh: `🚧 正在生成 spec <b>${s}</b>（独立进程，通常 1–3 分钟）。写完我会通知你，然后你可以审阅文档再启动循环。`, en: `🚧 Writing spec <b>${s}</b> in a separate process (usually 1–3 min). I'll ping you when it's ready to review.` }),
   specNewDone: (s: string, n: number) => pick({ zh: `✅ spec <b>${s}</b> 已生成（${n} 个任务）—— 请审阅文档后再启动循环`, en: `✅ spec <b>${s}</b> is ready (${n} tasks) — review the documents before starting the loop` }),
   specNewFail: (s: string, why: string) => pick({ zh: `❌ 生成 spec <b>${s}</b> 失败：${why}`, en: `❌ failed to create spec <b>${s}</b>: ${why}` }),
-  badProjectPath: () => pick({ zh: '需要绝对路径（以 / 开头），且不能包含 ..', en: 'An absolute path is required (starting with /), without ..' }),
+  badProjectPath: () => pick({ zh: '需要绝对路径（<code>/…</code> 或 <code>~/…</code>），不能包含 <code>..</code>。目录不存在没关系，会自动创建。', en: 'An absolute path is required (<code>/…</code> or <code>~/…</code>), without <code>..</code>. It does not have to exist — it will be created.' }),
+  projectPathNotDir: (p: string) => pick({ zh: `<code>${p}</code> 已经存在，而且不是目录 —— 换一个路径`, en: `<code>${p}</code> already exists and is not a directory — pick another path` }),
   projectInitStarted: (p: string) => pick({ zh: `🚧 正在初始化项目 <code>${p}</code>…`, en: `🚧 initialising <code>${p}</code>…` }),
   projectInitDone: (p: string) => pick({ zh: `✅ 项目已就绪并加入监控：<b>${p}</b>\n下一步：➕ 新建 Spec`, en: `✅ project ready and watched: <b>${p}</b>\nNext: ➕ New spec` }),
   projectInitFail: (why: string) => pick({ zh: `❌ 初始化失败：${why}`, en: `❌ init failed: ${why}` }),
@@ -256,9 +257,9 @@ export const T = {
   queuedNewSpec: (spec: string, live: boolean) => pick({
     zh: `📥 已把「新建 spec <b>${spec}</b>」放进队列。${live ? '你的 Claude 窗口正在监听，马上会开始。' : '⚠️ 当前没有会话在监听队列 —— 在 Claude Code 里跑 <code>spec-workflow-mcp requests watch</code>（或让 Claude 用 Monitor 监听）即可。'}`,
     en: `📥 Queued "new spec <b>${spec}</b>". ${live ? 'Your Claude session is listening — it starts now.' : '⚠️ No session is watching the queue — run <code>spec-workflow-mcp requests watch</code> in Claude Code (or ask Claude to Monitor it).'}` }),
-  queuedNewProject: (path: string, live: boolean) => pick({
-    zh: `📥 已把「初始化项目 <code>${path}</code>」放进队列。${live ? '你的 Claude 窗口正在监听。' : '⚠️ 当前没有会话在监听队列。'}`,
-    en: `📥 Queued "init project <code>${path}</code>". ${live ? 'Your Claude session is listening.' : '⚠️ No session is watching the queue.'}` }),
+  queuedNewProject: (path: string, live: boolean, willCreate = false) => pick({
+    zh: `📥 已把「初始化项目 <code>${path}</code>」放进队列${willCreate ? '（目录不存在，会新建）' : ''}。${live ? '你的 Claude 窗口正在监听。' : '⚠️ 当前没有会话在监听队列。'}`,
+    en: `📥 Queued "init project <code>${path}</code>"${willCreate ? ' (folder does not exist — it will be created)' : ''}. ${live ? 'Your Claude session is listening.' : '⚠️ No session is watching the queue.'}` }),
   queuedDispatch: (spec: string, id: string, live: boolean) => pick({
     zh: `📥 已把「实现 ${spec} 的任务 ${id}」放进队列。${live ? '你的 Claude 窗口正在监听。' : '⚠️ 当前没有会话在监听队列。'}`,
     en: `📥 Queued "implement task ${id} of ${spec}". ${live ? 'Your Claude session is listening.' : '⚠️ No session is watching the queue.'}` }),

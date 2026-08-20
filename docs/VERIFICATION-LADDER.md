@@ -95,6 +95,12 @@ integrationJudge = false     # opt-in cross-module review after a green build+bo
 
 # L3
 specGate = false             # opt-in cross-family spec auditor; aborts the loop on a hackable spec
+
+# Human approval gates (Telegram) — decisions are HMAC-signed and stored outside the project
+gateOnSpecGateFail = false    # spec gate failed → approve = override-and-proceed (audited)
+gateOnIntegrationFail = false # integration failed → approve = one more bounded fix round
+gateEveryTasks = 0            # >0: pause for a human checkpoint after every N green tasks
+gateTimeoutMin = 60           # minutes to wait for a decision before treating it as reject
 ```
 
 **Task metadata** (in `tasks.md`, set at spec time, locked by L1):

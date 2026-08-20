@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { homedir } from 'os';
 import { randomBytes } from 'crypto';
 
@@ -61,6 +61,29 @@ export interface WorkRequest {
   target?: string;
   finishedAt?: string;
   result?: string;
+}
+
+/**
+ * Normalize a project path typed by a human (Telegram, CLI) into an absolute one.
+ *
+ * The target does NOT have to exist — `init.sh` creates it. What we insist on is that the path is
+ * unambiguous *before* it is filed as a request: leading `~` expanded, absolute, no `..` segment, no
+ * control characters, bounded length. Returns null when the input cannot be trusted as a path.
+ */
+export function normalizeProjectPath(input: string, home: string = homedir()): string | null {
+  const raw = input.trim();
+  if (!raw || raw.length > 4096) return null;
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return null;
+
+  let p = raw;
+  if (p === '~') p = home;
+  else if (p.startsWith('~/')) p = join(home, p.slice(2));
+
+  if (!p.startsWith('/')) return null;
+  if (p.split('/').includes('..')) return null;
+
+  const abs = resolve(p);
+  return abs.length > 4096 ? null : abs;
 }
 
 export const REQUESTS_DIR = join(homedir(), '.spec-workflow', 'requests');

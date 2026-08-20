@@ -95,6 +95,12 @@ integrationJudge = false     # 绿 build+boot 后的可选跨模块审查
 
 # L3
 specGate = false             # opt-in 跨家族 spec 审计员;spec 可 hack 就中止循环
+
+# 人工审批门(Telegram)——决定经 HMAC 签名,存在项目之外
+gateOnSpecGateFail = false    # spec gate 失败 → 批准 = 覆盖并继续(有审计)
+gateOnIntegrationFail = false # 集成失败 → 批准 = 再来一轮有界修复
+gateEveryTasks = 0            # >0:每 N 个任务变绿后暂停一次人工检查点
+gateTimeoutMin = 60           # 等待决定的分钟数,超时按拒绝
 ```
 
 **任务元数据**(在 `tasks.md` 里,建 spec 时定,被 L1 锁住):

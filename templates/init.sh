@@ -2,7 +2,8 @@
 # spec-workflow-mcp project initialization script
 # Usage: bash init.sh [project-path] [options]
 #        bash init.sh                          → initialize current directory
-#        bash init.sh /path/to/project         → initialize target directory
+#        bash init.sh /path/to/project         → initialize target directory (created if missing)
+#        bash init.sh ~/code/new-app            → parents are created too; the path is made absolute
 #        bash init.sh /path --no-add           → skip the "add MCP servers / skills" picker
 #        bash init.sh /path --force            → overwrite CLAUDE.md/skills/agents
 #
@@ -31,7 +32,22 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="${POSITIONAL:-.}"
-PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
+case "$PROJECT_DIR" in
+  "~")   PROJECT_DIR="$HOME" ;;
+  "~/"*) PROJECT_DIR="$HOME/${PROJECT_DIR#\~/}" ;;
+esac
+# A target that does not exist yet is normal — we create it below. Resolve it to an ABSOLUTE path
+# either way: config.toml, CLAUDE.md, the loop runner and ~/.spec-workflow/projects.json all record
+# this value, and a relative one would break every consumer that runs from another directory.
+CREATED_DIR=""
+if [ -e "$PROJECT_DIR" ] && [ ! -d "$PROJECT_DIR" ]; then
+  echo "Error: $PROJECT_DIR exists and is not a directory"; exit 1
+fi
+if [ ! -d "$PROJECT_DIR" ]; then
+  mkdir -p "$PROJECT_DIR" || { echo "Error: cannot create $PROJECT_DIR"; exit 1; }
+  CREATED_DIR=1
+fi
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 SPEC_WORKFLOW_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "================================================"
@@ -41,10 +57,9 @@ echo "  Project:  $PROJECT_DIR"
 echo "  Framework: $SPEC_WORKFLOW_HOME"
 echo ""
 
-# 1. Create project directory
-if [ ! -d "$PROJECT_DIR" ]; then
-  echo "[1/11] Creating project directory..."
-  mkdir -p "$PROJECT_DIR"
+# 1. Project directory (already created above, so the path could be made absolute)
+if [ -n "$CREATED_DIR" ]; then
+  echo "[1/11] Created project directory"
 else
   echo "[1/11] Project directory exists"
 fi

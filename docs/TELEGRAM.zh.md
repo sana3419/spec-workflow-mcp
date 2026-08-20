@@ -73,6 +73,10 @@ spec-workflow-mcp requests done  <id> --fail --result "缺少依赖"
 
 守护进程看到状态变成 done/failed 就把结果推回 Telegram。
 
+**`📁 新建/添加项目` 可以指定任意文件夹。** 回一个绝对路径（`/home/me/code/app`）或 `~/…` 路径即可；
+**目录不存在也没关系** —— `init.sh` 会连同中间层级一起创建，队列回执里会写明"目录不存在，会新建"。
+守护进程在入队前先归一化路径（展开 `~`、拒绝 `..`、拒绝控制字符），若该路径已存在且是文件则拒绝。
+
 ### 多个窗口：注册、绑定、独占领取
 
 每个 `requests watch` 都会**注册自己**（`~/.spec-workflow/requests/.watchers/<id>.json`，心跳就是文件 mtime，90 秒过期自动清理），所以：

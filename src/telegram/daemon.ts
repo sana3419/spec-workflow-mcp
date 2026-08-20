@@ -9,7 +9,7 @@ import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, ap
 import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { T, setLang } from './strings.js';
 import { renderScreen, NavState, UiDeps, loopActionOf, isDispatch } from './ui.js';
-import { createRequest, listRequests, listWatchers, watcherTakes, WorkRequest } from '../core/requests.js';
+import { createRequest, listRequests, listWatchers, watcherTakes, normalizeProjectPath, WorkRequest } from '../core/requests.js';
 import { sortProjectsByActivity } from '../core/project-activity.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
@@ -383,13 +383,20 @@ class Daemon {
       await this.fileRequest(userId, chatId, updateId, { kind: 'new-spec', project, spec, idea: idea.trim(), by: `tg:${userId}` }, spec);
       return;
     }
-    const path = text.trim();
-    if (!path.startsWith('/') || path.includes('..')) { await this.send(chatId, { text: esc(T.badProjectPath()) }); return; }
-    await this.fileRequest(userId, chatId, updateId, { kind: 'new-project', project: '', path, by: `tg:${userId}` }, path);
+    // The folder does not have to exist — init.sh creates it. We only insist the path is unambiguous
+    // (~ expanded, absolute, no ..) and that we are not about to point init.sh at an existing FILE.
+    const path = normalizeProjectPath(text);
+    if (!path) { await this.send(chatId, { text: esc(T.badProjectPath()) }); return; }
+    let willCreate = false;
+    try {
+      const st = await fs.stat(path);
+      if (!st.isDirectory()) { await this.send(chatId, { text: esc(T.projectPathNotDir(path)) }); return; }
+    } catch { willCreate = true; }
+    await this.fileRequest(userId, chatId, updateId, { kind: 'new-project', project: '', path, by: `tg:${userId}` }, path, willCreate);
   }
 
   /** File a request for the live session and tell the user whether anyone is listening. */
-  private async fileRequest(userId: number, chatId: number, updateId: number, r: Omit<WorkRequest, 'id' | 'status' | 'at'>, what: string): Promise<void> {
+  private async fileRequest(userId: number, chatId: number, updateId: number, r: Omit<WorkRequest, 'id' | 'status' | 'at'>, what: string, willCreate = false): Promise<void> {
     // Several sessions may listen; the one that will take this request is a live watcher whose scope
     // covers the project (unscoped watchers take anything). Name them so the user knows who is on it.
     // A pinned window gets the work exclusively (if it is still listening and covers the project);
@@ -406,7 +413,7 @@ class Daemon {
     this.requestWatch.set(req.id, { chatId, kind: req.kind, what });
     await this.auditCmd(userId, chatId, updateId, `request.${req.kind}`, [what], r.project || undefined, r.spec, req.id);
     const text = (req.kind === 'new-spec' ? T.queuedNewSpec(esc(what), live)
-      : req.kind === 'new-project' ? T.queuedNewProject(esc(what), live)
+      : req.kind === 'new-project' ? T.queuedNewProject(esc(what), live, willCreate)
       : T.queuedDispatch(esc(String(r.spec)), esc(String(r.taskId)), live))
       + (live ? `\n${esc(T.listeners(handlers.map(h => h.label)))}` : '');
     await this.send(chatId, { text });

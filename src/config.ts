@@ -39,6 +39,13 @@ export interface SpecWorkflowConfig {
     // L3 spec gate: before implementing, a cross-family auditor critiques the spec for hackable
     // ambiguity; if it would let wrong-but-green outcomes through, the loop refuses to start. Opt-in.
     specGate?: boolean;
+    // Remote approval gates (Telegram). The runner pauses and asks a human; the decision is HMAC-signed
+    // and stored outside the project. Read by templates/spec-loop-run.sh; declared here so the type is
+    // an honest model of [loop]. Timeout or reject = stop.
+    gateOnSpecGateFail?: boolean;    // spec gate failed → approve = override-and-proceed (audited)
+    gateOnIntegrationFail?: boolean; // integration failed → approve = one more bounded fix round
+    gateEveryTasks?: number;         // >0: pause for a human checkpoint after every N green tasks (0 = off)
+    gateTimeoutMin?: number;         // minutes to wait for a decision before treating it as reject
   };
 
   // Security features
@@ -148,6 +155,18 @@ function validateConfig(config: any): { valid: boolean; error?: string } {
     if (lp.specGate !== undefined && typeof lp.specGate !== 'boolean') {
       return { valid: false, error: `Invalid loop.specGate: must be a boolean.` };
     }
+    if (lp.gateOnSpecGateFail !== undefined && typeof lp.gateOnSpecGateFail !== 'boolean') {
+      return { valid: false, error: `Invalid loop.gateOnSpecGateFail: must be a boolean.` };
+    }
+    if (lp.gateOnIntegrationFail !== undefined && typeof lp.gateOnIntegrationFail !== 'boolean') {
+      return { valid: false, error: `Invalid loop.gateOnIntegrationFail: must be a boolean.` };
+    }
+    if (lp.gateEveryTasks !== undefined && (typeof lp.gateEveryTasks !== 'number' || lp.gateEveryTasks < 0)) {
+      return { valid: false, error: `Invalid loop.gateEveryTasks: must be a non-negative number (0 disables it).` };
+    }
+    if (lp.gateTimeoutMin !== undefined && (typeof lp.gateTimeoutMin !== 'number' || lp.gateTimeoutMin < 1)) {
+      return { valid: false, error: `Invalid loop.gateTimeoutMin: must be a positive number of minutes.` };
+    }
   }
 
   return { valid: true };
@@ -203,6 +222,10 @@ export function loadConfigFromPath(configPath: string): ConfigLoadResult {
         ...(parsedConfig.loop.integrationFixAttempts !== undefined && { integrationFixAttempts: parsedConfig.loop.integrationFixAttempts }),
         ...(parsedConfig.loop.integrationJudge !== undefined && { integrationJudge: parsedConfig.loop.integrationJudge }),
         ...(parsedConfig.loop.specGate !== undefined && { specGate: parsedConfig.loop.specGate }),
+        ...(parsedConfig.loop.gateOnSpecGateFail !== undefined && { gateOnSpecGateFail: parsedConfig.loop.gateOnSpecGateFail }),
+        ...(parsedConfig.loop.gateOnIntegrationFail !== undefined && { gateOnIntegrationFail: parsedConfig.loop.gateOnIntegrationFail }),
+        ...(parsedConfig.loop.gateEveryTasks !== undefined && { gateEveryTasks: parsedConfig.loop.gateEveryTasks }),
+        ...(parsedConfig.loop.gateTimeoutMin !== undefined && { gateTimeoutMin: parsedConfig.loop.gateTimeoutMin }),
       };
     }
 

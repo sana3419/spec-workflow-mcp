@@ -14,6 +14,28 @@ const q = await import('../requests.js');
 beforeEach(async () => { await fs.mkdir(home, { recursive: true }); });
 afterEach(async () => { await fs.rm(home, { recursive: true, force: true }); });
 
+describe('normalizeProjectPath (a folder you name does not have to exist)', () => {
+  it('accepts an absolute path whether or not it exists, and normalizes it', () => {
+    expect(q.normalizeProjectPath('/home/me/code/new-app')).toBe('/home/me/code/new-app');
+    expect(q.normalizeProjectPath('  /home/me/code/new-app/  ')).toBe('/home/me/code/new-app');
+    expect(q.normalizeProjectPath('/home/me//code///new-app')).toBe('/home/me/code/new-app');
+  });
+
+  it('expands a leading ~', () => {
+    expect(q.normalizeProjectPath('~/code/app', '/home/me')).toBe('/home/me/code/app');
+    expect(q.normalizeProjectPath('~', '/home/me')).toBe('/home/me');
+  });
+
+  it('refuses what cannot be trusted as a path', () => {
+    expect(q.normalizeProjectPath('code/app')).toBeNull();          // relative
+    expect(q.normalizeProjectPath('~x/app', '/home/me')).toBeNull();// not ~ or ~/
+    expect(q.normalizeProjectPath('/home/me/../../etc')).toBeNull();// .. segment
+    expect(q.normalizeProjectPath('/home/me/a\nb')).toBeNull();     // control char
+    expect(q.normalizeProjectPath('   ')).toBeNull();
+    expect(q.normalizeProjectPath('/' + 'x'.repeat(5000))).toBeNull();
+  });
+});
+
 describe('core/requests (Telegram → live session mailbox)', () => {
   it('lives outside any project, 0700 dir / 0600 files', async () => {
     const r = await q.createRequest({ kind: 'new-spec', project: '/p', spec: 'auth', idea: 'login', by: 'tg:1' });

@@ -84,6 +84,11 @@ spec-workflow-mcp requests done  <id> --fail --result "missing dependency"
 
 The daemon pushes the outcome to Telegram.
 
+**`📁 New project` takes any folder you name.** Reply with an absolute path (`/home/me/code/app`) or a
+`~/…` one; **it does not have to exist** — `init.sh` creates it, parents included, and the queued
+message says so. The daemon normalizes the path before filing the request (`~` expanded, `..` refused,
+control characters refused) and rejects a path that already exists as a *file*.
+
 ### Several windows: registration, binding, exclusive claim
 
 Every `requests watch` **registers itself** (`~/.spec-workflow/requests/.watchers/<id>.json`; the heartbeat is

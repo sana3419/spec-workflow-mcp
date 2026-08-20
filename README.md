@@ -44,7 +44,7 @@ settings.json) and **`/spec-workflow:telegram`** (loop_bot daemon).
 
 ```bash
 npm i -g @openai/codex && codex login          # only if you want Codex offload
-bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
+bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project   # created if missing
 ```
 Optional flags: `--no-add` (skip the component picker), `--auto-loop`, `--force`.
 `init.sh` writes `.spec-workflow/`, `CLAUDE.md`, `AGENTS.md`, the loop runner, a restrictive

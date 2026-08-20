@@ -42,7 +42,7 @@ codex login    # 首次运行：用 ChatGPT 账号登录（或配置 OpenAI API 
 ### 第 3 步：初始化项目
 
 ```bash
-bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project
+bash /path/to/spec-workflow-mcp/templates/init.sh /path/to/your-project   # 目录不存在会自动创建
 ```
 
 可选参数：
