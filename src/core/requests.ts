@@ -12,16 +12,29 @@ import { randomBytes } from 'crypto';
  * (`spec-workflow-mcp requests watch`, typically via the Monitor tool) and does the work in place,
  * then writes the result back — which the daemon pushes to Telegram.
  *
- *   ~/.spec-workflow/requests/<id>.json     one file per request, 0600, dir 0700
- *   ~/.spec-workflow/requests/.heartbeat    touched by `requests watch` so the daemon can tell the
- *                                           user whether anyone is listening
+ *   ~/.spec-workflow/requests/<id>.json          one file per request, 0600, dir 0700
+ *   ~/.spec-workflow/requests/.watchers/<wid>.json  one file per listening session (heartbeat = mtime)
  *
  * Outside any project on purpose: an implementing agent must not be able to forge a request that a
  * session would then execute with the user's authority.
+ *
+ * MANY SESSIONS, ONE OWNER PER REQUEST. Every `requests watch` registers itself, so several windows can
+ * listen at once (one per project, or all of them). A request is handed to exactly one watcher: the
+ * emitting watcher must first win an atomic claim (O_EXCL lock file), so two windows never do the same
+ * work. A watcher may declare `--project` scopes, which is how you bind one window to one project.
  */
 
 export type RequestKind = 'new-spec' | 'new-project' | 'dispatch-task';
 export type RequestStatus = 'pending' | 'claimed' | 'done' | 'failed';
+
+export interface Watcher {
+  id: string;
+  pid: number;
+  label: string;
+  /** absolute project paths this session handles; empty = any project */
+  projects: string[];
+  startedAt: string;
+}
 
 export interface WorkRequest {
   id: string;
@@ -38,17 +51,89 @@ export interface WorkRequest {
   by: string;
   at: string;
   claimedAt?: string;
+  /** watcher id that owns this request (set by the atomic claim) */
+  claimedBy?: string;
   finishedAt?: string;
   result?: string;
 }
 
 export const REQUESTS_DIR = join(homedir(), '.spec-workflow', 'requests');
-export const HEARTBEAT_FILE = join(REQUESTS_DIR, '.heartbeat');
-/** A watcher is considered live if it touched the heartbeat within this window. */
+export const WATCHERS_DIR = join(REQUESTS_DIR, '.watchers');
+/** A watcher is considered live if its file was touched within this window. */
 export const HEARTBEAT_TTL_MS = 90_000;
 
 async function ensureDir(): Promise<void> {
   await fs.mkdir(REQUESTS_DIR, { recursive: true, mode: 0o700 });
+  await fs.mkdir(WATCHERS_DIR, { recursive: true, mode: 0o700 });
+}
+
+function watcherFile(id: string): string {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error(`invalid watcher id: ${id}`);
+  return join(WATCHERS_DIR, `${id}.json`);
+}
+
+/** Register this session as a listener. Scope it with `projects` to bind it to specific repos. */
+export async function registerWatcher(label: string, projects: string[] = []): Promise<Watcher> {
+  await ensureDir();
+  const w: Watcher = {
+    id: `w-${process.pid}-${randomBytes(3).toString('hex')}`,
+    pid: process.pid,
+    label: label.slice(0, 80),
+    projects: projects.filter(Boolean),
+    startedAt: new Date().toISOString(),
+  };
+  await writeAtomic(watcherFile(w.id), w);
+  return w;
+}
+
+export async function heartbeatWatcher(id: string): Promise<void> {
+  try { const now = new Date(); await fs.utimes(watcherFile(id), now, now); }
+  catch { /* file vanished (pruned / cleaned) — re-register on next tick */ }
+}
+
+export async function unregisterWatcher(id: string): Promise<void> {
+  try { await fs.rm(watcherFile(id)); } catch { /* already gone */ }
+}
+
+/** Live watchers, newest heartbeat first; stale entries are removed as a side effect. */
+export async function listWatchers(now = Date.now()): Promise<Array<Watcher & { lastSeen: string }>> {
+  let names: string[];
+  try { names = await fs.readdir(WATCHERS_DIR); } catch { return []; }
+  const out: Array<Watcher & { lastSeen: string }> = [];
+  for (const n of names) {
+    if (!n.endsWith('.json')) continue;
+    const f = join(WATCHERS_DIR, n);
+    try {
+      const st = await fs.stat(f);
+      const w = JSON.parse(await fs.readFile(f, 'utf-8')) as Watcher;
+      if (now - st.mtimeMs < HEARTBEAT_TTL_MS) out.push({ ...w, lastSeen: new Date(st.mtimeMs).toISOString() });
+      else await fs.rm(f).catch(() => {});
+    } catch { /* partial write */ }
+  }
+  return out.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+}
+
+/** Does this watcher handle that project? (no scopes = handles everything) */
+export function watcherHandles(w: Pick<Watcher, 'projects'>, project: string): boolean {
+  return !w.projects.length || w.projects.includes(project);
+}
+
+/**
+ * Atomically take ownership of a pending request. Returns false if another watcher got there first,
+ * which is what keeps two open windows from doing the same work.
+ */
+export async function claimRequest(id: string, watcherId: string): Promise<boolean> {
+  await ensureDir();
+  const lock = `${file(id)}.lock`;
+  try {
+    const fh = await fs.open(lock, 'wx', 0o600);   // O_EXCL — first writer wins
+    await fh.writeFile(watcherId);
+    await fh.close();
+  } catch { return false; }
+  const cur = await readRequest(id);
+  if (!cur || cur.status !== 'pending') { await fs.rm(lock).catch(() => {}); return false; }
+  await updateRequest(id, { status: 'claimed', claimedAt: new Date().toISOString(), claimedBy: watcherId });
+  return true;
 }
 
 function file(id: string): string {
@@ -101,17 +186,10 @@ export async function updateRequest(id: string, patch: Partial<WorkRequest>): Pr
   return next;
 }
 
-export async function touchHeartbeat(): Promise<void> {
-  await ensureDir();
-  await fs.writeFile(HEARTBEAT_FILE, new Date().toISOString(), { mode: 0o600 });
-}
-
-/** Is an interactive session currently watching the queue? */
-export async function watcherAlive(now = Date.now()): Promise<boolean> {
-  try {
-    const st = await fs.stat(HEARTBEAT_FILE);
-    return now - st.mtimeMs < HEARTBEAT_TTL_MS;
-  } catch { return false; }
+/** Is any session listening (optionally: one that handles `project`)? */
+export async function watcherAlive(project?: string, now = Date.now()): Promise<boolean> {
+  const live = await listWatchers(now);
+  return project ? live.some(w => watcherHandles(w, project)) : live.length > 0;
 }
 
 /** Delete finished requests older than `days` (the queue is a mailbox, not a log). */
@@ -121,7 +199,9 @@ export async function pruneRequests(days = 7, now = Date.now()): Promise<number>
   for (const r of await listRequests()) {
     if (r.status !== 'done' && r.status !== 'failed') continue;
     const t = new Date(r.finishedAt || r.at).getTime();
-    if (Number.isFinite(t) && t < cutoff) { try { await fs.rm(file(r.id)); n++; } catch { /* gone */ } }
+    if (Number.isFinite(t) && t < cutoff) {
+      try { await fs.rm(file(r.id)); await fs.rm(`${file(r.id)}.lock`).catch(() => {}); n++; } catch { /* gone */ }
+    }
   }
   return n;
 }

@@ -82,7 +82,23 @@ spec-workflow-mcp requests done  <id> --result "spec auth created, 6 tasks"
 spec-workflow-mcp requests done  <id> --fail --result "missing dependency"
 ```
 
-The daemon pushes the outcome to Telegram, and the heartbeat lets it tell you whether anyone is listening.
+The daemon pushes the outcome to Telegram.
+
+### Several windows: registration, binding, exclusive claim
+
+Every `requests watch` **registers itself** (`~/.spec-workflow/requests/.watchers/<id>.json`; the heartbeat is
+the file mtime, stale entries expire after 90s), so:
+
+* **Multiple windows are fine.** `spec-workflow-mcp requests watchers` lists who is listening.
+* **One request goes to exactly one window.** A watcher must win an atomic claim (`O_EXCL` lock) before it
+  emits the request; the losers skip it — two windows never do the same work.
+* **Bind a window to projects** with `requests watch --project /abs/a,/abs/b` (plus `--label`). A scoped
+  window only takes requests for those projects; an unscoped one takes anything. One window per repo is the
+  intended setup.
+* **Opening a new window does not rebind anything** — listeners add up. Closing it (Ctrl-C / session end)
+  unregisters; a crash is covered by the 90s heartbeat expiry.
+* Telegram shows `👂 listening: <labels>` when you tap, or warns you that nobody is.
+
 Unattended fallback: `.spec-workflow/spec-new-run.sh <spec> <idea>` creates a spec with its own headless claude.
 
 ## Commands (still available as a fallback)

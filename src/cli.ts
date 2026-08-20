@@ -8,13 +8,13 @@
 // `pick` and `verify` are the SOLE writers of tasks.md state ([ ]→[-]→[x]/[~]).
 
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { join, resolve, basename } from 'path';
 import { PathUtils } from './core/path-utils.js';
 import { parseTasksFromMarkdown, findNextPendingTask, getTaskById, updateTaskStatus } from './core/task-parser.js';
 import { recordVerification, recordJudgeVerdict, setTaskStatus, VerifySignal, VerifySource, FailureClass, ManualTaskStatus } from './core/verify-core.js';
 import { getLoopStatus, requestLoopStop } from './core/run-state.js';
 import { cleanupSpecs } from './core/cleanup.js';
-import { createRequest, listRequests, readRequest, updateRequest, touchHeartbeat, pruneRequests, watcherAlive, WorkRequest } from './core/requests.js';
+import { createRequest, listRequests, readRequest, updateRequest, pruneRequests, watcherAlive, registerWatcher, heartbeatWatcher, unregisterWatcher, listWatchers, watcherHandles, claimRequest, WorkRequest } from './core/requests.js';
 import { SpecParser } from './core/parser.js';
 import { routeReview } from './core/review-router.js';
 import { gateHmac, pendingSig, verifyPendingSig } from './core/gates.js';
@@ -299,25 +299,33 @@ export async function runRequestsCli(args: string[]): Promise<number> {
     console.log(fmt(r));
     return 0;
   }
+  if (sub === 'watchers') {
+    for (const w of await listWatchers()) console.log(JSON.stringify({ id: w.id, pid: w.pid, label: w.label, projects: w.projects, lastSeen: w.lastSeen }));
+    return 0;
+  }
   if (sub === 'watch') {
-    const intervalRaw = flag(rest, '--interval');
-    const interval = Math.min(Math.max(Number(intervalRaw ?? 3) || 3, 1), 60) * 1000;
-    const seen = new Set((await listRequests()).filter(r => r.status !== 'pending').map(r => r.id));
-    // Existing pending requests are emitted immediately — a session that starts late still picks them up.
-    await touchHeartbeat();
-    console.error(`[requests] watching ${await listRequests('pending').then(x => x.length)} pending — heartbeat every ${interval / 1000}s`);
+    const interval = Math.min(Math.max(Number(flag(rest, '--interval') ?? 3) || 3, 1), 60) * 1000;
+    // --project binds this session to specific repos; without it the session handles every request.
+    const projects = (flag(rest, '--project') ?? '').split(',').map(s2 => s2.trim()).filter(Boolean).map(p => resolve(p));
+    const label = flag(rest, '--label') ?? `${basename(process.cwd())} (pid ${process.pid})`;
+    const w = await registerWatcher(label, projects);
+    const bye = async () => { await unregisterWatcher(w.id); process.exit(0); };
+    process.on('SIGINT', bye); process.on('SIGTERM', bye);
+    const others = (await listWatchers()).filter(x => x.id !== w.id);
+    console.error(`[requests] watcher ${w.id} · ${projects.length ? projects.join(', ') : 'all projects'}`
+      + (others.length ? ` · ${others.length} other session(s) listening: ${others.map(o => o.label).join(', ')}` : ''));
     for (;;) {
-      await touchHeartbeat();
+      await heartbeatWatcher(w.id);
       for (const r of await listRequests('pending')) {
-        if (seen.has(r.id)) continue;
-        seen.add(r.id);
-        console.log(fmt(r));
+        if (!watcherHandles(w, r.project)) continue;          // another window owns this project
+        if (!(await claimRequest(r.id, w.id))) continue;       // someone else got it first
+        console.log(fmt({ ...r, status: 'claimed', claimedBy: w.id }));
       }
       await pruneRequests();
       await new Promise(res => setTimeout(res, interval));
     }
   }
-  console.error('usage: requests <watch|list|claim|done> …');
+  console.error('usage: requests <watch|watchers|list|claim|done> …');
   return 2;
 }
 

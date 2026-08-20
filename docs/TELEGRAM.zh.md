@@ -71,7 +71,18 @@ spec-workflow-mcp requests done  <id> --result "spec auth 已生成，6 个任�
 spec-workflow-mcp requests done  <id> --fail --result "缺少依赖"
 ```
 
-守护进程看到状态变成 done/failed 就把结果推回 Telegram。心跳还让 bot 能告诉你「窗口正在监听」还是「没人监听」。
+守护进程看到状态变成 done/failed 就把结果推回 Telegram。
+
+### 多个窗口：注册、绑定、独占领取
+
+每个 `requests watch` 都会**注册自己**（`~/.spec-workflow/requests/.watchers/<id>.json`，心跳就是文件 mtime，90 秒过期自动清理），所以：
+
+* **可以多开**。开几个窗口就有几个监听者，`spec-workflow-mcp requests watchers` 可以看谁在听。
+* **一条请求只会被一个窗口拿到**。发出前必须先赢得一次原子领取（`O_EXCL` 锁文件），抢不到的窗口直接跳过 —— 两个窗口不会重复做同一件事。
+* **可以按项目绑定**：`requests watch --project /abs/repo-a,/abs/repo-b`（可给 `--label` 起名）。带 scope 的窗口只接这些项目的请求；不带 scope 的窗口什么都接。典型用法：每个项目一个窗口，各绑各的。
+* **新开窗口不会顶掉旧窗口**：是叠加，不是重绑定。旧窗口关掉（Ctrl-C / 会话结束）会注销；异常退出则由 90 秒心跳过期兜底。
+* Telegram 在你点按钮时会显示 `👂 正在监听：<窗口名>`；没人听就提示你去开一个。
+
 无人值守的备选仍在：`.spec-workflow/spec-new-run.sh <spec> <一句话>` 会用独立 headless claude 生成 spec。
 
 ## 命令（兜底，仍然可用）

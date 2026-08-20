@@ -268,6 +268,8 @@ export const T = {
   requestFailed: (kind: string, what: string, result: string) => pick({
     zh: `❌ 失败：${kind} · <b>${what}</b>${result ? `\n${result}` : ''}`,
     en: `❌ Failed: ${kind} · <b>${what}</b>${result ? `\n${result}` : ''}` }),
+  listeners: (labels: string[]) => pick({ zh: `👂 正在监听：${labels.join('、')}`, en: `👂 listening: ${labels.join(', ')}` }),
+  noListener: () => pick({ zh: '⚠️ 没有 Claude 窗口在监听队列 —— 在窗口里让 Claude 用 Monitor 跑 spec-workflow-mcp requests watch', en: '⚠️ no Claude window is watching the queue — Monitor `spec-workflow-mcp requests watch` in one' }),
   kindNewSpec: () => pick({ zh: '新建 spec', en: 'new spec' }),
   kindNewProject: () => pick({ zh: '初始化项目', en: 'init project' }),
   kindDispatch: () => pick({ zh: '实现任务', en: 'implement task' }),

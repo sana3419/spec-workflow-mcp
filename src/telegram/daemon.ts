@@ -9,7 +9,7 @@ import { handleCommand, projectLabel, specStatusText, specDocument, taskCard, ap
 import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { T, setLang } from './strings.js';
 import { renderScreen, NavState, UiDeps, loopActionOf, isDispatch } from './ui.js';
-import { createRequest, listRequests, watcherAlive, WorkRequest } from '../core/requests.js';
+import { createRequest, listRequests, listWatchers, watcherHandles, WorkRequest } from '../core/requests.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
@@ -377,13 +377,17 @@ class Daemon {
 
   /** File a request for the live session and tell the user whether anyone is listening. */
   private async fileRequest(userId: number, chatId: number, updateId: number, r: Omit<WorkRequest, 'id' | 'status' | 'at'>, what: string): Promise<void> {
-    const live = await watcherAlive();
+    // Several sessions may listen; the one that will take this request is a live watcher whose scope
+    // covers the project (unscoped watchers take anything). Name them so the user knows who is on it.
+    const handlers = (await listWatchers()).filter(w => watcherHandles(w, r.project));
+    const live = handlers.length > 0;
     const req = await createRequest(r);
     this.requestWatch.set(req.id, { chatId, kind: req.kind, what });
     await this.auditCmd(userId, chatId, updateId, `request.${req.kind}`, [what], r.project || undefined, r.spec, req.id);
-    const text = req.kind === 'new-spec' ? T.queuedNewSpec(esc(what), live)
+    const text = (req.kind === 'new-spec' ? T.queuedNewSpec(esc(what), live)
       : req.kind === 'new-project' ? T.queuedNewProject(esc(what), live)
-      : T.queuedDispatch(esc(String(r.spec)), esc(String(r.taskId)), live);
+      : T.queuedDispatch(esc(String(r.spec)), esc(String(r.taskId)), live))
+      + (live ? `\n${esc(T.listeners(handlers.map(h => h.label)))}` : '');
     await this.send(chatId, { text });
   }
 

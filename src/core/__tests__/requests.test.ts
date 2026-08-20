@@ -32,11 +32,35 @@ describe('core/requests (Telegram → live session mailbox)', () => {
     expect(done).toMatchObject({ status: 'done', result: 'task 3 green' });
   });
 
-  it('heartbeat tells the daemon whether a session is listening', async () => {
+  it('watchers register, heartbeat, expire, and can be scoped to projects', async () => {
     expect(await q.watcherAlive()).toBe(false);
-    await q.touchHeartbeat();
+    const all = await q.registerWatcher('window A');
+    const scoped = await q.registerWatcher('window B', ['/repo/b']);
     expect(await q.watcherAlive()).toBe(true);
-    expect(await q.watcherAlive(Date.now() + q.HEARTBEAT_TTL_MS + 1000)).toBe(false);
+    expect((await q.listWatchers()).map(w => w.label).sort()).toEqual(['window A', 'window B']);
+
+    // scoping decides who handles what
+    expect(q.watcherHandles(all, '/repo/anything')).toBe(true);
+    expect(q.watcherHandles(scoped, '/repo/b')).toBe(true);
+    expect(q.watcherHandles(scoped, '/repo/other')).toBe(false);
+    expect(await q.watcherAlive('/repo/b')).toBe(true);
+
+    // stale watchers disappear (and are pruned)
+    expect(await q.watcherAlive(undefined, Date.now() + q.HEARTBEAT_TTL_MS + 1000)).toBe(false);
+    expect(await q.listWatchers()).toHaveLength(0);
+    await q.unregisterWatcher(all.id);
+  });
+
+  it('a request is claimed by exactly one watcher, even when several windows race', async () => {
+    const r = await q.createRequest({ kind: 'new-spec', project: '/p', spec: 'auth', by: 'tg:1' });
+    const w1 = await q.registerWatcher('A'), w2 = await q.registerWatcher('B'), w3 = await q.registerWatcher('C');
+    const results = await Promise.all([w1, w2, w3].map(w => q.claimRequest(r.id, w.id)));
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const after = await q.readRequest(r.id);
+    expect(after?.status).toBe('claimed');
+    expect([w1.id, w2.id, w3.id]).toContain(after?.claimedBy);
+    // a second attempt on an already-claimed request always fails
+    expect(await q.claimRequest(r.id, w2.id)).toBe(false);
   });
 
   it('prunes finished requests only, and only when old', async () => {
