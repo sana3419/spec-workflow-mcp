@@ -10,6 +10,7 @@ import { esc, b, code, ago, untrusted, inlineUntrusted } from './render.js';
 import { T, setLang } from './strings.js';
 import { renderScreen, NavState, UiDeps, loopActionOf, isDispatch } from './ui.js';
 import { createRequest, listRequests, listWatchers, watcherTakes, WorkRequest } from '../core/requests.js';
+import { sortProjectsByActivity } from '../core/project-activity.js';
 import { ProjectRegistry } from '../core/project-registry.js';
 import { PathUtils } from '../core/path-utils.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
@@ -131,7 +132,9 @@ class Daemon {
     for (const p of found) {
       try { await fs.access(PathUtils.getWorkflowRoot(p)); alive.push(p); } catch { /* not a spec-workflow project (yet) */ }
     }
-    this.projects = alive.sort();
+    // Most recently active first, so a project you just created or just ran shows up at the top of
+    // the Telegram home screen instead of wherever the alphabet put it.
+    this.projects = await sortProjectsByActivity(alive);
     this.lastDiscover = Date.now();
   }
 

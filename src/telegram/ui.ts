@@ -115,7 +115,9 @@ async function screenHome(d: UiDeps): Promise<Reply> {
       gates += (await listPendingGates(p, s.name)).length;
     }
     const cur = p === d.ctx.currentProject ? '▶️' : '▫️';
+    const newest = specs.map(s => s.lastModified || '').sort().pop();
     lines.push(`${cur} ${b(projectLabel(p))}　${T.lSpecs()} ${specs.length} · ${done}/${tot} ${bar(done, tot, 8)} ${pct(done, tot)}`);
+    if (newest) lines.push(`     ${T.lUpdated()} ${ago(newest)}`);
   }
   if (!d.ctx.projects.length) lines.push(esc(T.noProjects()));
   if (running) lines.push('', `🔄 ${running} ${T.lRunning()}`);
