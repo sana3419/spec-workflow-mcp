@@ -59,3 +59,27 @@ async function writeStates(all: Record<string, ProjectStateEntry>, file: string)
   await fs.writeFile(tmp, JSON.stringify(all, null, 2), { mode: 0o600 });
   await fs.rename(tmp, file);
 }
+
+/**
+ * The union of every place a project can come from, for the Telegram home screen.
+ *
+ * Two registries exist and they do not overlap: the MCP `ProjectRegistry` only learns about a project
+ * when an MCP server actually STARTS in it, while `init.sh` records what it just created here. A
+ * project created from Telegram therefore appeared in neither list the daemon consulted — it had to be
+ * opened in Claude Code first, or hand-added to TELEGRAM_PROJECTS. Merging both fixes that.
+ *
+ * `ignored` is the one status that is honoured as a veto: the user said they do not want it listed.
+ * Pure on purpose — the caller does the I/O and the liveness check.
+ */
+export function mergeDiscoveredProjects(
+  extra: string[],
+  registry: string[],
+  states: Record<string, ProjectStateEntry>,
+): string[] {
+  const ignored = new Set(Object.entries(states).filter(([, v]) => v.status === 'ignored').map(([k]) => k));
+  const out = new Set<string>();
+  for (const p of [...extra, ...registry, ...Object.keys(states)]) {
+    if (p && !ignored.has(p)) out.add(p);
+  }
+  return [...out];
+}

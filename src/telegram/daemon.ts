@@ -16,6 +16,7 @@ import { PathUtils } from '../core/path-utils.js';
 import { readNewEvents, LoopEvent } from '../core/run-watcher.js';
 import { listPendingGates, updatePendingGate, writeDecision, readDecision, verifyPendingSig, PendingGate, GateKind } from '../core/gates.js';
 import { getLoopStatus } from '../core/run-state.js';
+import { readProjectStates, setProjectState, mergeDiscoveredProjects } from '../core/project-state.js';
 import type { ManualTaskStatus } from '../core/verify-core.js';
 
 /**
@@ -123,11 +124,17 @@ class Daemon {
   // ------------------------------------------------------------ projects
 
   async discoverProjects(): Promise<void> {
-    const found = new Set<string>(this.cfg.extraProjects);
+    const registry: string[] = [];
     try {
       const reg = new ProjectRegistry();
-      for (const p of await reg.getAllProjects()) found.add(p.workflowRootPath || p.projectPath);
+      for (const p of await reg.getAllProjects()) registry.push(p.workflowRootPath || p.projectPath);
     } catch (e) { this.log(`registry read failed: ${(e as Error).message}`); }
+    // The MCP registry only sees a project once an MCP server has started in it, so anything init.sh
+    // just created would be invisible here. It is recorded in ~/.spec-workflow/projects.json instead.
+    let states = {};
+    try { states = await readProjectStates(); }
+    catch (e) { this.log(`project state read failed: ${(e as Error).message}`); }
+    const found = new Set(mergeDiscoveredProjects(this.cfg.extraProjects, registry, states));
     const alive: string[] = [];
     for (const p of found) {
       try { await fs.access(PathUtils.getWorkflowRoot(p)); alive.push(p); } catch { /* not a spec-workflow project (yet) */ }
@@ -388,10 +395,22 @@ class Daemon {
     const path = normalizeProjectPath(text);
     if (!path) { await this.send(chatId, { text: esc(T.badProjectPath()) }); return; }
     let willCreate = false;
+    let alreadyAProject = false;
     try {
       const st = await fs.stat(path);
       if (!st.isDirectory()) { await this.send(chatId, { text: esc(T.projectPathNotDir(path)) }); return; }
+      alreadyAProject = await fs.access(PathUtils.getWorkflowRoot(path)).then(() => true, () => false);
     } catch { willCreate = true; }
+
+    // The "add" half of the button. An existing spec-workflow project needs no init run — re-running
+    // init.sh would rewrite its CLAUDE.md/settings.json. Record it and take it into the list instead.
+    if (alreadyAProject) {
+      await setProjectState(path, 'initialized', `added from tg:${userId}`);
+      await this.discoverProjects();
+      this.state.currentProject[String(chatId)] = path; this.markDirty();
+      await this.send(chatId, { text: T.projectAdded(code(path)) });
+      return;
+    }
     await this.fileRequest(userId, chatId, updateId, { kind: 'new-project', project: '', path, by: `tg:${userId}` }, path, willCreate);
   }
 
@@ -429,7 +448,9 @@ class Daemon {
       const kind = r.kind === 'new-spec' ? T.kindNewSpec() : r.kind === 'new-project' ? T.kindNewProject() : T.kindDispatch();
       const body = r.result ? inlineUntrusted(r.result, 400) : '';
       await this.send(w.chatId, { text: r.status === 'done' ? T.requestDone(kind, esc(w.what), body) : T.requestFailed(kind, esc(w.what), body) });
-      if (r.status === 'done' && r.kind !== 'new-project') await this.discoverProjects();
+      // Rediscover on every completion — new-project ESPECIALLY, since that is the one kind that
+      // adds a project (the old condition excluded exactly the case it was needed for).
+      if (r.status === 'done') await this.discoverProjects();
     }
   }
 
